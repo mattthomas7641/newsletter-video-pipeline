@@ -1,0 +1,9 @@
+requests
+beautifulsoup4
+moviepy>=2.0
+numpy
+pillow
+python-dotenv
+elevenlabs
+anthropic
+yt-dlp
