@@ -10,10 +10,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import socket
 import sys
 import time
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -97,7 +98,40 @@ def run(target_date: date | None = None) -> list[Path]:
             upload_recent(target_date)
         except Exception:
             log.exception("YouTube upload step failed; videos are saved, retry with youtube_upload")
+
+    clean_old_outputs(target_date)
     return paths
+
+
+KEEP_DAYS = 7
+
+
+def clean_old_outputs(today: date, keep_days: int = KEEP_DAYS) -> None:
+    """Frees disk space: for days older than `keep_days`, deletes video files
+    that are confirmed uploaded (their .json metadata is kept) and that day's
+    voice/work files. Videos never uploaded, and anything outside dated
+    folders, are left alone."""
+    cutoff = today - timedelta(days=keep_days)
+    freed = 0
+    for folder in OUTPUT_DIR.iterdir():
+        try:
+            day = date.fromisoformat(folder.name)
+        except ValueError:
+            continue
+        if day >= cutoff or not folder.is_dir():
+            continue
+        record_path = folder / "uploads.json"
+        uploaded = json.loads(record_path.read_text()) if record_path.exists() else {}
+        for video in folder.glob("*.mp4"):
+            if video.name in uploaded:
+                freed += video.stat().st_size
+                video.unlink()
+        audio = OUTPUT_DIR / "_audio" / folder.name
+        if audio.is_dir():
+            freed += sum(f.stat().st_size for f in audio.rglob("*") if f.is_file())
+            shutil.rmtree(audio)
+    if freed:
+        log.info("Cleanup: freed %.0f MB from days before %s", freed / 1e6, cutoff)
 
 
 if __name__ == "__main__":
