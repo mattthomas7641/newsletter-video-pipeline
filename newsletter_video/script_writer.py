@@ -35,6 +35,7 @@ MIN_WORDS = 98
 MAX_WORDS = 110
 
 WRITER_MODEL = "claude-sonnet-5-5"
+DEFAULT_WRITER_EFFORT = "medium"  # tested: same quality as default at ~4x fewer output tokens; low writes short, repetitive scripts
 
 BADGE_ALIASES = {
     "big tech & startups": "BIG TECH",
@@ -457,6 +458,16 @@ _WRITER_SCHEMA = {
 }
 
 
+LLM_SUMMARY_CHARS = 400  # enough for the key facts; trims a few very long blurbs
+
+
+def _trim(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    cut = text[:limit].rsplit(". ", 1)[0]  # end on a whole sentence when possible
+    return (cut if len(cut) > limit // 2 else text[:limit].rsplit(" ", 1)[0]) + "…"
+
+
 def _llm_scripts(candidates: list[Story], n_videos: int) -> list[Script] | None:
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return None
@@ -466,13 +477,18 @@ def _llm_scripts(candidates: list[Story], n_videos: int) -> list[Script] | None:
         return None
 
     stories = "\n\n".join(
-        f"[{i}] ({s.edition} / {s.section}) {s.title}\n{s.summary}" for i, s in enumerate(candidates)
+        f"[{i}] ({s.edition} / {s.section}) {s.title}\n{_trim(s.summary, LLM_SUMMARY_CHARS)}"
+        for i, s in enumerate(candidates)
     )
     user = (
         f"Write exactly {n_videos} videos from today's stories below. Order them with "
         f"the strongest video first. Reference stories by their [id].\n\n{stories}"
     )
     try:
+        output_config = {"format": {"type": "json_schema", "schema": _WRITER_SCHEMA}}
+        effort = os.environ.get("WRITER_EFFORT", DEFAULT_WRITER_EFFORT)
+        if effort:
+            output_config["effort"] = effort  # how hard Claude reasons; lower = fewer output tokens
         client = anthropic.Anthropic()
         # Streamed: several scripts can run past the non-streaming output limit
         # (~3k output tokens per video).
@@ -481,7 +497,7 @@ def _llm_scripts(candidates: list[Story], n_videos: int) -> list[Script] | None:
             max_tokens=64000,
             system=WRITER_SYSTEM,
             messages=[{"role": "user", "content": user}],
-            output_config={"format": {"type": "json_schema", "schema": _WRITER_SCHEMA}},
+            output_config=output_config,
             betas=["server-side-fallback-2026-07-01"],
             # On a safety-classifier decline, re-run on Anthropic's recommended model.
             extra_body={"fallbacks": "default"},
@@ -539,7 +555,9 @@ def build_scripts(editions: list[Edition], n_videos: int | None = None,
     ]
     if not candidates:
         return []
-    return _llm_scripts(candidates, n_videos) or _heuristic_scripts(editions, candidates, n_videos)
+    # Claude never picks marketing-advice stories anyway, so don't pay to send them.
+    llm_candidates = [s for s in candidates if s.edition not in LOW_PRIORITY_EDITIONS]
+    return _llm_scripts(llm_candidates, n_videos) or _heuristic_scripts(editions, candidates, n_videos)
 
 
 if __name__ == "__main__":
