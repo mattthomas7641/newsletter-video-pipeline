@@ -30,6 +30,7 @@ import sys
 from pathlib import Path
 
 import imageio_ffmpeg
+import numpy as np
 
 DEFAULT_SAY_VOICE = "Samantha"  # any voice from `say -v ?`
 DEFAULT_KOKORO_VOICE = "af_heart"
@@ -76,13 +77,50 @@ def hyperframes_env(npx: str) -> dict:
     return {**os.environ, "PATH": path, "HYPERFRAMES_PYTHON": sys.executable}
 
 
+# Kokoro model files, downloaded once by `hyperframes tts` (or its first use).
+KOKORO_DIR = Path.home() / ".cache" / "hyperframes" / "tts"
+KOKORO_MODEL = KOKORO_DIR / "models" / "kokoro-v1.0.onnx"
+KOKORO_VOICES = KOKORO_DIR / "voices" / "voices-v1.0.bin"
+_kokoro_model = None
+
+
+def _kokoro_in_process(text: str, out_path: Path, voice: str, speed: float) -> None:
+    """Same synthesis as `hyperframes tts`, but the model is loaded once per
+    run instead of once per line (saves ~6s of startup per spoken line)."""
+    global _kokoro_model
+    import soundfile
+    from kokoro_onnx import Kokoro
+
+    if _kokoro_model is None:
+        _kokoro_model = Kokoro(str(KOKORO_MODEL), str(KOKORO_VOICES))
+    lang = "en-gb" if voice.startswith("b") else "en-us"
+
+    def create(value: str):
+        try:
+            return _kokoro_model.create(value, voice=voice, speed=speed, lang=lang)
+        except IndexError:  # line too long for one pass: split at the space nearest the middle
+            if len(value) < 2:
+                raise
+            spaces = [i for i, c in enumerate(value) if c.isspace()] or [len(value) // 2]
+            mid = min(spaces, key=lambda i: abs(i - len(value) // 2))
+            (left, rate), (right, _) = create(value[:mid]), create(value[mid:])
+            return np.concatenate([left, right]), rate
+
+    samples, rate = create(text)
+    soundfile.write(str(out_path), samples, rate)
+
+
 def _kokoro_backend(text: str, out_path: Path, speed: float | None = None) -> Path:
+    voice = os.environ.get("KOKORO_VOICE", DEFAULT_KOKORO_VOICE)
+    speed = float(speed or os.environ.get("KOKORO_SPEED", DEFAULT_KOKORO_SPEED))
+    if KOKORO_MODEL.exists() and KOKORO_VOICES.exists():
+        _kokoro_in_process(text, out_path, voice, speed)
+        return out_path
+    # First run on a new machine: let the HyperFrames CLI download the model.
     npx = npx_path()
     subprocess.run(
         [npx, "--yes", f"hyperframes@{HYPERFRAMES_VERSION}", "tts", text,
-         "--voice", os.environ.get("KOKORO_VOICE", DEFAULT_KOKORO_VOICE),
-         "--speed", str(speed or os.environ.get("KOKORO_SPEED", DEFAULT_KOKORO_SPEED)),
-         "--output", str(out_path), "--json"],
+         "--voice", voice, "--speed", str(speed), "--output", str(out_path), "--json"],
         check=True,
         stdout=subprocess.DEVNULL,
         env=hyperframes_env(npx),
