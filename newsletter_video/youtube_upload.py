@@ -209,7 +209,9 @@ def upload_day(day: date, dry_run: bool = False) -> list[str]:
                 _, response = request.next_chunk()
         except HttpError as exc:
             log.error("YouTube upload of %s failed: %s", video.name, exc)
-            if exc.resp.status in (403, 429):  # quota exhausted or forbidden: stop for today
+            # Daily API quota, or the channel's own rolling upload limit: further
+            # uploads would fail too; leftovers are retried by the next run.
+            if exc.resp.status in (403, 429) or "uploadLimitExceeded" in str(exc.content):
                 break
             continue
         except Exception as exc:  # network timeout mid-upload: retry on the next run
@@ -220,6 +222,17 @@ def upload_day(day: date, dry_run: bool = False) -> list[str]:
         record_path.write_text(json.dumps(record, indent=2))
         uploaded.append(video_id)
         log.info("YouTube: uploaded %s → https://youtube.com/shorts/%s (%s)", video.name, video_id, privacy)
+    return uploaded
+
+
+def upload_recent(today: date, days_back: int = 3) -> list[str]:
+    """Uploads anything still pending from the last few days (oldest first),
+    then today's videos — so a video blocked by a limit goes up on the next run."""
+    uploaded = []
+    for offset in range(days_back, -1, -1):
+        day = today - timedelta(days=offset)
+        if (OUTPUT_DIR / day.isoformat()).exists():
+            uploaded += upload_day(day)
     return uploaded
 
 
