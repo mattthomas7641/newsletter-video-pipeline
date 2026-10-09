@@ -68,6 +68,7 @@ Copy `.env.example` to `.env`. Everything is optional:
 | Setting | What it does |
 |---|---|
 | `ANTHROPIC_API_KEY` | Claude writes the scripts (much more engaging than the rule-based fallback) |
+| `WRITER_EFFORT` | How hard Claude reasons (default `medium`: same script quality as the model default at about 4x fewer output tokens) |
 | `VIDEOS_PER_DAY` | Videos per run (default 3; YouTube's free quota allows about 6 uploads a day) |
 | `KOKORO_VOICE`, `KOKORO_SPEED` | Voice and pace (`npx hyperframes tts --list` for voices) |
 | `TTS_PROVIDER` | `kokoro` (default), `say` (macOS) or `elevenlabs` |
@@ -99,7 +100,9 @@ each new card, and raises its eyebrows when a highlight lands. Restyle it by edi
 
 ### Gameplay background
 Drop any vertical gameplay `.mp4` into `assets/background/` (or download one with
-`./venv/bin/python -m newsletter_video.fetch_background "<url>"`). Each video gets a
+`./venv/bin/python -m newsletter_video.fetch_background "<url>"`). The first run converts
+each clip once to a light 1080×1920 copy in `assets/background/.cache/`, so later cuts take
+seconds instead of re-decoding the original. Each video gets a
 different stretch of a randomly chosen clip (seeded by date, so re-runs match), cut to the
 video's exact length, muted and darkened. With the folder empty, videos use a graph-paper
 background.
@@ -116,12 +119,14 @@ your own ElevenLabs account.
    stories already covered today, and writes `VIDEOS_PER_DAY` scripts: a hook, 4–6 beats
    (a spoken line plus shorter on-screen card text with one highlighted phrase, or a big
    stat), an outro, and the post title/caption/hashtags.
-3. `tts.py` — voices each line with Kokoro after normalizing money, units and known
-   pronunciations.
+3. `tts.py` — voices each line with Kokoro (model loaded once per run) after normalizing
+   money, units and known pronunciations.
 4. `video_builder.py` — joins the lines, times every card, caption chunk and highlight to
    them, computes lip sync, cuts a gameplay stretch, and renders the HyperFrames template.
 5. `youtube_upload.py` — uploads the videos and records each upload.
-6. `run_pipeline.py` — runs the above in order for a given date.
+6. `run_pipeline.py` — runs the above in order for a given date, then frees disk space:
+   video files older than 7 days are deleted once confirmed uploaded (their `.json`
+   metadata and scripts are kept).
 
 ## Uploading to YouTube Shorts
 
