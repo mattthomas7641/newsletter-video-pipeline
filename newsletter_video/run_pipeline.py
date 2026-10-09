@@ -1,4 +1,5 @@
-"""Orchestrates the full daily pipeline: scrape -> script -> tts -> video.
+"""Orchestrates the full daily pipeline: scrape -> pick top stories ->
+one script + TTS + HyperFrames render per story.
 
 Usage:
     python -m newsletter_video.run_pipeline               # today
@@ -6,7 +7,9 @@ Usage:
 """
 from __future__ import annotations
 
+import json
 import logging
+import os
 import socket
 import sys
 import time
@@ -16,8 +19,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from .scraper import DEFAULT_EDITIONS, fetch_editions
-from .script_writer import build_script
-from .video_builder import build_video
+from .script_writer import build_scripts
+from .video_builder import build_shorts
+from .youtube_upload import upload_day, write_metadata
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = PROJECT_ROOT / "output"
@@ -49,7 +53,7 @@ def _wait_for_network(host: str = "tldr.tech") -> bool:
     return False
 
 
-def run(target_date: date | None = None) -> Path:
+def run(target_date: date | None = None) -> list[Path]:
     load_dotenv(PROJECT_ROOT / ".env")
     target_date = target_date or date.today()
 
@@ -66,16 +70,34 @@ def run(target_date: date | None = None) -> Path:
     if not editions or total_stories == 0:
         raise RuntimeError("No stories scraped — aborting before wasting TTS/video work")
 
-    log.info("Building narration script")
-    beats = build_script(editions)
-    log.info("Built %d narration beats", len(beats))
+    out_dir = OUTPUT_DIR / target_date.isoformat()
+    covered = set()
+    for meta in out_dir.glob("*.json"):
+        if meta.name != "uploads.json":
+            covered.update(json.loads(meta.read_text()).get("stories", []))
+    if covered:
+        log.info("Skipping stories already covered today: %s", sorted(covered))
 
-    headline = editions[0].headline if editions else "TLDR Daily"
-    out_path = OUTPUT_DIR / f"{target_date.isoformat()}.mp4"
-    log.info("Rendering video to %s", out_path)
-    build_video(beats, out_path, headline=headline)
-    log.info("Done: %s", out_path)
-    return out_path
+    log.info("Selecting top stories and building scripts")
+    scripts = build_scripts(editions, exclude_titles=covered)
+    for script in scripts:
+        log.info("Script %r: %d beats, %d words, stories %s", script.title, len(script.beats),
+                 script.word_count, [s.title for s in script.stories])
+    if not scripts:
+        raise RuntimeError("No stories selected — nothing to render")
+
+    log.info("Rendering %d shorts to %s", len(scripts), out_dir)
+    paths = build_shorts(scripts, out_dir, OUTPUT_DIR / "_audio" / target_date.isoformat(), target_date)
+    for script, path in zip(scripts, paths):
+        write_metadata(script, path)
+    log.info("Done: %s", [p.name for p in paths])
+
+    if os.environ.get("YOUTUBE_UPLOAD") == "1":
+        try:
+            upload_day(target_date)
+        except Exception:
+            log.exception("YouTube upload step failed; videos are saved, retry with youtube_upload")
+    return paths
 
 
 if __name__ == "__main__":
