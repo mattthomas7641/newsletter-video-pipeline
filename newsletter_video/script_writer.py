@@ -20,7 +20,7 @@ from .scraper import Edition, Story
 
 log = logging.getLogger("newsletter_video")
 
-VIDEOS_PER_DAY = int(os.environ.get("VIDEOS_PER_DAY", "3"))
+DEFAULT_VIDEOS_PER_DAY = 3  # overridden by VIDEOS_PER_DAY in .env
 TITLE_SIMILARITY_THRESHOLD = 0.6  # for deduping the same story across editions
 
 LOW_PRIORITY_EDITIONS = {"marketing"}
@@ -525,9 +525,13 @@ def _llm_scripts(candidates: list[Story], n_videos: int) -> list[Script] | None:
     return scripts or None
 
 
-def build_scripts(editions: list[Edition], n_videos: int = VIDEOS_PER_DAY,
+def build_scripts(editions: list[Edition], n_videos: int | None = None,
                   exclude_titles: set[str] = frozenset()) -> list[Script]:
-    """`exclude_titles`: stories already covered by earlier videos today."""
+    """`exclude_titles`: stories already covered by earlier videos today.
+    `n_videos` defaults to VIDEOS_PER_DAY, read here (not at import) so a
+    value from .env, which run_pipeline loads after importing, takes effect."""
+    if n_videos is None:
+        n_videos = int(os.environ.get("VIDEOS_PER_DAY", DEFAULT_VIDEOS_PER_DAY))
     covered = {_normalize_title(t) for t in exclude_titles}
     candidates = [
         s for s in _dedupe_stories(editions)
