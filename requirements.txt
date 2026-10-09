@@ -7,3 +7,8 @@ python-dotenv
 elevenlabs
 anthropic
 yt-dlp
+kokoro-onnx
+soundfile
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
