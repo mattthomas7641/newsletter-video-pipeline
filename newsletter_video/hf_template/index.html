@@ -1,0 +1,626 @@
+<!doctype html>
+<!--
+  TLDR explainer short (1080x1920), 40-60s, one script per render.
+
+  Driven by newsletter_video/video_builder.py, which per video:
+    - overwrites assets/voice.wav (narration) and assets/bg.mp4 (a muted
+      gameplay stretch cut to the video's length; graph paper shows if absent)
+    - renders with --variables-file holding {"story": "<json>"}
+  The `story` default below is a real sample so Studio preview works once
+  assets/voice.wav exists (gitignored: the pipeline supplies it per render).
+
+  story JSON shape:
+    { "badge": str, "kicker": str, "duration": seconds, "background": bool,
+      "mouth": { "fps": n, "open": [0..1 per frame] },  (voice loudness → lip sync)
+      "hook": { "words": [ { "word": str, "at": seconds } ], "exitAt": seconds },
+      "cards": [ { "text": str, "highlight": str|null, "kind": "fact"|"stat",
+                   "stat": str, "start": seconds, "highlightAt": seconds } ],
+      "outro": { "text": str, "start": seconds },
+      "captions": [ { "words": [str], "at": [seconds], "start": seconds, "end": seconds } ] }
+  Each card holds the screen from its start until the next card (or the
+  outro) arrives.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"story","type":"string","label":"Story JSON","default":"{\"badge\":\"AI NEWS\",\"kicker\":\"TLDR · OCT 8\",\"duration\":16,\"background\":true,\"mouth\":{\"fps\":15,\"open\":[0,0.6,0.9,0.4,0.8,1,0.3,0,0.7,0.9,0.5,0.8,0.2,0.6,1,0.7,0.3,0.9,0.6,0.2,0.8,0.5,0.9,0.4,0,0.6,0.8,1,0.5,0.3]},\"hook\":{\"words\":[{\"word\":\"This\",\"at\":0.1},{\"word\":\"price\",\"at\":0.35},{\"word\":\"drop\",\"at\":0.65},{\"word\":\"is\",\"at\":0.9},{\"word\":\"hard\",\"at\":1.05},{\"word\":\"to\",\"at\":1.3},{\"word\":\"believe.\",\"at\":1.45}],\"exitAt\":2.2},\"cards\":[{\"text\":\"OpenAI ships a cheaper reasoning model\",\"highlight\":\"OpenAI\",\"kind\":\"fact\",\"stat\":\"\",\"start\":2.45,\"highlightAt\":2.8},{\"text\":\"cheaper than the previous tier\",\"highlight\":\"cheaper\",\"kind\":\"stat\",\"stat\":\"80%\",\"start\":5.4,\"highlightAt\":5.9},{\"text\":\"Matches it on most coding benchmarks\",\"highlight\":\"coding benchmarks\",\"kind\":\"fact\",\"stat\":\"\",\"start\":8.4,\"highlightAt\":9.0},{\"text\":\"API today, ChatGPT next week\",\"highlight\":\"API today\",\"kind\":\"fact\",\"stat\":\"\",\"start\":11.2,\"highlightAt\":11.6}],\"outro\":{\"text\":\"Would you switch? Tell me below.\",\"start\":13.8},\"captions\":[{\"words\":[\"OpenAI\",\"just\",\"shipped\"],\"at\":[2.45,2.9,3.1],\"start\":2.45,\"end\":3.6},{\"words\":[\"a\",\"cheaper\",\"model.\"],\"at\":[3.6,3.75,4.3],\"start\":3.6,\"end\":5.4},{\"words\":[\"It\",\"costs\",\"80%\",\"less.\"],\"at\":[5.4,5.6,6.0,6.6],\"start\":5.4,\"end\":8.4}]}"}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #f6f4ed;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: "Archivo Black", sans-serif;
+        color: #141414;
+      }
+
+      /* graph paper: minor + major grid (drifts slowly upward) */
+      #paper {
+        position: absolute;
+        inset: 0;
+        background-color: #f6f4ed;
+        background-image:
+          linear-gradient(#ddd8c6 2px, transparent 2px),
+          linear-gradient(90deg, #ddd8c6 2px, transparent 2px),
+          linear-gradient(#ebe7d9 1px, transparent 1px),
+          linear-gradient(90deg, #ebe7d9 1px, transparent 1px);
+        background-size:
+          120px 120px,
+          120px 120px,
+          30px 30px,
+          30px 30px;
+        background-position: 0px 0px;
+      }
+
+      /* full-bleed gameplay, darkened so cards and avatar stay the focus */
+      #bg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      #shade {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          rgba(0, 0, 0, 0.55) 0%,
+          rgba(0, 0, 0, 0.18) 22%,
+          rgba(0, 0, 0, 0.18) 70%,
+          rgba(0, 0, 0, 0.45) 100%
+        );
+      }
+
+      #header {
+        position: absolute;
+        top: 96px;
+        left: 0;
+        right: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 18px;
+      }
+      #badge {
+        font-family: "Space Mono", monospace;
+        font-weight: 700;
+        font-size: 40px;
+        letter-spacing: 0.08em;
+        color: #fff;
+        background: #141414;
+        padding: 14px 36px;
+        border-radius: 999px;
+        box-shadow: 6px 6px 0 #ff5a36;
+      }
+      #kicker {
+        font-family: "Space Mono", monospace;
+        font-weight: 700;
+        font-size: 28px;
+        letter-spacing: 0.12em;
+        color: #fffdf8;
+        background: rgba(20, 20, 20, 0.72);
+        padding: 4px 14px;
+        border-radius: 8px;
+      }
+
+      /* stage: one card at a time, centered between header and captions */
+      #stage {
+        position: absolute;
+        top: 280px;
+        left: 70px;
+        right: 70px;
+        height: 820px;
+      }
+
+      /* spoken-word captions: a few words at a time, current word in yellow */
+      #captions {
+        position: absolute;
+        top: 1120px;
+        left: 40px;
+        right: 40px;
+        height: 160px;
+      }
+      .cap {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        align-content: center;
+        opacity: 0;
+        font-size: 68px;
+        line-height: 1.05;
+        text-align: center;
+        color: #fffdf8;
+        -webkit-text-stroke: 13px #141414;
+        paint-order: stroke fill;
+        text-shadow: 0 6px 0 #141414;
+      }
+      .cap-word {
+        display: inline-block;
+        margin: 0 0.24em; /* wide enough to survive the thick outline */
+      }
+      .card-wrap {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+      }
+      .card {
+        display: block;
+        width: 100%;
+        background: #fffdf8;
+        border: 7px solid #141414;
+        border-radius: 38px;
+        box-shadow: 14px 14px 0 #141414;
+        padding: 52px 54px;
+        font-size: var(--card-size, 70px);
+        line-height: 1.14;
+        text-align: center;
+        overflow-wrap: anywhere; /* long product names can't spill off the card */
+      }
+      .card.c0 {
+        background: #ffd60a;
+      }
+      .card.c1 {
+        background: #fffdf8;
+      }
+      .card.c2 {
+        background: #dff0ff;
+      }
+      .card.c3 {
+        background: #ffe3ec;
+      }
+      .card.c4 {
+        background: #dcfbf3;
+      }
+      .stat {
+        display: block;
+        font-size: 190px;
+        line-height: 1;
+        color: #ff5a36;
+        margin-bottom: 26px;
+        -webkit-text-stroke: 6px #141414;
+        paint-order: stroke fill;
+        text-shadow: 10px 10px 0 #141414;
+      }
+      /* highlight marker: a background that sweeps across the phrase, line by
+         line if it wraps (box-decoration-break gives each line its own swipe) */
+      .hl {
+        padding: 0 10px;
+        border-radius: 14px;
+        background-image: linear-gradient(#5eead4, #5eead4);
+        background-repeat: no-repeat;
+        background-position: 0 60%;
+        background-size: 0% 92%;
+        -webkit-box-decoration-break: clone;
+        box-decoration-break: clone;
+      }
+      .card.c0 .hl {
+        background-image: linear-gradient(#ff8a5c, #ff8a5c);
+      }
+
+      /* opening hook + closing outro: big kinetic sticker text */
+      #hook,
+      #outro {
+        position: absolute;
+        top: 290px;
+        left: 70px;
+        right: 70px;
+        height: 940px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #hook-box,
+      #outro-box {
+        display: block;
+        background: #141414;
+        border-radius: 36px;
+        box-shadow: 14px 14px 0 #ff5a36;
+        padding: 48px 52px 56px;
+        text-align: center;
+        font-size: var(--hook-size, 104px);
+        line-height: 1.08;
+        color: #fffdf8;
+      }
+      #outro-box {
+        font-size: 78px;
+        opacity: 0;
+      }
+      .hook-word {
+        display: inline-block;
+        margin: 0 0.12em;
+      }
+      .hook-word.pop {
+        color: #ffd60a;
+      }
+
+      #character-wrap {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 30px;
+        height: 610px;
+        display: flex;
+        justify-content: center;
+        align-items: flex-end;
+      }
+      #avatar {
+        display: block;
+        width: 470px;
+        height: 582px;
+        overflow: visible;
+      }
+
+      #progress-track {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 14px;
+        background: #141414;
+      }
+      #progress {
+        width: 100%;
+        height: 100%;
+        background: #ff5a36;
+        transform-origin: 0 50%;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-width="1080"
+      data-height="1920"
+    >
+      <div id="paper"></div>
+      <video id="bg" src="assets/bg.mp4" muted playsinline data-start="0" data-track-index="0"></video>
+      <div id="shade"></div>
+
+      <div id="header">
+        <div id="badge">NEWS</div>
+        <div id="kicker">TLDR</div>
+      </div>
+
+      <div id="stage"></div>
+
+      <div id="captions"></div>
+
+      <div id="hook"><div id="hook-box"></div></div>
+      <div id="outro"><div id="outro-box"></div></div>
+
+      <div id="character-wrap">
+        <!-- The explainer: an original character drawn here so every part can act. -->
+        <svg id="avatar" viewBox="0 0 420 520" aria-hidden="true">
+          <ellipse cx="210" cy="502" rx="125" ry="13" fill="#141414" opacity="0.14" />
+          <g id="av-rig">
+            <rect x="142" y="420" width="46" height="78" rx="22" fill="#141414" />
+            <rect x="232" y="420" width="46" height="78" rx="22" fill="#141414" />
+            <g id="av-antenna">
+              <line x1="210" y1="100" x2="210" y2="42" stroke="#141414" stroke-width="9" stroke-linecap="round" />
+              <circle cx="210" cy="34" r="17" fill="#ff5a36" stroke="#141414" stroke-width="7" />
+            </g>
+            <rect x="80" y="98" width="260" height="346" rx="112" fill="#5eead4" stroke="#141414" stroke-width="9" />
+            <g id="av-eyes">
+              <ellipse cx="166" cy="196" rx="34" ry="40" fill="#fffdf8" stroke="#141414" stroke-width="7" />
+              <ellipse cx="254" cy="196" rx="34" ry="40" fill="#fffdf8" stroke="#141414" stroke-width="7" />
+              <circle cx="172" cy="204" r="15" fill="#141414" />
+              <circle cx="260" cy="204" r="15" fill="#141414" />
+              <circle cx="177" cy="198" r="5" fill="#fffdf8" />
+              <circle cx="265" cy="198" r="5" fill="#fffdf8" />
+            </g>
+            <g id="av-brows">
+              <path d="M136 144 Q 166 126 196 140" fill="none" stroke="#141414" stroke-width="11" stroke-linecap="round" />
+              <path d="M224 140 Q 254 126 284 144" fill="none" stroke="#141414" stroke-width="11" stroke-linecap="round" />
+            </g>
+            <g id="av-mouth">
+              <ellipse cx="210" cy="272" rx="36" ry="24" fill="#4a0f18" stroke="#141414" stroke-width="7" />
+              <ellipse cx="210" cy="284" rx="18" ry="8" fill="#ff8fab" />
+            </g>
+            <!-- arms last so gesturing poses draw in front of the body -->
+            <g id="av-arm-l">
+              <path d="M98 268 Q 48 312 64 378" fill="none" stroke="#141414" stroke-width="30" stroke-linecap="round" />
+              <path d="M98 268 Q 48 312 64 378" fill="none" stroke="#3fd3bd" stroke-width="15" stroke-linecap="round" />
+              <circle cx="64" cy="382" r="22" fill="#fffdf8" stroke="#141414" stroke-width="7" />
+            </g>
+            <g id="av-arm-r">
+              <path d="M322 268 Q 372 312 356 378" fill="none" stroke="#141414" stroke-width="30" stroke-linecap="round" />
+              <path d="M322 268 Q 372 312 356 378" fill="none" stroke="#3fd3bd" stroke-width="15" stroke-linecap="round" />
+              <circle cx="356" cy="382" r="22" fill="#fffdf8" stroke="#141414" stroke-width="7" />
+            </g>
+          </g>
+        </svg>
+      </div>
+
+      <div id="progress-track"><div id="progress"></div></div>
+
+      <audio id="voice" src="assets/voice.wav" data-start="0" data-track-index="1"></audio>
+    </div>
+
+    <script>
+      const story = JSON.parse(window.__hyperframes.getVariables().story);
+      const stage = document.getElementById("stage");
+      document.getElementById("badge").textContent = story.badge;
+      document.getElementById("kicker").textContent = story.kicker;
+      document.getElementById("outro-box").textContent = story.outro.text;
+      if (!story.background) {
+        // No gameplay clip this run: fall back to the plain graph paper.
+        document.getElementById("bg").style.opacity = "0";
+        document.getElementById("shade").style.opacity = "0";
+      }
+
+      // Hook words; the last word is colored as the punchline.
+      const hookBox = document.getElementById("hook-box");
+      const hookEls = story.hook.words.map((w, i) => {
+        const el = document.createElement("span");
+        el.className = i === story.hook.words.length - 1 ? "hook-word pop" : "hook-word";
+        el.textContent = w.word;
+        hookBox.append(el);
+        return el;
+      });
+
+      // One card per beat: wrap (enter/exit motion) > card (float, shake) > text.
+      const cards = story.cards.map((card, i) => {
+        const wrap = document.createElement("div");
+        wrap.className = "card-wrap";
+        const el = document.createElement("div");
+        el.className = `card c${i % 5}`;
+        if (card.kind === "stat" && card.stat) {
+          const stat = document.createElement("span");
+          stat.className = "stat";
+          stat.textContent = card.stat;
+          el.append(stat);
+        }
+        const idx = card.highlight ? card.text.indexOf(card.highlight) : -1;
+        if (idx < 0) {
+          el.append(card.text);
+        } else {
+          el.append(card.text.slice(0, idx));
+          const hl = document.createElement("span");
+          hl.className = "hl";
+          hl.textContent = card.highlight;
+          el.append(hl, card.text.slice(idx + card.highlight.length));
+        }
+        wrap.append(el);
+        stage.append(wrap);
+        return { wrap, el, stat: el.querySelector(".stat"), hl: el.querySelector(".hl") };
+      });
+
+      // Caption chunks: one element per chunk, one span per word.
+      const capRoot = document.getElementById("captions");
+      const caps = (story.captions || []).map((chunk) => {
+        const el = document.createElement("div");
+        el.className = "cap";
+        const words = chunk.words.map((w) => {
+          const span = document.createElement("span");
+          span.className = "cap-word";
+          span.textContent = w;
+          el.append(span);
+          return span;
+        });
+        capRoot.append(el);
+        return { el, words };
+      });
+
+      // Entrance/exit choreography, cycled so consecutive cards move differently.
+      const ENTRANCES = [
+        { from: { x: -1150, rotation: -14 }, ease: "back.out(1.5)", duration: 0.5 },
+        { from: { y: -950, rotation: 7 }, ease: "bounce.out", duration: 0.75 },
+        { from: { x: 1150, rotation: 14 }, ease: "back.out(1.5)", duration: 0.5 },
+        { from: { scale: 0.1, rotation: -28 }, ease: "back.out(2.2)", duration: 0.5 },
+        { from: { rotationX: -100, y: -60, transformPerspective: 1400 }, ease: "back.out(1.6)", duration: 0.55 },
+      ];
+      const EXITS = [
+        { x: 1200, rotation: 18 },
+        { x: -1200, rotation: -16 },
+        { y: -1100, rotation: -12 },
+        { scale: 1.6, rotation: 10 },
+        { y: 1000, rotation: 10 },
+      ];
+
+      function build() {
+        // Fit each card's type to the stage.
+        cards.forEach(({ el }) => {
+          let size = 70;
+          while (el.offsetHeight > stage.clientHeight - 60 && size > 38) {
+            size -= 4;
+            el.style.setProperty("--card-size", size + "px");
+          }
+        });
+        let hookSize = 104;
+        const hook = document.getElementById("hook");
+        while (hookBox.offsetHeight > hook.clientHeight - 40 && hookSize > 60) {
+          hookSize -= 6;
+          hookBox.style.setProperty("--hook-size", hookSize + "px");
+        }
+
+        const tl = gsap.timeline({ paused: true });
+        const end = story.duration;
+
+        // --- Avatar acting -------------------------------------------------
+        const idleRepeats = Math.max(1, Math.floor(end / 0.6) - 1);
+        tl.fromTo("#av-rig", { y: 0 }, { y: -12, duration: 0.6, ease: "sine.inOut", yoyo: true, repeat: idleRepeats }, 0);
+        tl.fromTo(
+          "#av-antenna",
+          { rotation: -6 },
+          { rotation: 6, duration: 0.6, ease: "sine.inOut", yoyo: true, repeat: idleRepeats, svgOrigin: "210 100" },
+          0,
+        );
+
+        // Lip sync: mouth opening follows the voice's loudness, frame by frame.
+        const mouthStep = 1 / story.mouth.fps;
+        tl.set("#av-mouth", { scaleY: 0.18, svgOrigin: "210 272" }, 0);
+        story.mouth.open.forEach((v, i) => {
+          tl.to("#av-mouth", { scaleY: 0.18 + 0.82 * v, duration: mouthStep, ease: "none", svgOrigin: "210 272" }, i * mouthStep);
+        });
+
+        // Blinks on a fixed, slightly irregular rhythm.
+        for (let t = 1.3, k = 0; t < end - 0.3; t += k % 2 ? 2.9 : 3.6, k++) {
+          tl.fromTo(
+            "#av-eyes",
+            { scaleY: 1 },
+            { scaleY: 0.08, duration: 0.07, ease: "power1.in", yoyo: true, repeat: 1, svgOrigin: "210 200" },
+            t,
+          );
+        }
+
+        // Gestures: one arm at a time, swung out to the side, never overhead.
+        // Each gesture fully relaxes before the other arm moves.
+        const ARMS = {
+          r: { el: "#av-arm-r", pivot: { svgOrigin: "322 268" }, dir: -1 },
+          l: { el: "#av-arm-l", pivot: { svgOrigin: "98 268" }, dir: 1 },
+        };
+        const POINT = 85;
+        const RELAX = 0.3;
+        function gesture(side, at, until) {
+          const arm = ARMS[side];
+          tl.to(arm.el, { rotation: arm.dir * POINT, duration: 0.28, ease: "back.out(1.8)", ...arm.pivot }, at);
+          tl.to(arm.el, { rotation: 0, duration: RELAX, ease: "power2.inOut", ...arm.pivot }, Math.max(at + 0.35, until));
+        }
+        function squash(at) {
+          tl.fromTo(
+            "#character-wrap",
+            { scaleY: 1, scaleX: 1 },
+            { scaleY: 0.94, scaleX: 1.04, duration: 0.1, ease: "power2.out", yoyo: true, repeat: 1, transformOrigin: "50% 100%" },
+            at,
+          );
+        }
+
+        // --- Hook ----------------------------------------------------------
+        tl.fromTo(
+          hookBox,
+          { scale: 0.7, rotation: -6, opacity: 0 },
+          { scale: 1, rotation: -2.5, opacity: 1, duration: 0.3, ease: "back.out(2.2)" },
+          0,
+        );
+        story.hook.words.forEach((w, i) => {
+          tl.fromTo(
+            hookEls[i],
+            { opacity: 0, y: 40, scale: 0.6 },
+            { opacity: 1, y: 0, scale: 1, duration: 0.22, ease: "back.out(2.5)" },
+            w.at,
+          );
+        });
+        tl.fromTo(
+          hookBox,
+          { y: 0 },
+          { y: -260, scale: 0.75, rotation: -10, opacity: 0, duration: 0.28, ease: "power2.in", immediateRender: false },
+          story.hook.exitAt,
+        );
+        // Same arm as the first card's point, so the two never overlap.
+        gesture("r", 0.05, story.hook.exitAt - RELAX);
+        squash(0.05);
+
+        // --- Cards -----------------------------------------------------------
+        const settled = story.hook.exitAt + 0.05;
+        story.cards.forEach((card, i) => {
+          const { wrap, el, stat, hl } = cards[i];
+          const enter = ENTRANCES[i % ENTRANCES.length];
+          const next = i + 1 < story.cards.length ? story.cards[i + 1].start : story.outro.start;
+          const visible = Math.max(0.6, next - card.start);
+
+          tl.set(wrap, { opacity: 1 }, card.start);
+          tl.fromTo(
+            wrap,
+            { x: 0, y: 0, scale: 1, rotation: 0, rotationX: 0, ...enter.from },
+            { x: 0, y: 0, scale: 1, rotation: 0, rotationX: 0, duration: enter.duration, ease: enter.ease, immediateRender: false },
+            card.start,
+          );
+          tl.to(
+            wrap,
+            { ...EXITS[i % EXITS.length], opacity: 0, duration: 0.3, ease: "power2.in" },
+            Math.max(card.start + 0.5, next - 0.12),
+          );
+
+          // Gentle float while on screen.
+          const floatReps = Math.max(1, Math.floor((visible - 0.6) / 1.2));
+          tl.fromTo(
+            el,
+            { y: 0, rotation: -0.9 },
+            { y: -12, rotation: 0.9, duration: 1.2, ease: "sine.inOut", yoyo: true, repeat: floatReps },
+            card.start + 0.5,
+          );
+
+          if (stat) {
+            tl.fromTo(
+              stat,
+              { scale: 2.8, rotation: -14, opacity: 0 },
+              { scale: 1, rotation: -3, opacity: 1, duration: 0.34, ease: "back.out(2)" },
+              card.start + 0.25,
+            );
+            tl.fromTo(el, { x: 0 }, { x: 12, duration: 0.05, ease: "none", yoyo: true, repeat: 5 }, card.start + 0.55);
+          }
+          if (hl) {
+            tl.fromTo(hl, { backgroundSize: "0% 92%" }, { backgroundSize: "100% 92%", duration: 0.35, ease: "power3.out" }, card.highlightAt);
+            // Eyebrows pop when the key phrase lands.
+            tl.fromTo("#av-brows", { y: 0 }, { y: -18, duration: 0.14, ease: "power2.out", yoyo: true, repeat: 1, repeatDelay: 0.35 }, card.highlightAt);
+          }
+
+          // Avatar points toward each new card (alternating arms), relaxing
+          // before the next card so the other arm never rises alongside it.
+          const pointAt = Math.max(card.start, settled);
+          gesture(i % 2 ? "l" : "r", pointAt, Math.min(pointAt + 1.2, next - RELAX - 0.05));
+          squash(card.start);
+          tl.fromTo("#badge", { scale: 1 }, { scale: 1.08, duration: 0.12, ease: "power2.out", yoyo: true, repeat: 1 }, card.start);
+        });
+
+        // --- Captions ----------------------------------------------------------
+        (story.captions || []).forEach((chunk, c) => {
+          const { el, words } = caps[c];
+          tl.set(el, { opacity: 1 }, chunk.start);
+          tl.fromTo(el, { y: 14, scale: 0.92 }, { y: 0, scale: 1, duration: 0.12, ease: "back.out(2)" }, chunk.start);
+          tl.set(el, { opacity: 0 }, chunk.end);
+          chunk.at.forEach((at, w) => {
+            const until = w + 1 < chunk.at.length ? chunk.at[w + 1] : chunk.end;
+            tl.set(words[w], { color: "#ffd60a" }, at);
+            tl.fromTo(words[w], { scale: 1.14 }, { scale: 1, duration: 0.16, ease: "power2.out" }, at);
+            tl.set(words[w], { color: "#fffdf8" }, until);
+          });
+        });
+
+        // --- Outro -----------------------------------------------------------
+        tl.fromTo(
+          "#outro-box",
+          { opacity: 0, scale: 0.3, rotation: 12 },
+          { opacity: 1, scale: 1, rotation: 2, duration: 0.45, ease: "back.out(2)" },
+          story.outro.start,
+        );
+        gesture(story.cards.length % 2 ? "l" : "r", story.outro.start + 0.05, story.duration);
+        squash(story.outro.start);
+
+        tl.fromTo("#paper", { backgroundPosition: "0px 0px" }, { backgroundPosition: "0px -480px", duration: end, ease: "none" }, 0);
+        tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: end, ease: "none" }, 0);
+        tl.fromTo("#header", { opacity: 0, y: -30 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 0);
+
+        window.__timelines["main"] = tl;
+      }
+
+      document.fonts.ready.then(build);
+    </script>
+  </body>
+</html>
