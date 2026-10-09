@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 from .scraper import DEFAULT_EDITIONS, fetch_editions
 from .script_writer import build_scripts
 from .video_builder import build_shorts
-from .youtube_upload import upload_day, write_metadata
+from .youtube_upload import upload_recent, write_metadata
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = PROJECT_ROOT / "output"
@@ -94,7 +94,7 @@ def run(target_date: date | None = None) -> list[Path]:
 
     if os.environ.get("YOUTUBE_UPLOAD") == "1":
         try:
-            upload_day(target_date)
+            upload_recent(target_date)
         except Exception:
             log.exception("YouTube upload step failed; videos are saved, retry with youtube_upload")
     return paths
