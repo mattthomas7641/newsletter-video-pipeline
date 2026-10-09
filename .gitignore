@@ -9,3 +9,8 @@ assets/background/*
 assets/character/*
 assets/fonts/*
 !assets/**/.gitkeep
+newsletter_video/hf_template/renders/
+newsletter_video/hf_template/snapshots/
+newsletter_video/hf_template/.thumbnails/
+newsletter_video/hf_template/assets/
+secrets/
