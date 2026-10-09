@@ -11,6 +11,7 @@ story's cards and lip-sync data passed as the `story` composition variable.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import random
 import re
@@ -46,6 +47,7 @@ MAX_SPEED = 1.4  # beyond this Kokoro sounds rushed
 MIN_SPEED = 0.95  # below this it drags
 
 _FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
+log = logging.getLogger("newsletter_video")
 
 
 def _mouth_track(voice_path: Path) -> list[float]:
@@ -68,11 +70,31 @@ def background_clips() -> list[Path]:
     return sorted(BACKGROUND_DIR.glob("*.mp4"))
 
 
+def _prepared_clip(source: Path) -> Path:
+    """A one-time conversion of a gameplay clip to light 1080x1920 30fps H.264
+    with a keyframe every second, cached next to it. Decoding the original
+    (often AV1 at 60fps) for every video cost ~40s; cutting from this is fast."""
+    cache = source.parent / ".cache" / f"{source.stem}.h264.mp4"
+    if cache.exists() and cache.stat().st_mtime >= source.stat().st_mtime:
+        return cache
+    cache.parent.mkdir(exist_ok=True)
+    log.info("Preparing gameplay clip %s (one-time conversion)", source.name)
+    tmp = cache.with_suffix(".tmp.mp4")
+    subprocess.run(
+        [_FFMPEG_EXE, "-y", "-loglevel", "error", "-i", str(source), "-an",
+         "-vf", "fps=30,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+         "-g", "30", "-keyint_min", "30", "-movflags", "+faststart", str(tmp)],
+        check=True,
+    )
+    tmp.replace(cache)
+    return cache
+
+
 def _cut_background(clips: list[Path], dst: Path, duration: float, seed: str) -> bool:
     """Cuts a muted stretch of gameplay exactly `duration` long into `dst`,
     from a seeded-random clip and offset (so each video and each day differs,
-    but a re-run of the same day is identical). Re-encoding to light H.264
-    keeps the render fast whatever the source codec. False = no background."""
+    but a re-run of the same day is identical). False = no background."""
     if not clips:
         return False
     rng = random.Random(seed)
@@ -82,10 +104,10 @@ def _cut_background(clips: list[Path], dst: Path, duration: float, seed: str) ->
         return False
     start = rng.uniform(0, length - duration - 0.5)
     subprocess.run(
-        [_FFMPEG_EXE, "-y", "-loglevel", "error", "-ss", f"{start:.2f}", "-i", str(source),
-         "-t", f"{duration:.3f}", "-an", "-vf", "fps=30,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-pix_fmt", "yuv420p",
-         "-g", "30", "-keyint_min", "30", "-movflags", "+faststart", str(dst)],  # keyframe/s: seek-safe
+        [_FFMPEG_EXE, "-y", "-loglevel", "error", "-ss", f"{start:.2f}", "-i", str(_prepared_clip(source)),
+         "-t", f"{duration:.3f}", "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "24",
+         "-pix_fmt", "yuv420p", "-g", "30", "-keyint_min", "30",  # keyframe/s: seek-safe
+         "-movflags", "+faststart", str(dst)],
         check=True,
     )
     return True
@@ -339,4 +361,16 @@ def build_shorts(scripts: list[Script], out_dir: Path, audio_dir: Path,
         build_short(script, out_path, audio_path, work_dir, kicker,
                     background_seed=f"{target_date.isoformat()}-{i}")
         paths.append(out_path)
+    _clean_render_cache(work_dir)
     return paths
+
+
+def _clean_render_cache(work_dir: Path) -> None:
+    """HyperFrames caches every extracted frame of the background video for
+    reuse, but each of our videos uses a different gameplay stretch, so the
+    cache only grows (~150 MB per video). Clear it after the day's renders."""
+    npx = npx_path()
+    subprocess.run(
+        [npx, "--yes", f"hyperframes@{HYPERFRAMES_VERSION}", "clean", str(work_dir)],
+        check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=hyperframes_env(npx),
+    )
