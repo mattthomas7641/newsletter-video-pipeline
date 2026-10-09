@@ -1,140 +1,163 @@
 # Newsletter-to-Video Pipeline
 
-An unattended daily pipeline that turns the [TLDR](https://tldr.tech) newsletters into a
-narrated, captioned 1080×1920 short-form video, ready before the day starts.
+An unattended daily pipeline that turns the [TLDR](https://tldr.tech) newsletters into
+40–45 second vertical (1080×1920) tech-news explainers and uploads them to YouTube Shorts.
 
 ```
-tldr.tech (4 editions) ──▶ scrape ──▶ LLM script ──▶ text-to-speech ──▶ composite ──▶ MP4
-   tech · ai ·              ~50          (Claude)       (say /           background, captions,
-   marketing · founders     stories       8 beats        ElevenLabs)      character, intro/outro
+tldr.tech (4 editions) ──▶ scrape ──▶ Claude writes ──▶ voice each line ──▶ HyperFrames ──▶ MP4s ──▶ YouTube
+   tech · ai ·              ~50        N scripts:        (Kokoro, local)     render                  Shorts
+   marketing · founders     stories    hook, beats,
+                                       cards, outro
 ```
 
-- **Runs itself:** a macOS `launchd` job renders the day's video at 7:00 AM with no
-  manual steps (about 10 minutes per render), logging every stage.
-- **LLM in the loop, with a fallback:** Claude condenses roughly 50 stories into 8
-  narration beats. Without an API key, a template writer keeps the pipeline running.
-- **Pluggable parts:** text-to-speech (free on-device voice or ElevenLabs), background
-  footage and character overlays are all swappable without code changes.
-- **Rights-aware by default:** the defaults use only generated or free assets. You supply
-  your own licensed voice and footage, and the tool never posts anything publicly.
+Each video covers one big story or 2–3 related ones. It opens with a spoken hook shown as
+big kinetic text, then plays as a comic-style explainer over full-screen gameplay footage:
+a topic badge, one punchy card per spoken beat that slides, drops, zooms or flips in
+(numbers get a big stamped stat), word-by-word captions with the spoken word highlighted,
+and an animated explainer avatar that lip-syncs and gestures at each card. An outro card
+asks viewers to comment.
+
+- **Runs itself:** a macOS `launchd` job writes, renders and uploads the day's videos at
+  7:00 AM (about 2.5 minutes of rendering per video), logging every stage.
+- **Claude as head writer, with a fallback:** with an API key, Claude Sonnet 5.5 picks the
+  most interesting tech stories of roughly 50, combines related ones, and writes each script
+  plus its post title, caption and hashtags (prompt: `WRITER_SYSTEM` in `script_writer.py`).
+  Without a key, a rule-based writer groups TLDR's top stories into videos.
+- **Designed in HyperFrames:** the look lives in an HTML composition
+  (`newsletter_video/hf_template/`) you can open and edit in HyperFrames Studio.
+- **Accurate timing:** every spoken line is voiced as its own clip, so cards and captions
+  start exactly on sentence boundaries (average caption error 0.21s, down from 0.70s when
+  timing was estimated across the whole narration).
+- **Safe uploads:** each upload is recorded the moment it succeeds, so re-runs never post
+  twice; stories covered earlier in the day are skipped.
 
 ## Content rights
 
-Popular short-form formats often borrow a famous character's voice or mobile-game
-footage. Both are someone else's IP, so this repository ships none of it. Anything you
-add to `assets/` is your responsibility to license before posting publicly.
+The avatar is original and drawn in code, and the voice is a local open model. The gameplay
+background is whatever you put in `assets/background/` — you're responsible for having the
+right to use it before posting publicly.
 
 ## Quick start
 
 ```bash
 cd newsletter-video-pipeline
-./venv/bin/python -m newsletter_video.run_pipeline          # renders today's video
+./venv/bin/python -m newsletter_video.run_pipeline             # today's videos
 ./venv/bin/python -m newsletter_video.run_pipeline 2026-09-22  # a specific date
 ```
 
-Output lands in `output/YYYY-MM-DD.mp4`. Logs go to `pipeline.log`.
+Output lands in `output/YYYY-MM-DD/01_<title-slug>.mp4`, `02_…`, each with a `.json`
+holding its title, description, tags, the stories it covered and its full script. Running
+again on the same day adds new videos after the existing ones. Logs go to `pipeline.log`.
 
-The Python environment (`venv/`) is a self-contained conda env with ffmpeg
-already installed — you don't need Homebrew or a system ffmpeg. It was
-built with:
+Rendering uses the [HyperFrames](https://github.com/heygen-com/hyperframes) CLI through
+`npx` (pinned in `tts.py`), so Node.js must be installed; it renders locally and needs no
+account.
+
+The Python environment (`venv/`) is a self-contained conda env with ffmpeg already
+installed. It was built with:
 
 ```bash
 conda create -p ./venv python=3.11 ffmpeg -c conda-forge
 ./venv/bin/python -m pip install -r requirements.txt
 ```
 
-## Customizing voice, footage and overlays
+## Configuration (`.env`)
 
-Right now it runs on free defaults so it works out of the box:
-- **Voice**: macOS's built-in `say` command (robotic but free/local).
-- **Background**: a generated animated gradient (no copyright risk, but not
-  licensed gameplay footage).
-- **Character**: none — just captions.
+Copy `.env.example` to `.env`. Everything is optional:
 
-To upgrade each piece:
+| Setting | What it does |
+|---|---|
+| `ANTHROPIC_API_KEY` | Claude writes the scripts (much more engaging than the rule-based fallback) |
+| `VIDEOS_PER_DAY` | Videos per run (default 3; YouTube's free quota allows about 6 uploads a day) |
+| `KOKORO_VOICE`, `KOKORO_SPEED` | Voice and pace (`npx hyperframes tts --list` for voices) |
+| `TTS_PROVIDER` | `kokoro` (default), `say` (macOS) or `elevenlabs` |
+| `YOUTUBE_UPLOAD` | `1` uploads each day's videos after rendering |
+| `YOUTUBE_PRIVACY`, `YOUTUBE_SCHEDULE` | Visibility and timed publishing (once your API project is audited) |
 
-### 1. Custom voice
-Copy `.env.example` to `.env`, then set:
+Videos land between 40 and 45 seconds: Claude aims for 100–110 words, and if the voiceover
+still runs long or short it's re-voiced slightly faster or slower. Prices and units are
+rewritten into spoken words before voicing ("$0.10" → "10 cents"), and coined words the voice
+gets wrong can be respelled in `PRONUNCIATIONS` in `tts.py`.
+
+## Customizing
+
+### Changing the look
+The composition is `newsletter_video/hf_template/index.html`. To preview it with sample
+data, put any `voice.wav` in `newsletter_video/hf_template/assets/` (gitignored), then:
+```bash
+cd newsletter_video/hf_template && npx hyperframes preview
 ```
-TTS_PROVIDER=elevenlabs
-ELEVENLABS_API_KEY=your key
-VOICE_ID=the voice's id
-```
-You'll need your own ElevenLabs account. Find or add a voice in your Voice
-Library yourself — this script won't do that part for you (it's the one
-step with real IP exposure, so it's worth being deliberate about it).
+The pipeline passes each video in as the `story` composition variable (badge, hook words,
+cards with highlight and timing, captions, lip-sync data), so the template works the same in
+Studio and in automated renders.
 
-### 2. Real gameplay background
-Two ways to get a clip into `assets/background/`:
+### The explainer avatar
+An original cartoon robot drawn as SVG in the template, so every part can act: its mouth
+follows the voice's loudness frame by frame, it blinks, gestures one arm at a time toward
+each new card, and raises its eyebrows when a highlight lands. Restyle it by editing the
+`#avatar` SVG; the animation targets its `av-*` group ids.
 
-- **Download one**: `./venv/bin/python -m newsletter_video.fetch_background "<url>"`
-  (works with YouTube and most sites yt-dlp supports). You're responsible
-  for having the right to use whatever you point it at.
-- **Drop in your own file** directly.
+### Gameplay background
+Drop any vertical gameplay `.mp4` into `assets/background/` (or download one with
+`./venv/bin/python -m newsletter_video.fetch_background "<url>"`). Each video gets a
+different stretch of a randomly chosen clip (seeded by date, so re-runs match), cut to the
+video's exact length, muted and darkened. With the folder empty, videos use a graph-paper
+background.
 
-The video builder picks a random `.mp4` from that folder per run, loops it
-to fill each segment's duration, and center-crops it to 1080x1920. Longer
-clips (a full uninterrupted gameplay run) work best since it just loops
-from the start otherwise.
-
-### 3. Character overlay — cutout avatar
-Drop any number of transparent PNGs (different poses/expressions of the
-same character) into `assets/character/`. One is shown per story segment
-with a gentle bounce; the pool is shuffled once per render and cycled
-through so you get a different pose each segment instead of one static
-image the whole video — the look of typical short-form explainer clips. An
-empty `assets/character/` folder just skips the overlay.
-
-**Must be `.png` or `.jpg`** — `.webp` is silently ignored (moviepy's
-`ImageClip` doesn't load it). If a cutout you download turns out to be a
-`.webp` with a baked-in near-white background instead of real transparency
-(common with stock clipart sites), convert it with something like:
-```python
-from PIL import Image, ImageDraw
-import numpy as np
-img = Image.open("in.webp").convert("RGB")
-work = img.copy()
-for seed in [(0,0),(img.width-1,0),(0,img.height-1),(img.width-1,img.height-1)]:
-    ImageDraw.floodfill(work, seed, (255,0,255), thresh=100)
-is_bg = np.all(np.array(work) == [255,0,255], axis=-1)
-alpha = np.where(is_bg, 0, 255).astype(np.uint8)
-Image.fromarray(np.dstack([np.array(img), alpha])).save("out.png")
-```
+### Custom voice
+Set `TTS_PROVIDER=elevenlabs` with `ELEVENLABS_API_KEY` and `VOICE_ID` to use a voice from
+your own ElevenLabs account.
 
 ## How the pipeline works
 
-1. `newsletter_video/scraper.py` — scrapes `tldr.tech/{edition}/{date}` (public,
-   no login) for the configured editions (default: tech, ai, marketing,
-   founders — edit `DEFAULT_EDITIONS` to change).
-2. `newsletter_video/script_writer.py` — turns headlines into short narration
-   beats. Set `ANTHROPIC_API_KEY` in `.env` to have Claude punch up the
-   phrasing; otherwise a simple template is used.
-3. `newsletter_video/tts.py` — renders each beat's narration to audio.
-4. `newsletter_video/video_builder.py` — composites background + character +
-   captions + audio into one vertical MP4 per beat, then stitches them with
-   an intro/outro card.
-5. `newsletter_video/run_pipeline.py` — runs the above in order for a given date.
+1. `scraper.py` — scrapes `tldr.tech/{edition}/{date}` (public, no login) for the
+   configured editions (`DEFAULT_EDITIONS`).
+2. `script_writer.py` — dedupes stories across editions, drops pure-science sections and
+   stories already covered today, and writes `VIDEOS_PER_DAY` scripts: a hook, 4–6 beats
+   (a spoken line plus shorter on-screen card text with one highlighted phrase, or a big
+   stat), an outro, and the post title/caption/hashtags.
+3. `tts.py` — voices each line with Kokoro after normalizing money, units and known
+   pronunciations.
+4. `video_builder.py` — joins the lines, times every card, caption chunk and highlight to
+   them, computes lip sync, cuts a gameplay stretch, and renders the HyperFrames template.
+5. `youtube_upload.py` — uploads the videos and records each upload.
+6. `run_pipeline.py` — runs the above in order for a given date.
+
+## Uploading to YouTube Shorts
+
+With `YOUTUBE_UPLOAD=1`, the daily run uploads each video with its title, description
+(Claude's caption, source links and hashtags) and tags.
+
+```bash
+./venv/bin/python -m newsletter_video.youtube_upload YYYY-MM-DD            # upload/retry a day
+./venv/bin/python -m newsletter_video.youtube_upload YYYY-MM-DD --dry-run  # preview posts
+./venv/bin/python -m newsletter_video.youtube_upload YYYY-MM-DD --publish  # make them public
+```
+
+One-time setup (Google account, about 10 minutes):
+1. In [Google Cloud Console](https://console.cloud.google.com), create a project and enable
+   **YouTube Data API v3**.
+2. **OAuth consent screen**: user type *External*, your app name and email, add yourself as a
+   test user, and add the scopes `youtube.upload`, `youtube.readonly` (shows which channel is
+   linked) and `youtube` (needed only for `--publish`).
+3. **Credentials → Create credentials → OAuth client ID → Desktop app**; save the JSON as
+   `secrets/youtube_client_secret.json` (gitignored).
+4. Run `./venv/bin/python -m newsletter_video.youtube_upload --auth` and pick the channel.
+5. Set `YOUTUBE_UPLOAD=1` in `.env`.
+
+Limits: YouTube keeps uploads from unaudited API projects private until the project passes
+Google's free YouTube API Services audit, so videos are published with `--publish` (or in
+YouTube Studio). While the consent screen is in "Testing", the sign-in expires every 7 days;
+rerun `--auth`. The default quota covers about 6 uploads plus publishing per day.
 
 ## Running it automatically every day
 
-A `launchd` job is set up to run the pipeline every morning. See
+A `launchd` job runs `run_daily.sh` every morning. See
 `com.tldrbrainrot.daily.plist` in `~/Library/LaunchAgents/`.
 
-Useful commands:
 ```bash
-# check whether it's loaded
-launchctl list | grep tldrbrainrot
-
-# trigger it manually right now (without waiting for the schedule)
-launchctl start com.tldrbrainrot.daily
-
-# view logs from the scheduled run
-tail -f launchd.log launchd.err.log
-
-# stop the daily schedule entirely
-launchctl unload ~/Library/LaunchAgents/com.tldrbrainrot.daily.plist
+launchctl list | grep tldrbrainrot                                     # is it loaded?
+launchctl start com.tldrbrainrot.daily                                 # run now
+tail -f pipeline.log                                                   # watch a run
+launchctl unload ~/Library/LaunchAgents/com.tldrbrainrot.daily.plist   # stop the schedule
 ```
-
-**Scope note**: the automated job only renders and saves the video file
-locally — it does not post to TikTok, YouTube, or anywhere else. Posting
-would need separate account setup and your explicit go-ahead each time.
