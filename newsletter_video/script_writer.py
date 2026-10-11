@@ -541,17 +541,32 @@ def _llm_scripts(candidates: list[Story], n_videos: int) -> list[Script] | None:
     return scripts or None
 
 
+def _is_covered(title: str, covered_norm: list[str]) -> bool:
+    """Fuzzy match, not exact: the same ongoing story is often retitled across
+    days (a funding round, then an acquisition, then a lawsuit), so an exact
+    title comparison would let it back in. Same threshold/method as same-day
+    cross-edition deduping (`_dedupe_stories`)."""
+    norm = _normalize_title(title)
+    return any(
+        difflib.SequenceMatcher(None, norm, c).ratio() > TITLE_SIMILARITY_THRESHOLD
+        for c in covered_norm
+    )
+
+
 def build_scripts(editions: list[Edition], n_videos: int | None = None,
                   exclude_titles: set[str] = frozenset()) -> list[Script]:
-    """`exclude_titles`: stories already covered by earlier videos today.
+    """`exclude_titles`: story titles already covered by any earlier video
+    (run_pipeline passes in all-time history, not just today's) — matched
+    fuzzily, not exactly, so a reworded repeat of an already-covered story
+    is still excluded.
     `n_videos` defaults to VIDEOS_PER_DAY, read here (not at import) so a
     value from .env, which run_pipeline loads after importing, takes effect."""
     if n_videos is None:
         n_videos = int(os.environ.get("VIDEOS_PER_DAY", DEFAULT_VIDEOS_PER_DAY))
-    covered = {_normalize_title(t) for t in exclude_titles}
+    covered_norm = [_normalize_title(t) for t in exclude_titles]
     candidates = [
         s for s in _dedupe_stories(editions)
-        if _normalize_title(s.title) not in covered and s.section.strip().lower() not in EXCLUDED_SECTIONS
+        if not _is_covered(s.title, covered_norm) and s.section.strip().lower() not in EXCLUDED_SECTIONS
     ]
     if not candidates:
         return []
