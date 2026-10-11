@@ -6,6 +6,7 @@ pillow
 python-dotenv
 elevenlabs
 anthropic
+typesafe-sdk
 yt-dlp
 kokoro-onnx
 soundfile
