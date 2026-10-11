@@ -72,12 +72,24 @@ def run(target_date: date | None = None) -> list[Path]:
         raise RuntimeError("No stories scraped — aborting before wasting TTS/video work")
 
     out_dir = OUTPUT_DIR / target_date.isoformat()
+    # Scan every day's output, not just today's — build_scripts does a fuzzy
+    # similarity match against this set, so a story covered weeks ago (even
+    # reworded) still gets excluded, not just an exact title repeat today.
+    # Rendered .json metadata is kept indefinitely (clean_old_outputs only
+    # deletes the mp4/audio after KEEP_DAYS), so this reaches the full history.
     covered = set()
-    for meta in out_dir.glob("*.json"):
-        if meta.name != "uploads.json":
-            covered.update(json.loads(meta.read_text()).get("stories", []))
+    for folder in OUTPUT_DIR.iterdir():
+        if not folder.is_dir():
+            continue
+        try:
+            date.fromisoformat(folder.name)
+        except ValueError:
+            continue
+        for meta in folder.glob("*.json"):
+            if meta.name != "uploads.json":
+                covered.update(json.loads(meta.read_text()).get("stories", []))
     if covered:
-        log.info("Skipping stories already covered today: %s", sorted(covered))
+        log.info("Excluding %d previously-covered story title(s) (all-time, similarity-matched)", len(covered))
 
     log.info("Selecting top stories and building scripts")
     scripts = build_scripts(editions, exclude_titles=covered)

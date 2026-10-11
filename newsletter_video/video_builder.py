@@ -41,6 +41,7 @@ BACKGROUND_DIR = PROJECT_ROOT / "assets" / "background"
 CHARACTER_DIR = PROJECT_ROOT / "assets" / "character"
 
 TAIL_SECONDS = 0.6  # silence after the narration before the short ends
+MAX_TAIL_SECONDS = 2.0  # cap on the outro hold for scripts too short to reach MIN_VIDEO_SECONDS by pace alone
 HOOK_EXIT_SECONDS = 0.25  # hook clears this long before the first card lands
 HIGHLIGHT_MIN_DELAY = 0.3  # let the card land before its highlight sweeps in
 RENDER_ATTEMPTS = 2
@@ -366,8 +367,10 @@ def build_short(script: Script, out_path: Path, audio_path: Path, work_dir: Path
     if speed is not None:
         per_line, speech_duration = _voice_script(lines, audio_path, speed=speed)
 
-    # Still just short of the minimum? Hold the outro card a little longer.
-    tail = max(TAIL_SECONDS, MIN_VIDEO_SECONDS + 0.2 - speech_duration)
+    # Still short of the minimum even at the slowest natural pace? Hold the
+    # outro a little longer, but don't turn it into a silent dead stretch —
+    # a shorter video beats several seconds of frozen, silent outro.
+    tail = min(MAX_TAIL_SECONDS, max(TAIL_SECONDS, MIN_VIDEO_SECONDS + 0.2 - speech_duration))
     assets = work_dir / "assets"
     _pad_audio(audio_path, assets / "voice.wav", tail)
 

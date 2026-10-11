@@ -296,20 +296,6 @@
         object-fit: contain;
       }
 
-      #progress-track {
-        position: absolute;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        height: 14px;
-        background: #141414;
-      }
-      #progress {
-        width: 100%;
-        height: 100%;
-        background: #ff5a36;
-        transform-origin: 0 50%;
-      }
     </style>
   </head>
   <body>
@@ -340,8 +326,6 @@
         <!-- Static cutout avatar: no lip-sync or gestures, just a gentle idle bob (see tl below). -->
         <img id="avatar" src="assets/character.png" alt="" />
       </div>
-
-      <div id="progress-track"><div id="progress"></div></div>
 
       <audio id="voice" src="assets/voice.wav" data-start="0" data-track-index="1"></audio>
     </div>
@@ -595,7 +579,6 @@
         );
 
         tl.fromTo("#paper", { backgroundPosition: "0px 0px" }, { backgroundPosition: "0px -480px", duration: end, ease: "none" }, 0);
-        tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: end, ease: "none" }, 0);
         tl.fromTo("#header", { opacity: 0, y: -30 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 0);
 
         window.__timelines["main"] = tl;
