@@ -122,17 +122,27 @@
       }
 
       /* stage: one card at a time, centered between header and captions */
+      /* Bottom edge stays well clear of the avatar's head (top edge at
+         y=940, see #character-wrap/#avatar below) — never overlaps it,
+         rather than relying on z-index to just paint over it. The
+         build-time auto-fit (see build()) shrinks card text to whatever
+         fits this box, so narrowing it doesn't risk clipped text. */
       #stage {
         position: absolute;
+        z-index: 2;
         top: 280px;
         left: 70px;
-        right: 70px;
-        height: 820px;
+        right: 100px;
+        height: 580px;
       }
 
-      /* spoken-word captions: a few words at a time, current word in yellow */
+      /* spoken-word captions: a few words at a time, current word in yellow.
+         Stays centered; z-index puts it in front of the avatar where they
+         overlap (captions' thick outline stays legible over him, same as
+         over the busy gameplay background). */
       #captions {
         position: absolute;
+        z-index: 3;
         top: 1120px;
         left: 40px;
         right: 40px;
@@ -147,13 +157,13 @@
         justify-content: center;
         align-content: center;
         opacity: 0;
-        font-size: 68px;
+        font-size: 54px;
         line-height: 1.05;
         text-align: center;
         color: #fffdf8;
-        -webkit-text-stroke: 13px #141414;
+        -webkit-text-stroke: 10px #141414;
         paint-order: stroke fill;
-        text-shadow: 0 6px 0 #141414;
+        text-shadow: 0 5px 0 #141414;
       }
       .cap-word {
         display: inline-block;
@@ -169,6 +179,7 @@
       }
       .card {
         display: block;
+        position: relative;
         width: 100%;
         background: #fffdf8;
         border: 7px solid #141414;
@@ -179,6 +190,18 @@
         line-height: 1.14;
         text-align: center;
         overflow-wrap: anywhere; /* long product names can't spill off the card */
+      }
+      /* burst particles: spawned at the card's center on highlight reveal */
+      .particle {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        opacity: 0;
+        pointer-events: none;
+        z-index: 5;
       }
       .card.c0 {
         background: #ffd60a;
@@ -197,7 +220,7 @@
       }
       .stat {
         display: block;
-        font-size: 190px;
+        font-size: var(--stat-size, 190px);
         line-height: 1;
         color: #ff5a36;
         margin-bottom: 26px;
@@ -221,14 +244,17 @@
         background-image: linear-gradient(#ff8a5c, #ff8a5c);
       }
 
-      /* opening hook + closing outro: big kinetic sticker text */
+      /* opening hook + closing outro: big kinetic sticker text. Same safe-
+         zone box as #stage — bottom edge clear of the avatar's head,
+         auto-fit (build()) shrinks text to match. */
       #hook,
       #outro {
         position: absolute;
-        top: 290px;
+        z-index: 2;
+        top: 280px;
         left: 70px;
-        right: 70px;
-        height: 940px;
+        right: 100px;
+        height: 580px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -259,19 +285,15 @@
 
       #character-wrap {
         position: absolute;
-        left: 0;
-        right: 0;
-        bottom: 30px;
-        height: 610px;
-        display: flex;
-        justify-content: center;
-        align-items: flex-end;
+        z-index: 1;
+        left: -20px;
+        bottom: 0px;
       }
       #avatar {
         display: block;
-        width: 470px;
-        height: 582px;
-        overflow: visible;
+        height: 980px;
+        width: auto;
+        object-fit: contain;
       }
 
       #progress-track {
@@ -315,46 +337,8 @@
       <div id="outro"><div id="outro-box"></div></div>
 
       <div id="character-wrap">
-        <!-- The explainer: an original character drawn here so every part can act. -->
-        <svg id="avatar" viewBox="0 0 420 520" aria-hidden="true">
-          <ellipse cx="210" cy="502" rx="125" ry="13" fill="#141414" opacity="0.14" />
-          <g id="av-rig">
-            <rect x="142" y="420" width="46" height="78" rx="22" fill="#141414" />
-            <rect x="232" y="420" width="46" height="78" rx="22" fill="#141414" />
-            <g id="av-antenna">
-              <line x1="210" y1="100" x2="210" y2="42" stroke="#141414" stroke-width="9" stroke-linecap="round" />
-              <circle cx="210" cy="34" r="17" fill="#ff5a36" stroke="#141414" stroke-width="7" />
-            </g>
-            <rect x="80" y="98" width="260" height="346" rx="112" fill="#5eead4" stroke="#141414" stroke-width="9" />
-            <g id="av-eyes">
-              <ellipse cx="166" cy="196" rx="34" ry="40" fill="#fffdf8" stroke="#141414" stroke-width="7" />
-              <ellipse cx="254" cy="196" rx="34" ry="40" fill="#fffdf8" stroke="#141414" stroke-width="7" />
-              <circle cx="172" cy="204" r="15" fill="#141414" />
-              <circle cx="260" cy="204" r="15" fill="#141414" />
-              <circle cx="177" cy="198" r="5" fill="#fffdf8" />
-              <circle cx="265" cy="198" r="5" fill="#fffdf8" />
-            </g>
-            <g id="av-brows">
-              <path d="M136 144 Q 166 126 196 140" fill="none" stroke="#141414" stroke-width="11" stroke-linecap="round" />
-              <path d="M224 140 Q 254 126 284 144" fill="none" stroke="#141414" stroke-width="11" stroke-linecap="round" />
-            </g>
-            <g id="av-mouth">
-              <ellipse cx="210" cy="272" rx="36" ry="24" fill="#4a0f18" stroke="#141414" stroke-width="7" />
-              <ellipse cx="210" cy="284" rx="18" ry="8" fill="#ff8fab" />
-            </g>
-            <!-- arms last so gesturing poses draw in front of the body -->
-            <g id="av-arm-l">
-              <path d="M98 268 Q 48 312 64 378" fill="none" stroke="#141414" stroke-width="30" stroke-linecap="round" />
-              <path d="M98 268 Q 48 312 64 378" fill="none" stroke="#3fd3bd" stroke-width="15" stroke-linecap="round" />
-              <circle cx="64" cy="382" r="22" fill="#fffdf8" stroke="#141414" stroke-width="7" />
-            </g>
-            <g id="av-arm-r">
-              <path d="M322 268 Q 372 312 356 378" fill="none" stroke="#141414" stroke-width="30" stroke-linecap="round" />
-              <path d="M322 268 Q 372 312 356 378" fill="none" stroke="#3fd3bd" stroke-width="15" stroke-linecap="round" />
-              <circle cx="356" cy="382" r="22" fill="#fffdf8" stroke="#141414" stroke-width="7" />
-            </g>
-          </g>
-        </svg>
+        <!-- Static cutout avatar: no lip-sync or gestures, just a gentle idle bob (see tl below). -->
+        <img id="avatar" src="assets/character.png" alt="" />
       </div>
 
       <div id="progress-track"><div id="progress"></div></div>
@@ -363,6 +347,19 @@
     </div>
 
     <script>
+      // Deterministic PRNG (seeded) for the burst/scramble flourishes below —
+      // never Math.random(), which would make the render non-reproducible.
+      function mulberry32(seed) {
+        return function () {
+          seed |= 0;
+          seed = (seed + 0x6d2b79f5) | 0;
+          let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+      const PARTICLE_COLORS = ["#ffd60a", "#ff5a36", "#5eead4", "#9b5de5", "#00bbf9"];
+
       const story = JSON.parse(window.__hyperframes.getVariables().story);
       const stage = document.getElementById("stage");
       document.getElementById("badge").textContent = story.badge;
@@ -406,9 +403,24 @@
           hl.textContent = card.highlight;
           el.append(hl, card.text.slice(idx + card.highlight.length));
         }
+        // Burst particles for the highlight reveal, pre-created so their
+        // positions are deterministic and don't rely on tween-time layout.
+        const particles = [];
+        if (card.highlight) {
+          const rng = mulberry32(i * 677 + 41);
+          for (let p = 0; p < 8; p++) {
+            const dot = document.createElement("div");
+            dot.className = "particle";
+            dot.style.background = PARTICLE_COLORS[p % PARTICLE_COLORS.length];
+            el.append(dot);
+            const angle = (p / 8) * Math.PI * 2 + rng() * 0.5;
+            const dist = 90 + rng() * 110;
+            particles.push({ el: dot, dx: Math.cos(angle) * dist, dy: Math.sin(angle) * dist });
+          }
+        }
         wrap.append(el);
         stage.append(wrap);
-        return { wrap, el, stat: el.querySelector(".stat"), hl: el.querySelector(".hl") };
+        return { wrap, el, stat: el.querySelector(".stat"), hl: el.querySelector(".hl"), particles };
       });
 
       // Caption chunks: one element per chunk, one span per word.
@@ -430,7 +442,7 @@
       // Entrance/exit choreography, cycled so consecutive cards move differently.
       const ENTRANCES = [
         { from: { x: -1150, rotation: -14 }, ease: "back.out(1.5)", duration: 0.5 },
-        { from: { y: -950, rotation: 7 }, ease: "bounce.out", duration: 0.75 },
+        { from: { y: -480, rotation: 7 }, ease: "bounce.out", duration: 0.75 },
         { from: { x: 1150, rotation: 14 }, ease: "back.out(1.5)", duration: 0.5 },
         { from: { scale: 0.1, rotation: -28 }, ease: "back.out(2.2)", duration: 0.5 },
         { from: { rotationX: -100, y: -60, transformPerspective: 1400 }, ease: "back.out(1.6)", duration: 0.55 },
@@ -444,12 +456,19 @@
       ];
 
       function build() {
-        // Fit each card's type to the stage.
+        // Fit each card's type to the stage. The big stat number (.stat)
+        // has its own font-size, driven by --stat-size in lockstep with
+        // --card-size (same ratio off their own base sizes) — otherwise a
+        // stat card's fixed-size number never shrinks and the card can
+        // overflow the box no matter how small the body text gets.
+        const BASE_CARD_SIZE = 70;
+        const BASE_STAT_SIZE = 190;
         cards.forEach(({ el }) => {
-          let size = 70;
-          while (el.offsetHeight > stage.clientHeight - 60 && size > 38) {
+          let size = BASE_CARD_SIZE;
+          while (el.offsetHeight > stage.clientHeight - 60 && size > 32) {
             size -= 4;
             el.style.setProperty("--card-size", size + "px");
+            el.style.setProperty("--stat-size", Math.round((BASE_STAT_SIZE * size) / BASE_CARD_SIZE) + "px");
           }
         });
         let hookSize = 104;
@@ -462,54 +481,9 @@
         const tl = gsap.timeline({ paused: true });
         const end = story.duration;
 
-        // --- Avatar acting -------------------------------------------------
+        // --- Avatar: static cutout, just a very slight idle bob -----------
         const idleRepeats = Math.max(1, Math.floor(end / 0.6) - 1);
-        tl.fromTo("#av-rig", { y: 0 }, { y: -12, duration: 0.6, ease: "sine.inOut", yoyo: true, repeat: idleRepeats }, 0);
-        tl.fromTo(
-          "#av-antenna",
-          { rotation: -6 },
-          { rotation: 6, duration: 0.6, ease: "sine.inOut", yoyo: true, repeat: idleRepeats, svgOrigin: "210 100" },
-          0,
-        );
-
-        // Lip sync: mouth opening follows the voice's loudness, frame by frame.
-        const mouthStep = 1 / story.mouth.fps;
-        tl.set("#av-mouth", { scaleY: 0.18, svgOrigin: "210 272" }, 0);
-        story.mouth.open.forEach((v, i) => {
-          tl.to("#av-mouth", { scaleY: 0.18 + 0.82 * v, duration: mouthStep, ease: "none", svgOrigin: "210 272" }, i * mouthStep);
-        });
-
-        // Blinks on a fixed, slightly irregular rhythm.
-        for (let t = 1.3, k = 0; t < end - 0.3; t += k % 2 ? 2.9 : 3.6, k++) {
-          tl.fromTo(
-            "#av-eyes",
-            { scaleY: 1 },
-            { scaleY: 0.08, duration: 0.07, ease: "power1.in", yoyo: true, repeat: 1, svgOrigin: "210 200" },
-            t,
-          );
-        }
-
-        // Gestures: one arm at a time, swung out to the side, never overhead.
-        // Each gesture fully relaxes before the other arm moves.
-        const ARMS = {
-          r: { el: "#av-arm-r", pivot: { svgOrigin: "322 268" }, dir: -1 },
-          l: { el: "#av-arm-l", pivot: { svgOrigin: "98 268" }, dir: 1 },
-        };
-        const POINT = 85;
-        const RELAX = 0.3;
-        function gesture(side, at, until) {
-          const arm = ARMS[side];
-          tl.to(arm.el, { rotation: arm.dir * POINT, duration: 0.28, ease: "back.out(1.8)", ...arm.pivot }, at);
-          tl.to(arm.el, { rotation: 0, duration: RELAX, ease: "power2.inOut", ...arm.pivot }, Math.max(at + 0.35, until));
-        }
-        function squash(at) {
-          tl.fromTo(
-            "#character-wrap",
-            { scaleY: 1, scaleX: 1 },
-            { scaleY: 0.94, scaleX: 1.04, duration: 0.1, ease: "power2.out", yoyo: true, repeat: 1, transformOrigin: "50% 100%" },
-            at,
-          );
-        }
+        tl.fromTo("#avatar", { y: 0 }, { y: -5, duration: 0.6, ease: "sine.inOut", yoyo: true, repeat: idleRepeats }, 0);
 
         // --- Hook ----------------------------------------------------------
         tl.fromTo(
@@ -532,14 +506,10 @@
           { y: -260, scale: 0.75, rotation: -10, opacity: 0, duration: 0.28, ease: "power2.in", immediateRender: false },
           story.hook.exitAt,
         );
-        // Same arm as the first card's point, so the two never overlap.
-        gesture("r", 0.05, story.hook.exitAt - RELAX);
-        squash(0.05);
 
         // --- Cards -----------------------------------------------------------
-        const settled = story.hook.exitAt + 0.05;
         story.cards.forEach((card, i) => {
-          const { wrap, el, stat, hl } = cards[i];
+          const { wrap, el, stat, hl, particles } = cards[i];
           const enter = ENTRANCES[i % ENTRANCES.length];
           const next = i + 1 < story.cards.length ? story.cards[i + 1].start : story.outro.start;
           const visible = Math.max(0.6, next - card.start);
@@ -567,25 +537,38 @@
           );
 
           if (stat) {
+            // Digits flicker through random values for a few frames, like a
+            // slot machine settling, then land on the real figure exactly
+            // as the pop lands — works on any stat string ("80%", "$70B")
+            // without parsing its meaning, just its digit positions.
+            const popAt = card.start + 0.25;
+            const scrambleRng = mulberry32(i * 911 + 7);
+            const scrambleSteps = 3;
+            const scrambleGap = 0.045;
+            for (let s = scrambleSteps; s >= 1; s--) {
+              const scrambled = card.stat.replace(/\d/g, () => Math.floor(scrambleRng() * 10));
+              tl.set(stat, { textContent: scrambled }, Math.max(0, popAt - s * scrambleGap));
+            }
+            tl.set(stat, { textContent: card.stat }, popAt);
             tl.fromTo(
               stat,
               { scale: 2.8, rotation: -14, opacity: 0 },
               { scale: 1, rotation: -3, opacity: 1, duration: 0.34, ease: "back.out(2)" },
-              card.start + 0.25,
+              popAt,
             );
             tl.fromTo(el, { x: 0 }, { x: 12, duration: 0.05, ease: "none", yoyo: true, repeat: 5 }, card.start + 0.55);
           }
           if (hl) {
             tl.fromTo(hl, { backgroundSize: "0% 92%" }, { backgroundSize: "100% 92%", duration: 0.35, ease: "power3.out" }, card.highlightAt);
-            // Eyebrows pop when the key phrase lands.
-            tl.fromTo("#av-brows", { y: 0 }, { y: -18, duration: 0.14, ease: "power2.out", yoyo: true, repeat: 1, repeatDelay: 0.35 }, card.highlightAt);
+            // Burst of particles from the card's center at the same moment.
+            particles.forEach((pt, pi) => {
+              const t0 = card.highlightAt + pi * 0.012;
+              tl.set(pt.el, { x: 0, y: 0, opacity: 0, scale: 1 }, t0);
+              tl.to(pt.el, { x: pt.dx, y: pt.dy, opacity: 1, duration: 0.16, ease: "power3.out" }, t0);
+              tl.to(pt.el, { opacity: 0, scale: 0.4, duration: 0.3, ease: "power1.in" }, t0 + 0.14);
+            });
           }
 
-          // Avatar points toward each new card (alternating arms), relaxing
-          // before the next card so the other arm never rises alongside it.
-          const pointAt = Math.max(card.start, settled);
-          gesture(i % 2 ? "l" : "r", pointAt, Math.min(pointAt + 1.2, next - RELAX - 0.05));
-          squash(card.start);
           tl.fromTo("#badge", { scale: 1 }, { scale: 1.08, duration: 0.12, ease: "power2.out", yoyo: true, repeat: 1 }, card.start);
         });
 
@@ -610,8 +593,6 @@
           { opacity: 1, scale: 1, rotation: 2, duration: 0.45, ease: "back.out(2)" },
           story.outro.start,
         );
-        gesture(story.cards.length % 2 ? "l" : "r", story.outro.start + 0.05, story.duration);
-        squash(story.outro.start);
 
         tl.fromTo("#paper", { backgroundPosition: "0px 0px" }, { backgroundPosition: "0px -480px", duration: end, ease: "none" }, 0);
         tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: end, ease: "none" }, 0);

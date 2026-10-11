@@ -1,15 +1,22 @@
 """Renders each Script (see script_writer.py) as its own SWE-Toons-style
 explainer short using HyperFrames: graph-paper background, topic badge,
-highlighted callout cards popping in as the narration reaches them, and an
-animated explainer avatar that lip-syncs to the voice and points at cards.
+highlighted callout cards popping in as the narration reaches them, and a
+static explainer avatar with a light idle bob.
 
 The composition lives in newsletter_video/hf_template/ (open it in
 HyperFrames Studio to tweak the design). Per story this module copies the
 narration into a working copy of that project and renders it with the
-story's cards and lip-sync data passed as the `story` composition variable.
+story's cards and timing data passed as the `story` composition variable.
+
+Caption/card timing comes from real word-level timestamps (mlx-whisper,
+local, runs on this Mac's own GPU) aligned against the known script text —
+not an estimate — so text lands exactly when each word is actually spoken.
+A proportional-estimate fallback only kicks in if local transcription is
+unavailable.
 """
 from __future__ import annotations
 
+import difflib
 import json
 import logging
 import os
@@ -17,6 +24,7 @@ import random
 import re
 import shutil
 import subprocess
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -30,13 +38,13 @@ from .tts import HYPERFRAMES_VERSION, audio_duration_seconds, base_speed, hyperf
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = Path(__file__).resolve().parent / "hf_template"
 BACKGROUND_DIR = PROJECT_ROOT / "assets" / "background"
+CHARACTER_DIR = PROJECT_ROOT / "assets" / "character"
 
 TAIL_SECONDS = 0.6  # silence after the narration before the short ends
 HOOK_EXIT_SECONDS = 0.25  # hook clears this long before the first card lands
 HIGHLIGHT_MIN_DELAY = 0.3  # let the card land before its highlight sweeps in
 RENDER_ATTEMPTS = 2
 RENDER_CRF = "21"  # ~25-35 MB per video; platforms re-encode uploads anyway
-MOUTH_FPS = 15  # lip-sync keyframes per second
 CAPTION_WORDS = 3  # max words per caption chunk
 CAPTION_CHARS = 16  # ...or fewer, if the words are long
 MIN_VIDEO_SECONDS = 40.0  # re-voice a bit slower below this
@@ -46,28 +54,30 @@ TARGET_MAX_SPEED = 1.25  # how far we'll push pace to hit the preferred ceiling
 MAX_SPEED = 1.4  # beyond this Kokoro sounds rushed
 MIN_SPEED = 0.95  # below this it drags
 
+WHISPER_MODEL = "mlx-community/whisper-tiny"
+
 _FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
 log = logging.getLogger("newsletter_video")
 
-
-def _mouth_track(voice_path: Path) -> list[float]:
-    """Mouth openness (0..1) per 1/MOUTH_FPS s from the voice's loudness —
-    deterministic lip sync without a phoneme model."""
-    samples, rate = soundfile.read(str(voice_path), dtype="float32", always_2d=True)
-    mono = samples.mean(axis=1)
-    hop = max(1, rate // MOUTH_FPS)
-    frames = len(mono) // hop
-    if frames == 0:
-        return []
-    rms = np.sqrt(np.mean(mono[: frames * hop].reshape(frames, hop) ** 2, axis=1))
-    loud = np.percentile(rms, 95) or 1.0
-    level = np.clip(rms / loud, 0.0, 1.0)
-    level[level < 0.12] = 0.0  # pauses close the mouth fully
-    return [round(float(v), 2) for v in level]
+# mlx-whisper shells out to a bare `ffmpeg` on PATH rather than using
+# imageio-ffmpeg's bundled binary (which isn't named `ffmpeg`). This venv's
+# own bin/ has a real one (installed via conda) — make sure it's on PATH
+# regardless of how this process was launched (a launchd job's PATH is
+# bare, so this can't be assumed from the caller).
+_venv_bin = str(Path(sys.executable).parent)
+if _venv_bin not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = os.pathsep.join([_venv_bin, os.environ.get("PATH", "")])
 
 
 def background_clips() -> list[Path]:
     return sorted(BACKGROUND_DIR.glob("*.mp4"))
+
+
+def character_image() -> Path | None:
+    """The static avatar cutout — just one image; the composition handles
+    all its motion (a slight idle bob, see hf_template/index.html)."""
+    images = sorted(CHARACTER_DIR.glob("*.png")) + sorted(CHARACTER_DIR.glob("*.jpg"))
+    return images[0] if images else None
 
 
 def _prepared_clip(source: Path) -> Path:
@@ -123,12 +133,18 @@ def _pad_audio(src: Path, dst: Path, seconds: float) -> None:
     )
 
 
-# --- narration timing ------------------------------------------------------
+# --- narration timing: real forced alignment, not an estimate -------------
 #
-# Each spoken line (hook, every beat, outro) is voiced as its own clip and the
-# clips are joined, so every card and caption chunk starts exactly when its
-# line does. Inside a line, words are placed by how long they take to say
-# (their spoken form: "$0.10" -> "10 cents") plus pauses at punctuation.
+# One TTS call renders the whole script (hook + every beat + outro joined).
+# Where each line starts, and where each word inside it falls, used to come
+# from an estimate (first: silence gaps between sentences; before that: a
+# proportional "how long does this word take to say" guess). Both looked
+# right on clean test scripts and then drifted on real ones — a mid-line
+# pause got mistaken for a line break, which cascaded into wrong timing for
+# every line after it. Real word-level timestamps from local transcription,
+# aligned against the known script text, replace both: measured, not
+# guessed. The proportional estimate is kept only as a fallback for when
+# transcription itself is unavailable.
 
 def _speech_span(path: Path) -> tuple[float, float, float]:
     """(speech onset, speech end, clip length) in seconds, by 10ms loudness."""
@@ -147,7 +163,8 @@ def _speech_span(path: Path) -> tuple[float, float, float]:
 
 
 def _word_weight(word: str) -> float:
-    """Roughly how long a word takes to say, in 'letters'."""
+    """Roughly how long a word takes to say, in 'letters' — used only as a
+    fallback when local transcription isn't available."""
     spoken = speakable(word)
     # Digits are said as words ("5.5" -> "five point five"): ~4 letters each,
     # and a decimal point is a whole word.
@@ -162,44 +179,87 @@ def _word_weight(word: str) -> float:
     return weight
 
 
-def _word_times(text: str, start: float, end: float) -> list[tuple[str, float]]:
-    """When each word of `text` starts, spread over the speech span [start, end]."""
-    words = text.split()
-    weights = [_word_weight(w) for w in words]
+def _proportional_word_times(lines: list[str], onset: float, offset: float) -> list[list[tuple[str, float]]]:
+    """Fallback: spread _word_weight() proportionally across the whole clip."""
+    all_words = [(i, w) for i, line in enumerate(lines) for w in line.split()]
+    weights = [_word_weight(w) for _, w in all_words]
     total = sum(weights) or 1.0
-    times, cursor = [], 0.0
-    for word, weight in zip(words, weights):
-        times.append((word, round(start + (end - start) * cursor / total, 3)))
+    per_line: list[list[tuple[str, float]]] = [[] for _ in lines]
+    cursor = 0.0
+    for (line_i, word), weight in zip(all_words, weights):
+        t = onset + (offset - onset) * cursor / total
+        per_line[line_i].append((word, round(t, 3)))
         cursor += weight
-    return times
+    return per_line
 
 
-def _voice_lines(lines: list[str], seg_dir: Path, speed: float | None) -> list[dict]:
-    seg_dir.mkdir(parents=True, exist_ok=True)
-    segments = []
-    for i, line in enumerate(lines):
-        path = seg_dir / f"line_{i:02d}.wav"
-        synthesize(line, path, speed=speed)
-        onset, offset, length = _speech_span(path)
-        segments.append({"path": path, "onset": onset, "offset": offset, "length": length})
-    return segments
+def _normalize_token(word: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", word.lower())
 
 
-def _join_lines(segments: list[dict], out: Path) -> list[dict]:
-    """Concatenates the clips into `out`; returns each line's absolute speech span."""
-    listing = out.with_suffix(".txt")
-    listing.write_text("".join(f"file '{seg['path']}'\n" for seg in segments))
-    subprocess.run(
-        [_FFMPEG_EXE, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0",
-         "-i", str(listing), str(out)],
-        check=True,
-    )
-    listing.unlink()
-    spans, clock = [], 0.0
-    for seg in segments:
-        spans.append({"start": round(clock + seg["onset"], 3), "end": round(clock + seg["offset"], 3)})
-        clock += seg["length"]
-    return spans
+def _align_script(lines: list[str], audio_path: Path) -> list[list[tuple[str, float]]]:
+    """Transcribes the one generated clip with word-level timestamps and
+    aligns the recognized words against the known script text (difflib,
+    tolerant of minor ASR differences like "gonna" -> "going to", or
+    "twenty billion dollars" -> "$20 billion") to get each word's real
+    spoken time."""
+    onset, offset, _ = _speech_span(audio_path)
+    try:
+        import mlx_whisper
+
+        result = mlx_whisper.transcribe(
+            str(audio_path), path_or_hf_repo=WHISPER_MODEL, word_timestamps=True
+        )
+        recognized = [
+            (w["word"].strip(), float(w["start"]))
+            for seg in result["segments"]
+            for w in seg.get("words", [])
+        ]
+        if not recognized:
+            raise ValueError("no words recognized")
+    except Exception:
+        log.warning("Local transcription unavailable; falling back to estimated word timing", exc_info=True)
+        return _proportional_word_times(lines, onset, offset)
+
+    ref = [(i, w) for i, line in enumerate(lines) for w in line.split()]
+    ref_norm = [_normalize_token(w) for _, w in ref]
+    rec_norm = [_normalize_token(w) for w, _ in recognized]
+
+    times: list[float | None] = [None] * len(ref)
+    sm = difflib.SequenceMatcher(None, ref_norm, rec_norm, autojunk=False)
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag not in ("equal", "replace"):
+            continue
+        n = min(i2 - i1, j2 - j1)
+        for k in range(n):
+            times[i1 + k] = recognized[j1 + k][1]
+
+    # Interpolate any unmatched words from their nearest known neighbors.
+    known = [i for i, t in enumerate(times) if t is not None]
+    if not known:
+        return _proportional_word_times(lines, onset, offset)
+    for i in range(len(times)):
+        if times[i] is not None:
+            continue
+        before = max([k for k in known if k < i], default=None)
+        after = min([k for k in known if k > i], default=None)
+        if before is not None and after is not None:
+            times[i] = times[before] + (times[after] - times[before]) * (i - before) / (after - before)
+        else:
+            times[i] = times[before] if before is not None else times[after]
+
+    per_line: list[list[tuple[str, float]]] = [[] for _ in lines]
+    for (line_i, word), t in zip(ref, times):
+        per_line[line_i].append((word, round(t, 3)))
+    return per_line
+
+
+def _voice_script(lines: list[str], out_path: Path, speed: float | None) -> tuple[list[list[tuple[str, float]]], float]:
+    """One TTS call for the whole script; returns per-line word times (from
+    real forced alignment) and the clip's total length."""
+    synthesize(" ".join(lines), out_path, speed=speed)
+    _, _, length = _speech_span(out_path)
+    return _align_script(lines, out_path), length
 
 
 def _caption_chunks(words: list[tuple[str, float]]) -> list[list[tuple[str, float]]]:
@@ -221,16 +281,15 @@ def _caption_chunks(words: list[tuple[str, float]]) -> list[list[tuple[str, floa
     return chunks
 
 
-def _story_payload(script: Script, spans: list[dict], speech_duration: float,
+def _story_payload(script: Script, per_line: list[list[tuple[str, float]]], speech_duration: float,
                    kicker: str, tail: float) -> dict:
-    """`spans`: the speech span of each line — hook, each beat, then outro."""
-    hook_span, beat_spans, outro_span = spans[0], spans[1:-1], spans[-1]
-    hook_words = [{"word": w, "at": t} for w, t in _word_times(script.hook, **hook_span)]
+    """`per_line`: real word times for each line — hook, each beat, then outro."""
+    hook_words_raw, beat_word_lists, outro_words = per_line[0], per_line[1:-1], per_line[-1]
+    hook_words = [{"word": w, "at": t} for w, t in hook_words_raw]
 
     cards, captions = [], []
-    for beat, span in zip(script.beats, beat_spans):
-        words = _word_times(beat.say, **span)
-        start = span["start"]
+    for beat, words in zip(script.beats, beat_word_lists):
+        start = words[0][1]
         highlight_at = start + HIGHLIGHT_MIN_DELAY
         if beat.highlight:
             first = beat.highlight.split()[0].lower().strip(".,!?:;")
@@ -248,7 +307,7 @@ def _story_payload(script: Script, spans: list[dict], speech_duration: float,
         })
         captions.extend(_caption_chunks(words))
 
-    outro_start = outro_span["start"]
+    outro_start = outro_words[0][1]
     # Each chunk stays up until the next one starts (or the outro arrives).
     timed = []
     for j, chunk in enumerate(captions):
@@ -290,9 +349,7 @@ def _prepare_workdir(work_dir: Path) -> None:
 def build_short(script: Script, out_path: Path, audio_path: Path, work_dir: Path,
                 kicker: str, background_seed: str) -> Path:
     lines = [script.hook] + [b.say for b in script.beats] + [script.outro]
-    seg_dir = audio_path.with_suffix("")
-    segments = _voice_lines(lines, seg_dir, speed=None)
-    speech_duration = sum(seg["length"] for seg in segments)
+    per_line, speech_duration = _voice_script(lines, audio_path, speed=None)
     # Pace, not content, absorbs length misses: a long script is re-voiced
     # slightly faster (aiming under 45s, always under a minute) and a short
     # one slightly slower (to reach 40s), within limits that still sound natural.
@@ -307,9 +364,7 @@ def build_short(script: Script, out_path: Path, audio_path: Path, work_dir: Path
     elif speech_duration < floor:
         speed = max(base_speed() * speech_duration / floor, MIN_SPEED)
     if speed is not None:
-        segments = _voice_lines(lines, seg_dir, speed=speed)
-        speech_duration = sum(seg["length"] for seg in segments)
-    spans = _join_lines(segments, audio_path)
+        per_line, speech_duration = _voice_script(lines, audio_path, speed=speed)
 
     # Still just short of the minimum? Hold the outro card a little longer.
     tail = max(TAIL_SECONDS, MIN_VIDEO_SECONDS + 0.2 - speech_duration)
@@ -317,12 +372,15 @@ def build_short(script: Script, out_path: Path, audio_path: Path, work_dir: Path
     _pad_audio(audio_path, assets / "voice.wav", tail)
 
     variables_path = work_dir / "story.json"
-    payload = _story_payload(script, spans, speech_duration, kicker, tail)
-    payload["mouth"] = {"fps": MOUTH_FPS, "open": _mouth_track(assets / "voice.wav")}
+    payload = _story_payload(script, per_line, speech_duration, kicker, tail)
     payload["background"] = _cut_background(
         background_clips(), assets / "bg.mp4", payload["duration"], background_seed
     )
     variables_path.write_text(json.dumps({"story": json.dumps(payload)}))
+
+    character = character_image()
+    if character is not None:
+        shutil.copy(character, assets / "character.png")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     npx = npx_path()
