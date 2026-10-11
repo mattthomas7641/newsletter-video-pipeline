@@ -9,5 +9,17 @@
   "media": {
     "autoProxy": true
   },
-  "authoringSkill": "general-video"
+  "authoringSkill": "general-video",
+  "registryItems": [
+    {
+      "name": "count-up",
+      "type": "hyperframes:component",
+      "target": "compositions/components/count-up.html"
+    },
+    {
+      "name": "caption-particle-burst",
+      "type": "hyperframes:component",
+      "target": "compositions/components/caption-particle-burst.html"
+    }
+  ]
 }
