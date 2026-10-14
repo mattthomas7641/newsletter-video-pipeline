@@ -107,16 +107,32 @@ def _prepared_clip(source: Path) -> Path:
     return cache
 
 
+def _blank_background(dst: Path, duration: float) -> None:
+    """The composition's <video src="assets/bg.mp4"> is static markup, so the
+    file must exist even when there's no gameplay (the composition just fades
+    it out) — otherwise the render fails with source_missing."""
+    subprocess.run(
+        [_FFMPEG_EXE, "-y", "-loglevel", "error", "-f", "lavfi",
+         "-i", f"color=c=black:s=1080x1920:r=30:d={duration:.3f}", "-an",
+         "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+         "-g", "30", "-keyint_min", "30", str(dst)],
+        check=True,
+    )
+
+
 def _cut_background(clips: list[Path], dst: Path, duration: float, seed: str) -> bool:
     """Cuts a muted stretch of gameplay exactly `duration` long into `dst`,
     from a seeded-random clip and offset (so each video and each day differs,
-    but a re-run of the same day is identical). False = no background."""
+    but a re-run of the same day is identical). False = no background (a
+    blank placeholder is written instead; see _blank_background)."""
     if not clips:
+        _blank_background(dst, duration)
         return False
     rng = random.Random(seed)
     source = rng.choice(clips)
     length = audio_duration_seconds(source)  # works for video containers too
     if length <= duration:
+        _blank_background(dst, duration)
         return False
     start = rng.uniform(0, length - duration - 0.5)
     subprocess.run(
