@@ -15,3 +15,4 @@ newsletter_video/hf_template/snapshots/
 newsletter_video/hf_template/.thumbnails/
 newsletter_video/hf_template/assets/
 secrets/
+assets/voice/*
