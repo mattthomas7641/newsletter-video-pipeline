@@ -1,4 +1,4 @@
-# Newsletter-to-Video Pipeline
+# ByteSize News (Newsletter-to-Video Pipeline)
 
 An unattended daily pipeline that turns the [TLDR](https://tldr.tech) newsletters into
 40–45 second vertical (1080×1920) tech-news explainers and uploads them to YouTube Shorts.
