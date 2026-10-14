@@ -1,5 +1,11 @@
 """Turns the day's TLDR stories into a few 40-60 second explainer scripts.
 
+With TYPESAFE_API_KEY set, Jev (TypeSafe AI's decision model) first
+classifies and scores every candidate story — in scope for the channel?
+how newsworthy? — so only the ones that clear that bar are even offered to
+the writer (see _jev_rank_candidates). Jev decides, it doesn't generate
+text, so the actual writing still goes to Claude.
+
 With ANTHROPIC_API_KEY set, Claude acts as the channel's head writer: it
 picks the most interesting technology stories, may combine related ones
 into one video, and writes a hook, spoken beats with punchier on-screen
@@ -468,6 +474,84 @@ def _trim(text: str, limit: int) -> str:
     return (cut if len(cut) > limit // 2 else text[:limit].rsplit(" ", 1)[0]) + "…"
 
 
+# Jev (TypeSafe AI) pre-filters/ranks candidates before the writer sees them.
+# Keep at least this many candidates per requested video so the writer still
+# has real choice (and room to combine related stories) — Jev narrows the
+# field, it doesn't make the final pick.
+JEV_POOL_MULTIPLIER = 3
+JEV_MIN_POOL = 15
+JEV_IN_SCOPE_THRESHOLD = 0.5  # Noul: probability-of-yes below this is excluded
+
+_JEV_IN_SCOPE_INSTRUCTIONS = (
+    "This story is genuine technology news worth a tech-news channel covering: AI "
+    "and AI models, software and developer tools, big tech companies and startups, "
+    "chips and hardware, gadgets, apps and platforms, cybersecurity, or the money "
+    "and policy fights around those. It is NOT a sponsored item, job posting, "
+    "generic marketing or growth advice, pure science (physics, space, biology, "
+    "medicine, climate) unrelated to a tech product or company, or a minor/routine "
+    "update not worth its own video."
+)
+_JEV_NEWSWORTHINESS_INSTRUCTIONS = (
+    "How interesting and worth covering this story is for a curious, tech-savvy "
+    "audience that scrolls fast and leaves the moment something feels boring or "
+    "generic: is it surprising, consequential, weird, or genuinely useful to know?"
+)
+_JEV_NEWSWORTHINESS_LEVELS = [
+    "Low: minor, routine, generic, or sponsored-feeling",
+    "Medium: solid tech news, but not particularly surprising or consequential",
+    "High: surprising, consequential, weird, or genuinely useful to know",
+]
+
+
+def _jev_rank_candidates(candidates: list[Story], n_videos: int) -> list[Story] | None:
+    """Pre-filters and ranks candidates with Jev (TypeSafe AI's decision
+    model, a fast classifier/scorer, not a text generator) before the writer
+    ever sees them: Jev decides what's in scope and how newsworthy each
+    story is; the writer still makes the final pick, may combine stories,
+    and does the actual writing. Returns None (every candidate goes to the
+    writer unranked) if Jev isn't configured, or if the very first call
+    fails (treated as Jev being unavailable, not a one-off story problem)."""
+    if not os.environ.get("TYPESAFE_API_KEY"):
+        return None
+    try:
+        import typesafe_sdk as ts
+    except ImportError:
+        return None
+
+    questions = {
+        "in_scope": ts.Noul(instructions=_JEV_IN_SCOPE_INSTRUCTIONS),
+        "newsworthiness": ts.Score(
+            instructions=_JEV_NEWSWORTHINESS_INSTRUCTIONS,
+            criteria=_JEV_NEWSWORTHINESS_LEVELS,
+        ),
+    }
+    client = ts.TypeSafeClient()
+    scored: list[tuple[float, Story]] = []
+    for i, story in enumerate(candidates):
+        state = f"{story.title}\n\n{_trim(story.summary, LLM_SUMMARY_CHARS)}"
+        try:
+            response = client.system_one(state=state, questions=questions)
+        except ts.TypeSafeError as exc:
+            if i == 0:
+                log.warning("Jev unavailable (%s); writer will see all candidates unranked",
+                           type(exc).__name__)
+                return None
+            log.warning("Jev scoring failed for %r (%s); keeping it unranked rather than dropping it",
+                       story.title, type(exc).__name__)
+            scored.append((0.0, story))
+            continue
+        if response.answers["in_scope"].noul < JEV_IN_SCOPE_THRESHOLD:
+            continue
+        scored.append((response.answers["newsworthiness"].score, story))
+
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    pool_size = max(n_videos * JEV_POOL_MULTIPLIER, JEV_MIN_POOL)
+    ranked = [story for _, story in scored[:pool_size]]
+    log.info("Jev: %d/%d candidates in scope, top %d passed to the writer",
+             len(scored), len(candidates), len(ranked))
+    return ranked  # may legitimately be [] if nothing cleared the bar — not the same as Jev being unavailable
+
+
 def _llm_scripts(candidates: list[Story], n_videos: int) -> list[Script] | None:
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return None
@@ -541,23 +625,51 @@ def _llm_scripts(candidates: list[Story], n_videos: int) -> list[Script] | None:
     return scripts or None
 
 
+def _is_covered(title: str, covered_norm: list[str]) -> bool:
+    """Fuzzy match, not exact: the same ongoing story is often retitled across
+    days (a funding round, then an acquisition, then a lawsuit), so an exact
+    title comparison would let it back in. Same threshold/method as same-day
+    cross-edition deduping (`_dedupe_stories`)."""
+    norm = _normalize_title(title)
+    return any(
+        difflib.SequenceMatcher(None, norm, c).ratio() > TITLE_SIMILARITY_THRESHOLD
+        for c in covered_norm
+    )
+
+
 def build_scripts(editions: list[Edition], n_videos: int | None = None,
                   exclude_titles: set[str] = frozenset()) -> list[Script]:
-    """`exclude_titles`: stories already covered by earlier videos today.
+    """`exclude_titles`: story titles already covered by any earlier video
+    (run_pipeline passes in all-time history, not just today's) — matched
+    fuzzily, not exactly, so a reworded repeat of an already-covered story
+    is still excluded.
     `n_videos` defaults to VIDEOS_PER_DAY, read here (not at import) so a
     value from .env, which run_pipeline loads after importing, takes effect."""
     if n_videos is None:
         n_videos = int(os.environ.get("VIDEOS_PER_DAY", DEFAULT_VIDEOS_PER_DAY))
-    covered = {_normalize_title(t) for t in exclude_titles}
+    covered_norm = [_normalize_title(t) for t in exclude_titles]
     candidates = [
         s for s in _dedupe_stories(editions)
-        if _normalize_title(s.title) not in covered and s.section.strip().lower() not in EXCLUDED_SECTIONS
+        if not _is_covered(s.title, covered_norm) and s.section.strip().lower() not in EXCLUDED_SECTIONS
     ]
     if not candidates:
         return []
     # Claude never picks marketing-advice stories anyway, so don't pay to send them.
     llm_candidates = [s for s in candidates if s.edition not in LOW_PRIORITY_EDITIONS]
-    return _llm_scripts(llm_candidates, n_videos) or _heuristic_scripts(editions, candidates, n_videos)
+    # Jev narrows/ranks the field first (if configured); the writer still
+    # makes the final selection and does the actual writing either way.
+    # None means Jev didn't run (not configured, or errored) — fall back to
+    # the unranked list. An empty list is a real result (nothing cleared
+    # Jev's bar) and must NOT fall back to the unfiltered list, or Jev's
+    # rejections would silently reach the writer anyway.
+    jev_filtered = _jev_rank_candidates(llm_candidates, n_videos)
+    if jev_filtered is not None:
+        llm_candidates = jev_filtered
+    if llm_candidates:
+        scripts = _llm_scripts(llm_candidates, n_videos)
+        if scripts:
+            return scripts
+    return _heuristic_scripts(editions, candidates, n_videos)
 
 
 if __name__ == "__main__":
