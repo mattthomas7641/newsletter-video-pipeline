@@ -71,6 +71,11 @@ if _venv_bin not in os.environ.get("PATH", ""):
 
 
 def background_clips() -> list[Path]:
+    """BACKGROUND_STYLE=none skips the gameplay footage entirely, leaving the
+    composition's plain graph-paper background (read here, not at import, so
+    a value from .env — loaded after this module — takes effect)."""
+    if os.environ.get("BACKGROUND_STYLE", "gameplay").strip().lower() == "none":
+        return []
     return sorted(BACKGROUND_DIR.glob("*.mp4"))
 
 
