@@ -69,7 +69,7 @@ Copy `.env.example` to `.env`. Everything is optional:
 |---|---|
 | `ANTHROPIC_API_KEY` | Claude writes the scripts (much more engaging than the rule-based fallback) |
 | `WRITER_EFFORT` | How hard Claude reasons (default `medium`: same script quality as the model default at about 4x fewer output tokens) |
-| `VIDEOS_PER_DAY` | Videos per run (default 3; YouTube's free quota allows about 6 uploads a day) |
+| `VIDEOS_PER_DAY` | Videos per run (default 3; "~6 uploads/day" is a commonly cited quota estimate, not a confirmed or enforced limit — 16 uploads succeeded in one day during testing with no quota errors) |
 | `KOKORO_VOICE`, `KOKORO_SPEED` | Voice and pace (`npx hyperframes tts --list` for voices) |
 | `TTS_PROVIDER` | `kokoro` (default), `say` (macOS) or `elevenlabs` |
 | `YOUTUBE_UPLOAD` | `1` uploads each day's videos after rendering |
@@ -150,10 +150,14 @@ One-time setup (Google account, about 10 minutes):
 4. Run `./venv/bin/python -m newsletter_video.youtube_upload --auth` and pick the channel.
 5. Set `YOUTUBE_UPLOAD=1` in `.env`.
 
-Limits: YouTube keeps uploads from unaudited API projects private until the project passes
-Google's free YouTube API Services audit, so videos are published with `--publish` (or in
-YouTube Studio). While the consent screen is in "Testing", the sign-in expires every 7 days;
-rerun `--auth`. The default quota covers about 6 uploads plus publishing per day.
+Limits: some guides claim YouTube forces API uploads from unaudited projects to stay private
+until the project passes Google's free YouTube API Services audit — in practice, setting
+`YOUTUBE_PRIVACY=public` here posted videos as public directly, no audit involved, so that
+claim didn't hold for this project. If it does for yours, `--publish` (or YouTube Studio) flips
+already-uploaded videos public. While the consent screen is in "Testing", the sign-in expires
+every 7 days; rerun `--auth`. "~6 uploads/day" on the default quota is a commonly cited estimate,
+not a confirmed or enforced limit — 16 uploads succeeded in one day here with no quota errors;
+check Google Cloud Console → APIs & Services → YouTube Data API v3 → Quotas for the real number.
 
 ## Running it automatically every day
 

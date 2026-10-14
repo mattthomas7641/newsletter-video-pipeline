@@ -18,6 +18,13 @@ e.g. a Peter-Griffin-style voice you've added to your own ElevenLabs Voice
 Library. Requires ELEVENLABS_API_KEY and VOICE_ID in your .env. This script
 does not source, scrape, or download any third-party voice model for you —
 bring your own account and voice.
+
+Voicebox (TTS_PROVIDER=voicebox) — a cloned voice via the local Voicebox app
+(voicebox.sh, MIT-licensed, runs entirely on this machine). Requires the
+Voicebox app running (its API listens on localhost:17493) and
+VOICEBOX_PROFILE_ID set to a voice profile you've already cloned there from
+your own reference audio — this script doesn't source or clone the
+reference voice for you.
 """
 from __future__ import annotations
 
@@ -128,6 +135,121 @@ def _kokoro_backend(text: str, out_path: Path, speed: float | None = None) -> Pa
     return out_path
 
 
+VOICEBOX_BASE_URL = "http://localhost:17493"
+DEFAULT_VOICEBOX_ENGINE = "qwen"
+DEFAULT_VOICEBOX_MODEL_SIZE = "0.6B"
+DEFAULT_VOICEBOX_INSTRUCT = ""  # natural delivery by default — "more emphasis" instructions
+# pushed Qwen3-TTS into exaggerated delivery that distorted sibilants into a lisp.
+VOICEBOX_TIMEOUT_SECONDS = 120
+VOICEBOX_STARTUP_TIMEOUT_SECONDS = 90
+
+
+def _voicebox_is_up() -> bool:
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"{VOICEBOX_BASE_URL}/health", timeout=5):
+            return True
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return False
+
+
+def _ensure_voicebox_running() -> None:
+    """The daily run is unattended (launchd at 7am) and Voicebox is a
+    regular desktop app, not a daemon — its server can also die between
+    runs (observed once: the backend process exited while the app shell
+    stayed up). Launch/relaunch it and wait for the API before generating."""
+    import subprocess
+    import time
+
+    if _voicebox_is_up():
+        return
+    subprocess.run(["open", "-a", "Voicebox"], check=True)
+    deadline = time.monotonic() + VOICEBOX_STARTUP_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        if _voicebox_is_up():
+            return
+        time.sleep(3)
+    raise RuntimeError(
+        f"Voicebox didn't come up within {VOICEBOX_STARTUP_TIMEOUT_SECONDS}s of launching it."
+    )
+
+
+def _voicebox_wait_for_generation(gen_id: str, already_done: str | None) -> None:
+    """/generate/{id}/status is a long-lived SSE stream, not a snapshot to
+    repoll — read it as one connection and consume lines as they arrive."""
+    import json
+    import urllib.request
+
+    if already_done == "completed":
+        return
+    if already_done == "failed":
+        raise RuntimeError("Voicebox generation failed")
+
+    url = f"{VOICEBOX_BASE_URL}/generate/{gen_id}/status"
+    with urllib.request.urlopen(url, timeout=VOICEBOX_TIMEOUT_SECONDS) as resp:
+        for raw_line in resp:
+            line = raw_line.decode().strip()
+            if not line.startswith("data:"):
+                continue
+            payload = json.loads(line[len("data:") :].strip())
+            status = payload.get("status")
+            if status == "failed":
+                raise RuntimeError(f"Voicebox generation failed: {payload.get('error')}")
+            if status == "completed":
+                return
+    raise RuntimeError("Voicebox status stream ended without a terminal status")
+
+
+def _voicebox_backend(text: str, out_path: Path, speed: float | None = None) -> Path:
+    import json
+    import urllib.error
+    import urllib.request
+
+    _ensure_voicebox_running()
+    profile_id = os.environ["VOICEBOX_PROFILE_ID"]
+    engine = os.environ.get("VOICEBOX_ENGINE", DEFAULT_VOICEBOX_ENGINE)
+    model_size = os.environ.get("VOICEBOX_MODEL_SIZE", DEFAULT_VOICEBOX_MODEL_SIZE)
+    instruct = os.environ.get("VOICEBOX_INSTRUCT", DEFAULT_VOICEBOX_INSTRUCT)
+
+    request_body = {"profile_id": profile_id, "text": text, "engine": engine, "model_size": model_size}
+    if instruct:
+        request_body["instruct"] = instruct
+    payload = json.dumps(request_body).encode()
+    req = urllib.request.Request(
+        f"{VOICEBOX_BASE_URL}/generate", data=payload,
+        headers={"Content-Type": "application/json"}, method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            gen = json.load(resp)
+    except urllib.error.URLError as exc:
+        raise RuntimeError(
+            "Couldn't reach Voicebox at localhost:17493 — is the Voicebox app running?"
+        ) from exc
+    gen_id = gen["id"]
+    _voicebox_wait_for_generation(gen_id, gen.get("status"))
+
+    with urllib.request.urlopen(f"{VOICEBOX_BASE_URL}/audio/{gen_id}", timeout=30) as resp:
+        out_path.write_bytes(resp.read())
+
+    if speed and speed != 1.0:
+        _apply_speed(out_path, speed)
+    return out_path
+
+
+def _apply_speed(path: Path, speed: float) -> None:
+    """Time-stretches audio by `speed` in place (atempo supports 0.5-2.0,
+    comfortably covering this project's MIN_SPEED..MAX_SPEED range)."""
+    tmp = path.with_name(f"{path.stem}.spd{path.suffix}")
+    subprocess.run(
+        [_FFMPEG_EXE, "-y", "-loglevel", "error", "-i", str(path), "-af", f"atempo={speed:.4f}", str(tmp)],
+        check=True,
+    )
+    tmp.replace(path)
+
+
 def _elevenlabs_backend(text: str, out_path: Path) -> Path:
     api_key = os.environ["ELEVENLABS_API_KEY"]
     voice_id = os.environ["VOICE_ID"]
@@ -227,7 +349,9 @@ def synthesize(text: str, out_path: Path, speed: float | None = None) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     text = speakable(text)
     provider = os.environ.get("TTS_PROVIDER", "kokoro")
-    if provider == "elevenlabs":
+    if provider == "voicebox":
+        _voicebox_backend(text, out_path, speed)
+    elif provider == "elevenlabs":
         _elevenlabs_backend(text, out_path)
     elif provider == "say":
         _say_backend(text, out_path)
