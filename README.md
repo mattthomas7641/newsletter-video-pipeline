@@ -148,7 +148,7 @@ How it runs unattended:
 
 ### Story selection with Jev
 With `TYPESAFE_API_KEY` set (and `typesafe-sdk` installed from `requirements.txt`), Jev, a
-decision model from [TypeSafe AI](https://typesafe.ai), screens every candidate story before
+decision model from TypeSafe AI, screens every candidate story before
 Claude sees it. Jev classifies and scores; it never writes text. For each story's title and
 summary it answers two questions:
 
