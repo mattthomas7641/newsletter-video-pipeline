@@ -3,4 +3,6 @@
 # files, so this resolves everything by absolute path.
 set -euo pipefail
 cd "$(dirname "$0")"
-exec ./venv/bin/python -m newsletter_video.run_pipeline
+# caffeinate -i keeps the Mac from idle-sleeping for the ~100 minutes the
+# run takes (a closed lid still sleeps it; the run resumes on wake).
+exec caffeinate -i ./venv/bin/python -m newsletter_video.run_pipeline
