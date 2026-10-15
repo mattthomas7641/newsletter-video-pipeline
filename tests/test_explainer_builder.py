@@ -36,10 +36,15 @@ def test_cues_match_inflected_words():
     assert cue_times(["Juniors"], line, 0.0, 4.0) == [0.35]  # not said: lands at the floor
 
 
-def test_caption_chunks_break_on_length_and_clauses():
+def test_caption_chunks_break_on_phrases_not_dangling_words():
     chunks = caption_chunks(LINE)
-    assert [len(c) for c in chunks] == [4, 4, 3]
-    assert chunks[0][-1][0] == "run,"
+    assert [" ".join(w for w, _ in c) for c in chunks] == ["Which model you run,", "how hard the task is,", "and budget."]
+    text = "Teams cost between one point eight and five point one times as much. Yet there was no gain."
+    chunks = caption_chunks([(w, i * 0.3) for i, w in enumerate(text.split())])
+    joined = [" ".join(w for w, _ in c) for c in chunks]
+    assert "one point eight and five point one times" in joined  # a spoken number is never split
+    assert not any(c[0][0].lower() in {"and", "to", "of", "the"} for c in chunks[1:] if c[0][0].lower() != "and")
+    assert all(len(c) >= 2 for c in chunks)
 
 
 def test_story_payload_times_scenes_from_word_times():

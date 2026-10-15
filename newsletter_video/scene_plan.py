@@ -25,7 +25,24 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-SCENE_TYPES = ("title", "statement", "stat", "comparison", "list", "timeline", "quote", "chart", "outro")
+SCENE_TYPES = ("title", "statement", "stat", "comparison", "list", "timeline", "quote", "chart",
+               "diagram", "device", "outro")
+# Scenes whose hero is a graphic (a number, chart, diagram or wireframe) vs
+# scenes the viewer mostly reads. The strict rules below keep a video from
+# turning into a slideshow of text.
+VISUAL_TYPES = frozenset({"stat", "comparison", "chart", "timeline", "diagram", "device"})
+TEXT_TYPES = frozenset({"statement", "quote", "list"})
+CHART_KINDS = ("bars", "columns", "line", "dots")
+DIAGRAM_KINDS = ("flow", "stack", "hub", "funnel")
+DEVICE_KINDS = ("phone", "laptop", "terminal", "chat")
+# The pictogram set in hf_template_explainer/icons.js (one stroke style).
+ICONS = frozenset({
+    "chip", "cloud", "code", "rocket", "lock", "dollar", "trend-up", "trend-down", "users", "user",
+    "robot", "brain", "phone", "laptop", "globe", "bolt", "clock", "warning", "check", "cross", "box",
+    "building", "briefcase", "gavel", "eye", "search", "mail", "play", "shield", "bug", "scale", "car",
+    "star", "database", "key", "gear", "camera", "mic", "video", "document", "chart", "layers", "link",
+    "wallet", "megaphone",
+})
 
 # Hard character caps per on-screen field. These are the numbers the
 # composition's type scale was designed against (see DESIGN.md): the largest
@@ -39,13 +56,20 @@ CAPS: dict[str, dict[str, int]] = {
     "timeline": {"title": 40, "step_label": 12, "step_text": 40},
     "quote": {"text": 110, "attribution": 40},
     "chart": {"title": 40, "series_label": 14, "unit": 8},
+    "diagram": {"title": 40, "node_label": 16, "node_text": 30, "center": 16},
+    "device": {"title": 40, "label": 18, "line": 36},
     "outro": {"text": 56},
 }
 LIST_ITEMS = (2, 4)
 TIMELINE_STEPS = (2, 4)
 CHART_SERIES = (2, 5)
+TREND_POINTS = (2, 8)
+DIAGRAM_NODES = {"flow": (2, 4), "stack": (2, 4), "hub": (3, 5), "funnel": (3, 4)}
+DEVICE_LINES = (2, 4)
 SAY_WORDS = (4, 40)  # per scene
 PLAN_WORDS = (60, 120)  # whole video; the writer aims for 100-110 (40-45 s), pace absorbs the rest
+STRICT_MIN_WORDS = 95  # strict (writer) plans: the pacing logic can't stretch a short script to 40 s
+STRICT_MIN_VISUAL = 2  # strict plans: at least this many graphic scenes
 MIDDLE_SCENES = (3, 7)  # between the title and the outro
 MAX_SAME_TYPE_RUN = 2  # no three identical layouts in a row (statements excepted: they are the plain card)
 
@@ -117,6 +141,24 @@ class _Check:
             self.errors.append(f"{self.where}: '{key}' has {len(value)} entries, allowed {bounds[0]}-{bounds[1]}")
         return value
 
+    def choice(self, raw: dict, key: str, options: tuple, default: str) -> str:
+        value = _clean(raw.get(key)).lower()
+        if not value:
+            return default
+        if value not in options:
+            self.errors.append(f"{self.where}: '{key}' must be one of {', '.join(options)}, not {value!r}")
+            return default
+        return value
+
+    def icon(self, raw: dict, key: str = "icon") -> str:
+        """An unknown pictogram name is dropped, not fatal: the scene still
+        works without it."""
+        value = _clean(raw.get(key)).lower()
+        if value and value not in ICONS:
+            self.repairs.append(f"{self.where}: unknown icon {value!r} dropped")
+            return ""
+        return value
+
 
 def _validate_scene(index: int, raw: Any) -> tuple[Scene | None, list[str], list[str]]:
     if not isinstance(raw, dict):
@@ -135,6 +177,7 @@ def _validate_scene(index: int, raw: Any) -> tuple[Scene | None, list[str], list
     if kind == "title":
         f["kicker"] = c.text(raw, "kicker", caps["kicker"])
         f["headline"] = c.text(raw, "headline", caps["headline"])
+        f["icon"] = c.icon(raw)
     elif kind == "statement":
         f["label"] = c.text(raw, "label", caps["label"], required=False)
         f["text"] = c.text(raw, "text", caps["text"])
@@ -143,11 +186,23 @@ def _validate_scene(index: int, raw: Any) -> tuple[Scene | None, list[str], list
             c.repairs.append(f"{c.where}: emphasis {emphasis!r} is not in the text; dropped")
             emphasis = ""
         f["emphasis"] = emphasis
+        f["icon"] = c.icon(raw)
     elif kind == "stat":
         f["value"] = c.text(raw, "value", caps["value"])
         f["label"] = c.text(raw, "label", caps["label"])
         f["context"] = c.text(raw, "context", caps["context"], required=False)
         f["source"] = c.text(raw, "source", caps["source"], required=False)
+        trend = raw.get("trend")
+        points = []
+        if isinstance(trend, list) and trend:
+            points = [_number(v) for v in trend]
+            if any(p is None or p < 0 for p in points):
+                c.errors.append(f"{c.where}: 'trend' must be non-negative numbers")
+                points = []
+            elif not TREND_POINTS[0] <= len(points) <= TREND_POINTS[1]:
+                c.errors.append(f"{c.where}: 'trend' has {len(points)} points, allowed {TREND_POINTS[0]}-{TREND_POINTS[1]}")
+                points = []
+        f["trend"] = points
     elif kind == "comparison":
         f["title"] = c.text(raw, "title", caps["title"], required=False)
         for side in ("left", "right"):
@@ -160,6 +215,7 @@ def _validate_scene(index: int, raw: Any) -> tuple[Scene | None, list[str], list
                 "value": c.text(raw_side, "value", caps["value"], label=f"{side}.value"),
                 "note": c.text(raw_side, "note", caps["note"], required=False, label=f"{side}.note"),
                 "number": _number(raw_side.get("number")),
+                "icon": c.icon(raw_side),
             }
         if "left" in f and "right" in f:
             nums = [f["left"]["number"], f["right"]["number"]]
@@ -178,6 +234,12 @@ def _validate_scene(index: int, raw: Any) -> tuple[Scene | None, list[str], list
             elif len(item) > caps["item"]:
                 c.errors.append(f"{c.where}: item {i + 1} is {len(item)} chars, cap is {caps['item']}: {item!r}")
         f["items"] = items
+        icons = raw.get("icons")
+        icons = [c.icon({"icon": v}) for v in icons] if isinstance(icons, list) else []
+        if icons and len(icons) != len(items):
+            c.repairs.append(f"{c.where}: {len(icons)} icons for {len(items)} items; icons dropped")
+            icons = []
+        f["icons"] = icons if any(icons) else []
     elif kind == "timeline":
         f["title"] = c.text(raw, "title", caps["title"], required=False)
         steps = []
@@ -196,6 +258,7 @@ def _validate_scene(index: int, raw: Any) -> tuple[Scene | None, list[str], list
     elif kind == "chart":
         f["title"] = c.text(raw, "title", caps["title"])
         f["unit"] = c.text(raw, "unit", caps["unit"], required=False)
+        f["kind"] = c.choice(raw, "kind", CHART_KINDS, "bars")
         series = []
         for i, point in enumerate(c.items(raw, "series", CHART_SERIES)):
             if not isinstance(point, dict):
@@ -208,12 +271,40 @@ def _validate_scene(index: int, raw: Any) -> tuple[Scene | None, list[str], list
             series.append({"label": c.text(point, "label", caps["series_label"], label=f"series {i + 1}.label"),
                            "value": number})
         f["series"] = series
+        if f["kind"] == "dots" and sum(p["value"] for p in series) > 100.5:
+            c.errors.append(f"{c.where}: a dots chart shows shares of 100; the values sum to "
+                            f"{sum(p['value'] for p in series):g}")
         highlight = raw.get("highlight")
         if isinstance(highlight, bool) or not isinstance(highlight, int) or not 0 <= highlight < len(series):
             if highlight not in (None, -1):
                 c.repairs.append(f"{c.where}: highlight {highlight!r} out of range; using the largest value")
             highlight = max(range(len(series)), key=lambda i: series[i]["value"]) if series else 0
         f["highlight"] = highlight
+    elif kind == "diagram":
+        f["title"] = c.text(raw, "title", caps["title"], required=False)
+        f["kind"] = c.choice(raw, "kind", DIAGRAM_KINDS, "flow")
+        f["center"] = c.text(raw, "center", caps["center"], required=f["kind"] == "hub")
+        nodes = []
+        for i, node in enumerate(c.items(raw, "nodes", DIAGRAM_NODES[f["kind"]])):
+            if not isinstance(node, dict):
+                c.errors.append(f"{c.where}: node {i + 1} must be an object")
+                continue
+            nodes.append({
+                "label": c.text(node, "label", caps["node_label"], label=f"node {i + 1}.label"),
+                "text": c.text(node, "text", caps["node_text"], required=False, label=f"node {i + 1}.text"),
+            })
+        f["nodes"] = nodes
+    elif kind == "device":
+        f["title"] = c.text(raw, "title", caps["title"], required=False)
+        f["kind"] = c.choice(raw, "kind", DEVICE_KINDS, "phone")
+        f["label"] = c.text(raw, "label", caps["label"], required=False)
+        lines = [_clean(i) for i in c.items(raw, "lines", DEVICE_LINES)]
+        for i, line in enumerate(lines):
+            if not line:
+                c.errors.append(f"{c.where}: line {i + 1} is empty")
+            elif len(line) > caps["line"]:
+                c.errors.append(f"{c.where}: line {i + 1} is {len(line)} chars, cap is {caps['line']}: {line!r}")
+        f["lines"] = lines
     elif kind == "outro":
         f["text"] = c.text(raw, "text", caps["text"])
 
@@ -229,9 +320,15 @@ def _number(value: Any) -> float | None:
         return None
 
 
-def validate_plan(raw_scenes: Any) -> ScenePlan:
+def validate_plan(raw_scenes: Any, strict: bool = False) -> ScenePlan:
     """Returns a normalized ScenePlan or raises ScenePlanError listing every
-    problem (so the writer's output can be fixed in one pass)."""
+    problem (so the writer's output can be fixed in one pass).
+
+    `strict` adds the engagement rules the writer is held to: at least
+    STRICT_MIN_WORDS spoken words (so the video reaches ~40 s), at least
+    STRICT_MIN_VISUAL graphic scenes, and never two text-only scenes in a
+    row. Structural plans derived from classic scripts are not held to
+    them (they are the loudly-logged fallback)."""
     errors: list[str] = []
     repairs: list[str] = []
     if not isinstance(raw_scenes, list) or not raw_scenes:
@@ -261,8 +358,18 @@ def validate_plan(raw_scenes: Any) -> ScenePlan:
                 errors.append(f"more than {MAX_SAME_TYPE_RUN} '{cur.type}' scenes in a row")
                 break
         total = sum(len(s.say.split()) for s in scenes)
-        if not PLAN_WORDS[0] <= total <= PLAN_WORDS[1]:
-            errors.append(f"spoken text is {total} words, allowed {PLAN_WORDS[0]}-{PLAN_WORDS[1]}")
+        low = STRICT_MIN_WORDS if strict else PLAN_WORDS[0]
+        if not low <= total <= PLAN_WORDS[1]:
+            errors.append(f"spoken text is {total} words, allowed {low}-{PLAN_WORDS[1]}")
+        if strict:
+            visual = sum(s.type in VISUAL_TYPES for s in scenes)
+            if visual < STRICT_MIN_VISUAL:
+                errors.append(f"only {visual} graphic scene(s) (stat, chart, comparison, timeline, diagram, device); "
+                              f"at least {STRICT_MIN_VISUAL} required")
+            for i, (prev, cur) in enumerate(zip(scenes, scenes[1:]), start=2):
+                if prev.type in TEXT_TYPES and cur.type in TEXT_TYPES:
+                    errors.append(f"scenes {i - 1} and {i} are both text-only ({prev.type}, {cur.type}); "
+                                  "put a graphic scene between them")
     if errors:
         raise ScenePlanError(errors)
     return ScenePlan(scenes=scenes, repairs=repairs)
@@ -332,29 +439,40 @@ _SIDE = _obj({
     "label": _s("under 16 characters"),
     "value": _s("the figure shown, under 12 characters"),
     "note": _s("under 36 characters, or ''"),
-    "number": {"type": "number", "description": "size for a proportional bar; 0 on both sides when not comparable"},
+    "number": {"type": "number", "description": "size for a proportional disc; 0 on both sides when not comparable"},
+    "icon": _s("pictogram name when there are no numbers (see the icon list), else ''"),
 })
 SCENE_SCHEMA: dict[str, Any] = _obj({
     "type": {"type": "string", "enum": list(SCENE_TYPES)},
     "say": _s("What the voice says while this scene is on screen (title: the hook, outro: the sign-off, each at most 14 words)"),
     "kicker": _s("title only: topic label, 1-2 words, under 18 characters, e.g. 'AI AGENTS'; else ''"),
     "headline": _s("title only: the story in one line, under 56 characters; else ''"),
-    "label": _s("statement: optional small label under 24 characters; stat: what the number is, under 36 characters, not repeating it; else ''"),
+    "icon": _s("title and statement: a pictogram name from the icon list that stands for the subject; else ''"),
+    "label": _s("statement: optional small label under 24 characters; stat: what the number is, under 36 characters, not repeating it; device: app or window name under 18 characters; else ''"),
     "text": _s("statement: one sentence under 72 characters; quote: the quotation under 110 characters, no quote marks; outro: the closing line under 56 characters; else ''"),
     "emphasis": _s("statement only: 1-3 words copied exactly from text; else ''"),
     "value": _s("stat only: the number written short, under 9 characters: '5.1x', '$7B', '22%'; else ''"),
     "context": _s("stat only: optional one-line context under 64 characters; else ''"),
     "source": _s("stat only: optional source name under 32 characters; else ''"),
+    "trend": {"type": "array", "items": {"type": "number"},
+              "description": "stat only: 2-8 numbers from the story drawn as a mini column chart under the number, oldest first; else []"},
     "attribution": _s("quote only: who said it, under 40 characters; else ''"),
-    "title": _s("comparison, list, timeline (optional) and chart (required): under 40 characters; else ''"),
+    "title": _s("comparison, list, timeline, diagram, device (optional) and chart (required): under 40 characters; else ''"),
+    "kind": _s("chart: bars | columns | line | dots; diagram: flow | stack | hub | funnel; device: phone | laptop | terminal | chat; else ''"),
     "items": {"type": "array", "items": _s("under 38 characters"), "description": "list only: 2-4 items; else []"},
+    "icons": {"type": "array", "items": _s("pictogram name"), "description": "list only: one icon per item, or []"},
     "steps": {"type": "array", "description": "timeline only: 2-4 steps in order; else []",
               "items": _obj({"label": _s("when: under 12 characters, e.g. '2024', 'Now', 'Next'"),
                              "text": _s("what happened, under 40 characters")})},
-    "series": {"type": "array", "description": "chart only: 2-5 bars; else []",
+    "series": {"type": "array", "description": "chart only: 2-5 points; else []",
                "items": _obj({"label": _s("under 14 characters"), "value": {"type": "number"}})},
     "unit": _s("chart only: unit after each value, under 8 characters, e.g. '%', '$B'; else ''"),
-    "highlight": {"type": "integer", "description": "chart only: index of the bar that matters; else 0"},
+    "highlight": {"type": "integer", "description": "chart only: index of the point that matters; else 0"},
+    "nodes": {"type": "array", "description": "diagram only: flow/stack 2-4, hub 3-5, funnel 3-4 nodes; else []",
+              "items": _obj({"label": _s("under 16 characters"), "text": _s("under 30 characters, or ''")})},
+    "center": _s("diagram hub only: the thing in the middle, under 16 characters; else ''"),
+    "lines": {"type": "array", "items": _s("under 36 characters"),
+              "description": "device only: 2-4 lines shown on the screen (terminal: commands and output; chat: alternating messages; phone: notifications; laptop: rows); else []"},
     "left": _SIDE,
     "right": _SIDE,
 })

@@ -109,36 +109,55 @@ Combine only when the connection makes the video better; never pad with unrelate
 - Never cover the same story in two videos. Newsletters often repeat a story under different \
 titles; treat those as one.
 
-The scene library (use `type` exactly)
+The scene library (use `type` exactly; the visual is the hero, text is its label)
 - title: opens every video. `kicker` is a 1-2 word topic label; `headline` is the story in \
-one line. Its `say` is the spoken hook: open a curiosity gap or lead with the single most \
-surprising concrete fact, at most 14 words. Never a greeting or "In today's news".
-- statement: one sentence the viewer reads, with an optional `emphasis` of 1-3 words copied \
-exactly from it, and an optional small `label` ("The catch", "Why it matters").
+one line; `icon` is a pictogram for the subject. Its `say` is the spoken hook: open a \
+curiosity gap or lead with the single most surprising concrete fact, at most 14 words. Never \
+a greeting or "In today's news".
 - stat: one number as the hero. `value` is written short ("5.1x", "$7B", "22%", "1,200"); \
 `label` says what it is without repeating the number; `context` is one optional line; \
-`source` is an optional source name.
+`source` is an optional source name. A percentage up to 100 is drawn as a progress ring. \
+When the story gives a series of numbers (a range, growth over time), put them in `trend` \
+(2-8 numbers, oldest first) and they are drawn as a mini column chart under the number.
+- chart: 2-5 points, each with a short `label` and a numeric `value`, a `title`, an optional \
+`unit`, `highlight` (the index that matters) and a `kind`: "bars" (horizontal, for named \
+things), "columns" (vertical, for a small series), "line" (growth or decline over time), \
+"dots" (shares of 100, e.g. 12% vs 88%: values must sum to at most 100). Only from numbers \
+in the stories.
 - comparison: two things side by side, each with a `label`, a `value` and a short `note`. \
-Set `number` on both sides only when the values are comparable quantities (bars are drawn \
-to scale); otherwise null on both.
-- list: 2-4 short items under an optional title. Mention the items in the spoken line, in \
-order, so each appears as it is said.
-- timeline: 2-4 steps, each with a short `label` ("2024", "Now", "Next") and `text`.
+Set `number` on both sides when the values are comparable quantities (two discs are drawn to \
+scale); otherwise 0 on both and give each side an `icon`.
+- timeline: 2-4 steps, each with a short `label` ("2024", "Now", "Next") and `text`; a marker \
+travels down the rail as the steps are spoken.
+- diagram: a concept drawn, with `kind` "flow" (2-4 nodes, a process in order), "stack" (2-4 \
+layers, bottom to top), "hub" (a `center` with 3-5 things around it) or "funnel" (3-4 \
+narrowing stages). Each node has a `label` and a short `text`.
+- device: a product moment as a wireframe, with `kind` "phone" (notifications), "laptop" \
+(an app window with rows), "terminal" (commands and output) or "chat" (alternating messages). \
+`lines` are the 2-4 lines on its screen, written like the real product would show them; \
+`label` is the app or window name. Use it for launches, features and developer tools.
+- statement: one sentence the viewer reads, with an optional `emphasis` of 1-3 words copied \
+exactly from it, an optional small `label` ("The catch", "Why it matters") and an `icon`.
+- list: 2-4 short items under an optional title, one `icon` per item. Mention the items in \
+the spoken line, in order, so each appears as it is said.
 - quote: a real quotation from the source and who said it. Only when the source actually \
 quotes someone.
-- chart: 2-5 bars with a short `label` and a numeric `value` each, a `title`, an optional \
-`unit`, and `highlight` (the index of the bar that matters). Only from numbers in the stories.
 - outro: closes every video. `text` is the closing line the viewer reads; its `say` is the \
 spoken outro, at most 14 words: a reason to comment or follow, tied to the topic.
+Pictogram names (`icon`): chip, cloud, code, rocket, lock, dollar, trend-up, trend-down, \
+users, user, robot, brain, phone, laptop, globe, bolt, clock, warning, check, cross, box, \
+building, briefcase, gavel, eye, search, mail, play, shield, bug, scale, car, star, database, \
+key, gear, camera, mic, video, document, chart, layers, link, wallet, megaphone.
 
 Writing each video
-- Structure: a title scene, then 3-7 scenes, then an outro. Choose each scene's type from \
-what the beat is about: a number gets a stat, a before/after a comparison, a sequence a \
-timeline, several parallel points a list. Vary the types; at most two of the same type in a \
-row (statements excepted). Every video should have at least one data scene (stat, chart or \
-comparison) when the stories have real numbers.
-- Length: 100-110 spoken words in total across all `say` lines. The voice speaks about 2.5 \
-words per second, so that is 40-44 seconds. Never exceed 115 words. Each scene's `say` is \
+- Structure: a title scene, then 3-7 scenes, then an outro. Prefer the graphic scenes: a \
+number gets a stat or chart, a before/after a comparison, a sequence a timeline, a process or \
+structure a diagram, a product or launch a device. Rules the plan is checked against: at \
+least two graphic scenes (stat, chart, comparison, timeline, diagram, device) per video, \
+never two text-only scenes (statement, list, quote) in a row, and at most two of the same \
+type in a row. Vary the types across the video.
+- Length: 100-110 spoken words in total across all `say` lines, never under 98 and never \
+over 115: the voice speaks about 2.5 words per second, so that is 40-44 seconds. Each scene's `say` is \
 one or two short sentences, 6-30 words, conversational, as if explaining to a smart friend. \
 Build momentum: the what, the surprising detail, why it matters, the catch or open question.
 - On-screen text is punchier than the spoken line and never a copy of it. Respect every \
@@ -251,7 +270,7 @@ def _accept(video: dict, stories: list[Story]) -> ExplainerScript | None:
     """Validates one video's plan; logs and drops it when it fails."""
     title = str(video.get("title", "")).strip() or "Untitled"
     try:
-        plan = validate_plan(video.get("scenes"))
+        plan = validate_plan(video.get("scenes"), strict=True)
     except ScenePlanError as exc:
         log.error("Explainer: skipping %r, its scene plan failed validation:\n  %s",
                   title, "\n  ".join(exc.errors))
@@ -338,4 +357,4 @@ def replan_sidecar(meta: dict) -> ScenePlan:
     videos = data.get("videos", [])
     if not videos:
         raise RuntimeError("Claude returned no video")
-    return validate_plan(videos[0].get("scenes"))
+    return validate_plan(videos[0].get("scenes"), strict=True)
