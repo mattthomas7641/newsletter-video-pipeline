@@ -83,6 +83,10 @@ def write_metadata(script: Script, video_path: Path) -> Path:
             "beats": [vars(b) for b in script.beats], "outro": script.outro,
         },
     }
+    if getattr(script, "plan", None) is not None:  # explainer style: the scene plan is what was rendered
+        from .explainer_writer import plan_dict
+
+        metadata["scene_plan"] = plan_dict(script.plan)
     path = video_path.with_suffix(".json")
     path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False))
     return path

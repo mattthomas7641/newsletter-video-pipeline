@@ -446,6 +446,12 @@ def build_shorts(scripts: list[Script], out_dir: Path, audio_dir: Path,
                  target_date: date | None = None) -> list[Path]:
     """Numbering continues after any videos already in `out_dir`, so a second
     run on the same day adds videos instead of overwriting them."""
+    from .explainer_builder import explainer_mode  # VIDEO_STYLE=explainer: no avatar, no footage
+
+    if explainer_mode():
+        from .explainer_builder import build_explainer_shorts
+
+        return build_explainer_shorts(scripts, out_dir, audio_dir, target_date)
     target_date = target_date or date.today()
     out_dir.mkdir(parents=True, exist_ok=True)
     audio_dir.mkdir(parents=True, exist_ok=True)

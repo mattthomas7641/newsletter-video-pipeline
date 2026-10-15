@@ -680,6 +680,15 @@ def build_scripts(editions: list[Edition], n_videos: int | None = None,
     jev_filtered = _jev_rank_candidates(llm_candidates, n_videos)
     if jev_filtered is not None:
         llm_candidates = jev_filtered
+    from .explainer_builder import explainer_mode  # VIDEO_STYLE=explainer: scene plans, see explainer_writer
+
+    if explainer_mode():
+        from .explainer_writer import llm_explainer_scripts, structural_explainer_scripts
+
+        scripts = llm_explainer_scripts(llm_candidates, n_videos) if llm_candidates else None
+        if scripts is not None:  # Claude ran; an empty list means every plan was rejected, not a fallback
+            return scripts
+        return structural_explainer_scripts(_heuristic_scripts(editions, candidates, n_videos))
     if llm_candidates:
         scripts = _llm_scripts(llm_candidates, n_videos)
         if scripts:
