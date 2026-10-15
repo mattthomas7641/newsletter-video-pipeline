@@ -468,6 +468,8 @@
       .comparison .col .value {
         font-size: var(--t-value);
         margin-top: var(--s-2);
+        width: 100%;
+        text-align: center;
       }
       .comparison .col.lead .value {
         color: var(--accent);
@@ -850,13 +852,16 @@
       }
       .diagram .funnel .band {
         position: relative;
-        height: 150px;
+        height: 170px;
         background: var(--bar);
         display: flex;
+        flex-direction: column;
         align-items: center;
-        justify-content: space-between;
+        justify-content: center;
+        gap: var(--s-1);
         padding: 0 var(--s-4);
         transform-origin: top center;
+        text-align: center;
       }
       .diagram .funnel .band.lead {
         background: var(--accent);
@@ -929,6 +934,9 @@
         background: var(--screen);
         color: var(--screen-ink);
         border-color: var(--screen);
+      }
+      :root[data-theme="dark"] .device .frame.terminal {
+        border-color: var(--hair); /* the screen is as dark as the ground: keep an edge */
       }
       .device .titlebar {
         display: flex;
@@ -1156,6 +1164,7 @@
       function parseNumber(value) {
         const m = /^([^\d]*)(\d[\d,]*(?:\.\d+)?)(.*)$/.exec(value);
         if (!m) return null;
+        if (/^\s?[-\u2013\u2014/:]\s?\d/.test(m[3])) return null; // a range or ratio ("22-25", "3/4") is shown, not counted
         const digits = m[2];
         const number = parseFloat(digits.replace(/,/g, ""));
         if (!isFinite(number)) return null;
@@ -1558,7 +1567,7 @@
             const n = s.nodes.length;
             s.nodes.forEach((nd, i) => {
               const band = el("div", "band" + (i === n - 1 ? " lead" : ""));
-              band.style.width = Math.round(820 * (1 - (i * 0.55) / Math.max(n - 1, 1))) + "px";
+              band.style.width = Math.round(820 - (360 * i) / Math.max(n - 1, 1)) + "px";
               band.append(el("div", "label", nd.label));
               if (nd.text) band.append(el("div", "body num", nd.text));
               funnel.append(band);
@@ -1917,9 +1926,9 @@
             if (nextTransition === "push") {
               tl.to(b.root, { opacity: 0, y: -56, duration: EXIT, ease: EASE_IN }, Math.max(start + 0.6, end - EXIT));
             } else {
-              tl.to(b.root, { opacity: 0, duration: TRANSITION * 0.8, ease: "power1.in" }, end);
+              tl.fromTo(b.root, { clipPath: "inset(0px 0px 0px 0px)" }, { clipPath: "inset(" + STAGE_H + "px 0px 0px 0px)", duration: TRANSITION, ease: "power3.inOut", immediateRender: false }, end);
             }
-            tl.set(b.root, { opacity: 0, y: 0 }, end + TRANSITION);
+            tl.set(b.root, { opacity: 0, y: 0, clipPath: "inset(0px 0px 0px 0px)" }, end + TRANSITION);
           }
         });
 

@@ -158,7 +158,7 @@ never two text-only scenes (statement, list, quote) in a row, and at most two of
 type in a row. Vary the types across the video.
 - Length: 100-110 spoken words in total across all `say` lines, never under 98 and never \
 over 115: the voice speaks about 2.5 words per second, so that is 40-44 seconds. Each scene's `say` is \
-one or two short sentences, 6-30 words, conversational, as if explaining to a smart friend. \
+one or two short sentences, 8-22 words, conversational, as if explaining to a smart friend. \
 Build momentum: the what, the surprising detail, why it matters, the catch or open question.
 - On-screen text is punchier than the spoken line and never a copy of it. Respect every \
 character cap in the field descriptions; text that is too long is rejected and the video is \
