@@ -389,6 +389,12 @@ def _prepare_workdir(work_dir: Path) -> None:
 
 def build_short(script: Script, out_path: Path, audio_path: Path, work_dir: Path,
                 kicker: str, background_seed: str) -> Path:
+    from .explainer_builder import explainer_mode  # VIDEO_STYLE=explainer: no avatar, no footage
+
+    if explainer_mode():
+        from .explainer_builder import build_explainer_short
+
+        return build_explainer_short(script, out_path, audio_path, kicker)
     lines = [script.hook] + [b.say for b in script.beats] + [script.outro]
     per_line, speech_duration = _voice_script(lines, audio_path, speed=None)
     # Pace, not content, absorbs length misses: a long script is re-voiced
@@ -446,12 +452,6 @@ def build_shorts(scripts: list[Script], out_dir: Path, audio_dir: Path,
                  target_date: date | None = None) -> list[Path]:
     """Numbering continues after any videos already in `out_dir`, so a second
     run on the same day adds videos instead of overwriting them."""
-    from .explainer_builder import explainer_mode  # VIDEO_STYLE=explainer: no avatar, no footage
-
-    if explainer_mode():
-        from .explainer_builder import build_explainer_shorts
-
-        return build_explainer_shorts(scripts, out_dir, audio_dir, target_date)
     target_date = target_date or date.today()
     out_dir.mkdir(parents=True, exist_ok=True)
     audio_dir.mkdir(parents=True, exist_ok=True)
