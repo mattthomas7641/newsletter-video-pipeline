@@ -45,7 +45,6 @@ from .video_builder import (
     TAIL_SECONDS,
     TARGET_MAX_SPEED,
     TARGET_VIDEO_SECONDS,
-    _clean_render_cache,
     _pad_audio,
     _voice_script,
 )
@@ -316,30 +315,22 @@ def render_plan(plan: ScenePlan, out_path: Path, audio_path: Path, work_dir: Pat
     return out_path
 
 
-def build_explainer_shorts(scripts: list, out_dir: Path, audio_dir: Path,
-                           target_date: date | None = None) -> list[Path]:
-    """The explainer-style counterpart of video_builder.build_shorts: same
-    numbering, same return contract (one path per script, in order)."""
-    target_date = target_date or date.today()
-    out_dir.mkdir(parents=True, exist_ok=True)
-    audio_dir.mkdir(parents=True, exist_ok=True)
-    work_dir = audio_dir.parent / "_hf_work_explainer"
-    _prepare_workdir(work_dir)
-    kicker = f"TLDR · {target_date:%b} {target_date.day}".upper()
+_prepared: set[Path] = set()  # work dirs already set up in this process
 
-    plans = [plan_for(script) for script in scripts]  # validated before any voicing
-    first = len(list(out_dir.glob("*.mp4")))
-    paths = []
-    for i, (script, plan) in enumerate(zip(scripts, plans), start=first):
-        slug = re.sub(r"-+", "-", "".join(c if c.isalnum() else "-" for c in script.title.lower()))[:40].strip("-")
-        out_path = out_dir / f"{i + 1:02d}_{slug}.mp4"
-        audio_path = audio_dir / f"{i + 1:02d}.wav"
-        log.info("Explainer: rendering %r (%d scenes: %s)", script.title, len(plan.scenes),
-                 ", ".join(s.type for s in plan.scenes))
-        render_plan(plan, out_path, audio_path, work_dir, kicker)
-        paths.append(out_path)
-    _clean_render_cache(work_dir)
-    return paths
+
+def build_explainer_short(script, out_path: Path, audio_path: Path, kicker: str) -> Path:
+    """The explainer-style counterpart of video_builder.build_short, called
+    from it per video so numbering, isolation and metadata stay the
+    caller's. The work dir sits next to the avatar one (_hf_work_explainer
+    beside _hf_work) and is prepared once per process."""
+    plan = plan_for(script)  # validated before any voicing
+    work_dir = audio_path.parent.parent / "_hf_work_explainer"
+    if work_dir not in _prepared or not (work_dir / "index.html").exists():
+        _prepare_workdir(work_dir)
+        _prepared.add(work_dir)
+    log.info("Explainer: rendering %r (%d scenes: %s)", script.title, len(plan.scenes),
+             ", ".join(s.type for s in plan.scenes))
+    return render_plan(plan, out_path, audio_path, work_dir, kicker)
 
 
 # --- CLI: re-render a saved sidecar in this style ------------------------------
