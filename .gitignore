@@ -17,3 +17,8 @@ newsletter_video/hf_template/.thumbnails/
 newsletter_video/hf_template/assets/
 secrets/
 assets/voice/*
+newsletter_video/hf_template_explainer/renders/
+newsletter_video/hf_template_explainer/snapshots/
+newsletter_video/hf_template_explainer/.thumbnails/
+newsletter_video/hf_template_explainer/assets/
+newsletter_video/hf_template_explainer/.hyperframes/

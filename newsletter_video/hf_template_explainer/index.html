@@ -1,0 +1,1004 @@
+<!doctype html>
+<!--
+  ByteSize explainer (1080x1920), 35-45 s, one scene plan per render.
+  The "explainer" video style: no avatar, no footage — a typographic,
+  editorial explainer built from a fixed scene library. Design system:
+  DESIGN.md next to this file.
+
+  Driven by newsletter_video/explainer_builder.py, which per video:
+    - writes assets/voice.wav (the narration)
+    - renders with --variables-file holding {"story": "<json>"}
+  The `story` default below is a real sample so Studio preview and
+  `npx hyperframes check` work without the pipeline (assets/voice.wav is
+  gitignored; drop any wav there for preview).
+
+  story JSON shape:
+    { "theme": "light"|"dark", "kicker": str, "duration": seconds,
+      "scenes": [ { "type": <scene type>, "start": s, "end": s, ...fields,
+                    cue fields: "emphasisAt" | "countAt" | "cues": [s, ...] } ],
+      "captions": [ { "words": [str], "at": [s], "start": s, "end": s } ] }
+  Scene fields per type are the validated fields of newsletter_video/scene_plan.py.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"story","type":"string","label":"Story JSON","default":"{\"theme\":\"light\",\"kicker\":\"TLDR · OCT 13\",\"duration\":36,\"scenes\":[{\"type\":\"title\",\"start\":0,\"end\":4.2,\"kicker\":\"AI AGENTS\",\"headline\":\"Agent teams cost 5x more. Do they win?\"},{\"type\":\"stat\",\"start\":4.2,\"end\":9.4,\"value\":\"5.1x\",\"label\":\"the cost of a team vs one agent\",\"context\":\"Vibe Code Bench, GPT-6 Sol and Claude Opus 5.5\",\"source\":\"Vals AI\",\"countAt\":5.0},{\"type\":\"comparison\",\"start\":9.4,\"end\":14.6,\"title\":\"Same benchmark, two setups\",\"left\":{\"label\":\"Single agent\",\"value\":\"1x\",\"note\":\"baseline cost\",\"number\":1},\"right\":{\"label\":\"Agent team\",\"value\":\"5.1x\",\"note\":\"no significant score gain\",\"number\":5.1},\"cues\":[9.9,11.2]},{\"type\":\"chart\",\"start\":14.6,\"end\":20,\"title\":\"Cost multiplier by model\",\"unit\":\"x\",\"series\":[{\"label\":\"Sol low\",\"value\":1.8},{\"label\":\"Sol med\",\"value\":3.2},{\"label\":\"Opus 5.5\",\"value\":5.1}],\"highlight\":2,\"cues\":[15.1,16.2,17.3]},{\"type\":\"statement\",\"start\":20,\"end\":24.4,\"label\":\"The catch\",\"text\":\"Whether a team pays off depends on model, task and budget\",\"emphasis\":\"depends\",\"emphasisAt\":21.4},{\"type\":\"list\",\"start\":24.4,\"end\":28.8,\"title\":\"What decides it\",\"items\":[\"Which model you run\",\"How hard the task is\",\"How much budget you have\"],\"cues\":[24.9,26.0,27.1]},{\"type\":\"timeline\",\"start\":28.8,\"end\":32.6,\"title\":\"Claude Code Projects\",\"steps\":[{\"label\":\"Sept\",\"text\":\"Waitlist opens\"},{\"label\":\"Now\",\"text\":\"Every Pro and Max user is in\"}],\"cues\":[29.3,30.6]},{\"type\":\"outro\",\"start\":32.6,\"end\":36,\"text\":\"Do you run multiple agents? Tell us below.\"}],\"captions\":[{\"words\":[\"Agent\",\"teams\",\"cost\"],\"at\":[0.2,0.5,0.8],\"start\":0.2,\"end\":1.3},{\"words\":[\"up\",\"to\",\"five\",\"times\"],\"at\":[1.3,1.45,1.7,2.0],\"start\":1.3,\"end\":2.5},{\"words\":[\"more.\",\"Do\",\"they\",\"win?\"],\"at\":[2.5,2.9,3.1,3.4],\"start\":2.5,\"end\":4.2}]}"}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      /* ---- fonts (self-hosted, see fonts/FONTS.md) ------------------------ */
+      @font-face {
+        font-family: "Instrument Serif";
+        font-style: normal;
+        font-weight: 400;
+        src: url("fonts/InstrumentSerif-Regular-latin.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Instrument Serif";
+        font-style: italic;
+        font-weight: 400;
+        src: url("fonts/InstrumentSerif-Italic-latin.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Geist";
+        font-style: normal;
+        font-weight: 100 900;
+        src: url("fonts/Geist-latin.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Geist Mono";
+        font-style: normal;
+        font-weight: 100 900;
+        src: url("fonts/GeistMono-latin.woff2") format("woff2");
+      }
+
+      /* ---- tokens (DESIGN.md) --------------------------------------------- */
+      :root {
+        /* color: light theme */
+        --bg: #f6f4ee;
+        --ink: #17191e;
+        --ink-2: #5b606b;
+        --hair: rgba(23, 25, 30, 0.16);
+        --dot: rgba(23, 25, 30, 0.11);
+        --accent: #1f49d6;
+        --bar: #dcd9d0;
+        /* type */
+        /* generic fallbacks only: named fallbacks make the compiler fetch
+           their Google Fonts aliases at build time. */
+        --serif: "Instrument Serif", serif;
+        --sans: "Geist", sans-serif;
+        --mono: "Geist Mono", monospace;
+        --t-display: 124px;
+        --t-h1: 92px;
+        --t-h2: 68px;
+        --t-quote: 76px;
+        --t-stat: 272px;
+        --t-value: 96px;
+        --t-body: 44px;
+        --t-caption: 40px;
+        --t-label: 26px;
+        /* spacing (8-point) */
+        --s-1: 8px;
+        --s-2: 16px;
+        --s-3: 24px;
+        --s-4: 32px;
+        --s-6: 48px;
+        --s-8: 64px;
+        --s-12: 96px;
+        /* grid: 1080 wide, 80px gutter, content stops at 900 to stay clear of
+           the right-hand action column (TikTok / Shorts / Reels). */
+        --m: 80px;
+        --content-w: 820px;
+      }
+      :root[data-theme="dark"] {
+        --bg: #111318;
+        --ink: #f3f1ea;
+        --ink-2: #a3a8b3;
+        --hair: rgba(243, 241, 234, 0.18);
+        --dot: rgba(243, 241, 234, 0.1);
+        --accent: #7b96ff;
+        --bar: #2a2f3a;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: var(--bg);
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--sans);
+        font-feature-settings: "ss01" 0;
+        -webkit-font-smoothing: antialiased;
+      }
+      /* paper: a quiet dot grid gives the light field some texture without
+         competing with type (no gradients, no blobs). */
+      #paper {
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(var(--dot) 1.6px, transparent 1.9px);
+        background-size: 48px 48px;
+        background-position: 16px 16px;
+      }
+
+      /* ---- chrome: kicker row + progress rule (y 176-216) ----------------- */
+      #chrome {
+        position: absolute;
+        top: 176px;
+        left: var(--m);
+        width: var(--content-w);
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        font-family: var(--mono);
+        font-size: var(--t-label);
+        font-weight: 500;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+        line-height: 1;
+      }
+      #counter {
+        font-variant-numeric: tabular-nums;
+      }
+      #rule {
+        position: absolute;
+        top: 228px;
+        left: var(--m);
+        width: var(--content-w);
+        height: 2px;
+        background: var(--hair);
+      }
+      #progress {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--accent);
+        transform: scaleX(0);
+        transform-origin: left center;
+      }
+
+      /* ---- stage: scenes live here (y 300-1300) ---------------------------- */
+      #stage {
+        position: absolute;
+        top: 300px;
+        left: var(--m);
+        width: var(--content-w);
+        height: 1000px;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      .block {
+        display: block;
+        width: 100%;
+        will-change: transform, opacity;
+      }
+      .el {
+        display: block;
+        width: 100%;
+        will-change: transform, opacity;
+      }
+
+      /* type roles */
+      .label {
+        font-family: var(--mono);
+        font-size: var(--t-label);
+        font-weight: 500;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+        line-height: 1.2;
+      }
+      .label.accent {
+        color: var(--accent);
+      }
+      .display {
+        font-family: var(--serif);
+        font-size: var(--t-display);
+        line-height: 1.02;
+        letter-spacing: -0.015em;
+        overflow-wrap: anywhere;
+        text-wrap: balance; /* no one-word last lines on headlines */
+      }
+      .h1 {
+        font-family: var(--serif);
+        font-size: var(--t-h1);
+        line-height: 1.08;
+        letter-spacing: -0.01em;
+        overflow-wrap: anywhere;
+        text-wrap: balance;
+      }
+      .h2 {
+        font-family: var(--serif);
+        font-size: var(--t-h2);
+        line-height: 1.1;
+        letter-spacing: -0.01em;
+        overflow-wrap: anywhere;
+      }
+      .body {
+        font-family: var(--sans);
+        font-size: var(--t-body);
+        font-weight: 500;
+        line-height: 1.3;
+        letter-spacing: -0.005em;
+        overflow-wrap: anywhere;
+      }
+      .muted {
+        color: var(--ink-2);
+      }
+      .word {
+        display: inline-block;
+        margin-right: 0.22em;
+      }
+      .em {
+        color: var(--ink);
+      }
+
+      /* title */
+      .title .display {
+        margin-top: var(--s-4);
+      }
+      .title .date {
+        margin-top: var(--s-6);
+        padding-top: var(--s-3);
+        border-top: 2px solid var(--hair);
+      }
+
+      /* statement */
+      .statement .h1 {
+        margin-top: var(--s-4);
+      }
+
+      /* stat */
+      .stat .value {
+        font-family: var(--sans);
+        font-size: var(--t-stat);
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: -0.045em;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        margin-top: var(--s-3);
+        transform-origin: left center;
+      }
+      .stat .stat-rule {
+        position: relative;
+        width: 100%;
+        height: 6px;
+        margin-top: var(--s-4);
+        background: var(--bar);
+        overflow: hidden;
+      }
+      .stat .stat-fill {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--accent);
+        transform: scaleX(0);
+        transform-origin: left center;
+      }
+      .stat .context {
+        margin-top: var(--s-4);
+      }
+      .stat .source {
+        margin-top: var(--s-3);
+      }
+
+      /* comparison */
+      .comparison .columns {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        column-gap: var(--s-6);
+        margin-top: var(--s-6);
+      }
+      .comparison .col {
+        position: relative;
+        padding-top: var(--s-3);
+        border-top: 2px solid var(--hair);
+      }
+      .comparison .col .value {
+        font-family: var(--sans);
+        font-size: var(--t-value);
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: -0.04em;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        margin-top: var(--s-2);
+      }
+      .comparison .col .note {
+        margin-top: var(--s-2);
+        font-size: 36px;
+        line-height: 1.25;
+        min-height: 90px;
+      }
+      .comparison .col .track {
+        position: relative;
+        width: 100%;
+        height: 20px;
+        margin-top: var(--s-3);
+        background: var(--bar);
+        overflow: hidden;
+      }
+      .comparison .col .fill {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--ink-2);
+        transform: scaleX(0);
+        transform-origin: left center;
+      }
+      .comparison .col.lead .fill {
+        background: var(--accent);
+      }
+      .comparison .col.lead .value {
+        color: var(--accent);
+      }
+
+      /* list */
+      .list .rows {
+        margin-top: var(--s-4);
+      }
+      .list .row {
+        display: grid;
+        grid-template-columns: 72px 1fr;
+        column-gap: var(--s-3);
+        align-items: baseline;
+        padding: var(--s-3) 0;
+        border-top: 2px solid var(--hair);
+      }
+      .list .row .index {
+        font-family: var(--mono);
+        font-size: var(--t-label);
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        color: var(--accent);
+        font-variant-numeric: tabular-nums;
+      }
+      .list .row .body {
+        font-size: 52px;
+      }
+
+      /* timeline */
+      .timeline .steps {
+        position: relative;
+        margin-top: var(--s-4);
+        padding-left: 56px;
+      }
+      .timeline .rail {
+        position: absolute;
+        left: 12px;
+        top: 24px;
+        bottom: 24px;
+        width: 4px;
+        background: var(--hair);
+      }
+      .timeline .rail-fill {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--accent);
+        transform: scaleY(0);
+        transform-origin: top center;
+      }
+      .timeline .step {
+        position: relative;
+        padding: var(--s-2) 0 var(--s-3);
+      }
+      .timeline .step + .step {
+        margin-top: var(--s-2);
+      }
+      .timeline .node {
+        position: absolute;
+        left: -56px;
+        top: calc(var(--s-2) + 8px);
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--bg);
+        border: 4px solid var(--accent);
+        transform-origin: center center;
+      }
+      .timeline .step .body {
+        margin-top: var(--s-1);
+      }
+
+      /* quote */
+      .quote .mark {
+        font-family: var(--serif);
+        font-size: 180px;
+        line-height: 0.6;
+        color: var(--accent);
+        height: 110px;
+      }
+      .quote .text {
+        font-family: var(--serif);
+        font-style: italic;
+        font-size: var(--t-quote);
+        line-height: 1.15;
+        letter-spacing: -0.005em;
+        overflow-wrap: anywhere;
+        text-wrap: balance;
+      }
+      .quote .attribution {
+        margin-top: var(--s-4);
+        padding-top: var(--s-3);
+        border-top: 2px solid var(--hair);
+      }
+
+      /* chart */
+      .chart .bars {
+        margin-top: var(--s-6);
+      }
+      .chart .bar-row {
+        display: grid;
+        grid-template-columns: 200px 1fr;
+        column-gap: var(--s-3);
+        align-items: center;
+      }
+      .chart .bar-row + .bar-row {
+        margin-top: var(--s-3);
+      }
+      .chart .bar-label {
+        font-family: var(--mono);
+        font-size: var(--t-label);
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        color: var(--ink-2);
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      .chart .bar-track {
+        position: relative;
+        height: 72px;
+        display: flex;
+        align-items: center;
+      }
+      .chart .bar {
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 100%;
+        width: calc(100% - 150px); /* the last 150px are reserved for the value label */
+        background: var(--bar);
+        transform: scaleX(0);
+        transform-origin: left center;
+      }
+      .chart .bar-row.lead .bar {
+        background: var(--accent);
+      }
+      .chart .bar-value {
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        padding-left: var(--s-2);
+        font-family: var(--sans);
+        font-size: 36px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        color: var(--ink);
+      }
+      .chart .baseline {
+        margin-top: var(--s-4);
+        height: 2px;
+        background: var(--hair);
+      }
+
+      /* outro */
+      .outro .h1 {
+        margin-top: var(--s-4);
+      }
+      .outro .sign {
+        margin-top: var(--s-6);
+        padding-top: var(--s-3);
+        border-top: 2px solid var(--hair);
+      }
+
+      /* ---- captions: lower third (y 1380-1500), inside the safe zone ------ */
+      #captions {
+        position: absolute;
+        top: 1380px;
+        left: var(--m);
+        width: var(--content-w);
+        height: 120px;
+      }
+      .cap {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        font-family: var(--sans);
+        font-size: var(--t-caption);
+        font-weight: 500;
+        line-height: 1.3;
+        letter-spacing: -0.005em;
+        color: var(--ink-2);
+      }
+      .cap-word {
+        display: inline-block;
+        margin-right: 0.26em;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1080" data-height="1920">
+      <div id="paper"></div>
+
+      <div id="chrome">
+        <div id="kicker">TLDR</div>
+        <div id="counter">01 / 07</div>
+      </div>
+      <div id="rule"><div id="progress"></div></div>
+
+      <div id="stage"></div>
+
+      <div id="captions" data-layout-allow-caption-zone></div>
+
+      <audio id="voice" src="assets/voice.wav" data-start="0" data-track-index="1"></audio>
+    </div>
+
+    <script>
+      const story = JSON.parse(window.__hyperframes.getVariables().story);
+      const FPS = 30;
+      const EXIT = 0.28; // scene exit length, ends exactly at the next scene's start
+      const ENTER = 0.6;
+      const EASE_OUT = "power3.out";
+      const EASE_IN = "power2.in";
+
+      if (story.theme === "dark") document.documentElement.setAttribute("data-theme", "dark");
+      document.getElementById("kicker").textContent = story.kicker || "";
+
+      const stage = document.getElementById("stage");
+      const pad2 = (n) => String(n).padStart(2, "0");
+
+      // ---- DOM helpers -------------------------------------------------------
+      function el(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined && text !== null) node.textContent = text;
+        return node;
+      }
+      function words(container, text, className) {
+        // One span per word so a phrase can be revealed as a wave.
+        const spans = [];
+        text.split(/\s+/).filter(Boolean).forEach((w) => {
+          const span = el("span", className, w);
+          container.append(span);
+          spans.push(span);
+        });
+        return spans;
+      }
+      function emphasized(container, text, emphasis) {
+        // Splits `text` around `emphasis` (exact substring) and returns the
+        // emphasis span, or null when there is none.
+        const idx = emphasis ? text.indexOf(emphasis) : -1;
+        if (idx < 0) {
+          container.append(text);
+          return null;
+        }
+        container.append(text.slice(0, idx));
+        const span = el("span", "em", emphasis);
+        container.append(span, text.slice(idx + emphasis.length));
+        return span;
+      }
+
+      // Number formatting for count-ups: "5.1x" -> prefix "", number 5.1,
+      // decimals 1, suffix "x". Non-numeric values are shown as-is.
+      function parseNumber(value) {
+        const m = /^([^\d]*)(\d[\d,]*(?:\.\d+)?)(.*)$/.exec(value);
+        if (!m) return null;
+        const digits = m[2];
+        const number = parseFloat(digits.replace(/,/g, ""));
+        if (!isFinite(number)) return null;
+        const decimals = digits.includes(".") ? digits.split(".")[1].length : 0;
+        return { prefix: m[1], number, decimals, grouped: digits.includes(","), suffix: m[3] };
+      }
+      function formatNumber(n, spec) {
+        const fixed = n.toFixed(spec.decimals);
+        if (!spec.grouped) return spec.prefix + fixed + spec.suffix;
+        const [whole, frac] = fixed.split(".");
+        const groupedWhole = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        return spec.prefix + groupedWhole + (frac ? "." + frac : "") + spec.suffix;
+      }
+      // Pre-baked frame rows (deterministic under seek): one tl.set per frame.
+      function countUp(tl, node, spec, at, duration, ease) {
+        if (!spec) return;
+        const easeFn = gsap.parseEase(ease);
+        const frames = Math.max(1, Math.round(duration * FPS));
+        for (let f = 0; f <= frames; f++) {
+          const p = easeFn(f / frames);
+          tl.set(node, { textContent: formatNumber(spec.number * p, spec) }, at + (f / frames) * duration);
+        }
+      }
+
+      // ---- scene builders --------------------------------------------------
+      // Each returns { root, parts } where parts is the ordered reveal list:
+      // [{ node, at }] (at = seconds after scene start; cues override).
+      const builders = {
+        title(s) {
+          const root = el("div", "scene title");
+          const label = el("div", "el label accent", s.kicker);
+          const display = el("div", "el display fit");
+          display.dataset.fitMax = "600";
+          display.dataset.fitMin = "72";
+          const wordEls = words(display, s.headline, "word");
+          const date = el("div", "el label date", "ByteSize News \u00B7 daily tech, under a minute");
+          root.append(label, display, date);
+          return { root, parts: [{ node: label, at: 0.1 }, { node: date, at: 0.9 }], wordEls };
+        },
+        statement(s) {
+          const root = el("div", "scene statement");
+          const parts = [];
+          if (s.label) {
+            const label = el("div", "el label", s.label);
+            root.append(label);
+            parts.push({ node: label, at: 0.1 });
+          }
+          const h1 = el("div", "el h1 fit");
+          h1.dataset.fitMax = "560";
+          h1.dataset.fitMin = "56";
+          const em = emphasized(h1, s.text, s.emphasis);
+          root.append(h1);
+          parts.push({ node: h1, at: 0.22 });
+          return { root, parts, em };
+        },
+        stat(s) {
+          const root = el("div", "scene stat");
+          const label = el("div", "el label", s.label);
+          const value = el("div", "el value fit-w");
+          value.dataset.fitMin = "120";
+          const spec = parseNumber(s.value);
+          value.textContent = spec ? formatNumber(0, spec) : s.value;
+          const rule = el("div", "el stat-rule");
+          const fill = el("div", "stat-fill");
+          rule.append(fill);
+          root.append(label, value, rule);
+          const parts = [{ node: label, at: 0.1 }, { node: value, at: 0.25 }, { node: rule, at: 0.35 }];
+          if (s.context) {
+            const context = el("div", "el body context fit");
+            context.dataset.fitMax = "180";
+            context.dataset.fitMin = "32";
+            context.textContent = s.context;
+            root.append(context);
+            parts.push({ node: context, at: 0.5 });
+          }
+          if (s.source) {
+            const source = el("div", "el label source", "Source · " + s.source);
+            root.append(source);
+            parts.push({ node: source, at: 0.65 });
+          }
+          return { root, parts, value, spec, fill, finalText: s.value };
+        },
+        comparison(s) {
+          const root = el("div", "scene comparison");
+          const parts = [];
+          if (s.title) {
+            const title = el("div", "el h2", s.title);
+            root.append(title);
+            parts.push({ node: title, at: 0.1 });
+          }
+          const columns = el("div", "columns");
+          const left = s.left, right = s.right;
+          const hasBars = left.number != null && right.number != null && (left.number > 0 || right.number > 0);
+          const max = hasBars ? Math.max(left.number, right.number) : 1;
+          const cols = [left, right].map((side, i) => {
+            const col = el("div", "el col");
+            if (hasBars && side.number === max && left.number !== right.number) col.classList.add("lead");
+            col.append(el("div", "label", side.label));
+            const value = el("div", "value fit-w");
+            value.dataset.fitMin = "48";
+            value.textContent = side.value;
+            col.append(value);
+            if (side.note) col.append(el("div", "body note muted", side.note));
+            let fill = null;
+            if (hasBars) {
+              const track = el("div", "track");
+              fill = el("div", "fill");
+              track.append(fill);
+              col.append(track);
+            }
+            columns.append(col);
+            return { col, fill, ratio: hasBars ? side.number / max : 0 };
+          });
+          root.append(columns);
+          return { root, parts, cols };
+        },
+        list(s) {
+          const root = el("div", "scene list");
+          const parts = [];
+          if (s.title) {
+            const title = el("div", "el h2", s.title);
+            root.append(title);
+            parts.push({ node: title, at: 0.1 });
+          }
+          const rows = el("div", "rows");
+          const rowEls = s.items.map((item, i) => {
+            const row = el("div", "el row");
+            row.append(el("div", "index", pad2(i + 1)), el("div", "body", item));
+            rows.append(row);
+            return row;
+          });
+          root.append(rows);
+          return { root, parts, rowEls };
+        },
+        timeline(s) {
+          const root = el("div", "scene timeline");
+          const parts = [];
+          if (s.title) {
+            const title = el("div", "el h2", s.title);
+            root.append(title);
+            parts.push({ node: title, at: 0.1 });
+          }
+          const steps = el("div", "steps");
+          const rail = el("div", "rail");
+          const railFill = el("div", "rail-fill");
+          rail.append(railFill);
+          steps.append(rail);
+          const stepEls = s.steps.map((step) => {
+            const node = el("div", "el step");
+            const dot = el("div", "node");
+            node.append(dot, el("div", "label accent", step.label), el("div", "body", step.text));
+            steps.append(node);
+            return { node, dot };
+          });
+          root.append(steps);
+          return { root, parts, stepEls, railFill };
+        },
+        quote(s) {
+          const root = el("div", "scene quote");
+          const mark = el("div", "el mark", "“");
+          const text = el("div", "el text fit");
+          text.dataset.fitMax = "560";
+          text.dataset.fitMin = "52";
+          const lineEls = words(text, s.text, "word");
+          const attribution = el("div", "el label attribution", s.attribution);
+          root.append(mark, text, attribution);
+          return { root, parts: [{ node: mark, at: 0.1 }, { node: attribution, at: 1.1 }], wordEls: lineEls };
+        },
+        chart(s) {
+          const root = el("div", "scene chart");
+          const title = el("div", "el h2", s.title);
+          const bars = el("div", "bars");
+          const max = Math.max(...s.series.map((p) => p.value), 0) || 1;
+          const barEls = s.series.map((point, i) => {
+            const row = el("div", "el bar-row");
+            if (i === s.highlight) row.classList.add("lead");
+            const track = el("div", "bar-track");
+            const bar = el("div", "bar");
+            const value = el("div", "bar-value");
+            const spec = parseNumber(String(point.value));
+            value.textContent = spec ? formatNumber(0, spec) + (s.unit || "") : String(point.value) + (s.unit || "");
+            track.append(bar, value);
+            row.append(el("div", "bar-label", point.label), track);
+            bars.append(row);
+            return { row, bar, track, value, ratio: point.value / max, spec: spec ? { ...spec, suffix: spec.suffix + (s.unit || "") } : null };
+          });
+          const baseline = el("div", "el baseline");
+          root.append(title, bars, baseline);
+          return { root, parts: [{ node: title, at: 0.1 }, { node: baseline, at: 0.3 }], barEls };
+        },
+        outro(s) {
+          const root = el("div", "scene outro");
+          const label = el("div", "el label accent", "Your turn");
+          const h1 = el("div", "el h1 fit", s.text);
+          h1.dataset.fitMax = "480";
+          h1.dataset.fitMin = "56";
+          const sign = el("div", "el label sign", "ByteSize News \u00B7 new every morning");
+          root.append(label, h1, sign);
+          return { root, parts: [{ node: label, at: 0.1 }, { node: h1, at: 0.22 }, { node: sign, at: 0.8 }] };
+        },
+      };
+
+      const built = story.scenes.map((s) => {
+        const b = builders[s.type](s);
+        stage.append(b.root);
+        return { scene: s, ...b };
+      });
+
+      // Captions: one element per chunk, one span per word.
+      const capRoot = document.getElementById("captions");
+      const caps = (story.captions || []).map((chunk) => {
+        const node = el("div", "cap");
+        const spans = chunk.words.map((w) => {
+          const span = el("span", "cap-word", w);
+          node.append(span);
+          return span;
+        });
+        capRoot.append(node);
+        return { node, spans };
+      });
+
+      // ---- text fit: shrink until the block fits its box (build time only) --
+      function fitAll() {
+        stage.querySelectorAll(".fit").forEach((node) => {
+          const max = parseFloat(node.dataset.fitMax);
+          const min = parseFloat(node.dataset.fitMin);
+          let size = parseFloat(getComputedStyle(node).fontSize);
+          while (node.offsetHeight > max && size > min) {
+            size -= 4;
+            node.style.fontSize = size + "px";
+          }
+        });
+        stage.querySelectorAll(".fit-w").forEach((node) => {
+          const min = parseFloat(node.dataset.fitMin);
+          const width = node.parentElement.clientWidth;
+          let size = parseFloat(getComputedStyle(node).fontSize);
+          const probe = node.textContent;
+          // Measure against the longest text this node will show.
+          const longest = node.dataset.longest || probe;
+          node.textContent = longest;
+          while (node.scrollWidth > width && size > min) {
+            size -= 8;
+            node.style.fontSize = size + "px";
+          }
+          node.textContent = probe;
+        });
+      }
+
+      // ---- timeline ----------------------------------------------------------
+      function build() {
+        built.forEach((b) => {
+          if (b.value) b.value.dataset.longest = b.finalText;
+        });
+        fitAll();
+
+        const tl = gsap.timeline({ paused: true });
+        const total = story.duration;
+        const n = story.scenes.length;
+        const css = getComputedStyle(document.documentElement);
+        const ink = css.getPropertyValue("--ink").trim();
+        const ink2 = css.getPropertyValue("--ink-2").trim();
+        const accent = css.getPropertyValue("--accent").trim();
+
+        // Progress rule: fills over the whole video (the one continuous motion).
+        tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: total, ease: "none" }, 0);
+        tl.fromTo("#chrome", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.5, ease: EASE_OUT }, 0.05);
+
+        built.forEach((b, i) => {
+          const s = b.scene;
+          const start = s.start;
+          const end = s.end;
+          const last = i === n - 1;
+          const cues = Array.isArray(s.cues) ? s.cues : [];
+
+          tl.set(b.root, { opacity: 1 }, start);
+          tl.set("#counter", { textContent: pad2(i + 1) + " / " + pad2(n) }, start);
+
+          // Ordered reveal: label first, then the main element, then secondary
+          // chrome. Each arrives on its own beat (power3 long tail).
+          b.parts.forEach((p) => {
+            tl.fromTo(
+              p.node,
+              { opacity: 0, y: 36 },
+              { opacity: 1, y: 0, duration: ENTER, ease: EASE_OUT, immediateRender: false },
+              start + p.at,
+            );
+          });
+
+          // Headline words arrive as a wave (waterfall-entry: binary opacity,
+          // whip from below, overlapping), timed so the whole line lands by ~0.7s.
+          if (b.wordEls) {
+            const step = Math.min(0.055, 0.45 / Math.max(1, b.wordEls.length));
+            b.wordEls.forEach((w, k) => {
+              const t = start + 0.2 + k * step;
+              tl.set(w, { opacity: 0, y: 44 }, 0);
+              tl.set(w, { opacity: 1 }, t);
+              tl.to(w, { y: 0, duration: 0.5, ease: "power4.out" }, t);
+            });
+          }
+
+          if (s.type === "statement" && b.em) {
+            const at = s.emphasisAt != null ? Math.max(s.emphasisAt, start + 0.5) : start + 0.9;
+            tl.fromTo(b.em, { color: ink }, { color: accent, duration: 0.35, ease: "power2.out", immediateRender: false }, at);
+          }
+
+          if (s.type === "stat") {
+            const at = s.countAt != null ? Math.max(s.countAt, start + 0.35) : start + 0.5;
+            const COUNT = 1.3;
+            countUp(tl, b.value, b.spec, at, COUNT, "power2.out");
+            if (!b.spec) tl.set(b.value, { textContent: b.finalText }, at);
+            tl.fromTo(b.value, { scale: 0.94 }, { scale: 1, duration: COUNT, ease: "power2.out", immediateRender: false }, at);
+            tl.fromTo(b.fill, { scaleX: 0 }, { scaleX: 1, duration: COUNT, ease: "power2.out", immediateRender: false }, at);
+          }
+
+          if (s.type === "comparison") {
+            b.cols.forEach((c, k) => {
+              const at = cues[k] != null ? Math.max(cues[k], start + 0.3) : start + 0.4 + k * 0.5;
+              tl.fromTo(c.col, { opacity: 0, y: 36 }, { opacity: 1, y: 0, duration: ENTER, ease: EASE_OUT, immediateRender: false }, at);
+              if (c.fill) {
+                tl.fromTo(c.fill, { scaleX: 0 }, { scaleX: Math.max(0.02, c.ratio), duration: 0.9, ease: "power2.out", immediateRender: false }, at + 0.25);
+              }
+            });
+          }
+
+          if (s.type === "list") {
+            b.rowEls.forEach((row, k) => {
+              const at = cues[k] != null ? Math.max(cues[k], start + 0.3) : start + 0.4 + k * 0.45;
+              tl.fromTo(row, { opacity: 0, y: 28 }, { opacity: 1, y: 0, duration: 0.5, ease: EASE_OUT, immediateRender: false }, at);
+            });
+          }
+
+          if (s.type === "timeline") {
+            const firstAt = cues[0] != null ? Math.max(cues[0], start + 0.3) : start + 0.4;
+            const lastAt = cues[b.stepEls.length - 1] != null ? Math.max(cues[b.stepEls.length - 1], firstAt + 0.4) : firstAt + (b.stepEls.length - 1) * 0.6;
+            tl.fromTo(b.railFill, { scaleY: 0 }, { scaleY: 1, duration: Math.max(0.6, lastAt - firstAt + 0.4), ease: "power1.inOut", immediateRender: false }, firstAt);
+            b.stepEls.forEach((step, k) => {
+              const at = cues[k] != null ? Math.max(cues[k], start + 0.3) : start + 0.4 + k * 0.6;
+              tl.fromTo(step.node, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.5, ease: EASE_OUT, immediateRender: false }, at);
+              tl.fromTo(step.dot, { scale: 0.4 }, { scale: 1, duration: 0.45, ease: EASE_OUT, immediateRender: false }, at);
+            });
+          }
+
+          if (s.type === "chart") {
+            b.barEls.forEach((bar, k) => {
+              const at = cues[k] != null ? Math.max(cues[k], start + 0.3) : start + 0.45 + k * 0.3;
+              tl.fromTo(bar.row, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.45, ease: EASE_OUT, immediateRender: false }, at);
+              tl.fromTo(bar.bar, { scaleX: 0 }, { scaleX: Math.max(0.02, bar.ratio), duration: 0.9, ease: "power3.out", immediateRender: false }, at + 0.1);
+              if (bar.spec) countUp(tl, bar.value, bar.spec, at + 0.1, 0.9, "power3.out");
+              // The value label rides the bar's leading edge: translate by the
+              // bar's final width (ratio × bar width), in step with the fill.
+              // Measured once at build time (single composition), never per frame.
+              const barWidth = bar.track.clientWidth - 150;
+              tl.fromTo(bar.value, { x: 0 }, { x: Math.max(0.02, bar.ratio) * barWidth, duration: 0.9, ease: "power3.out", immediateRender: false }, at + 0.1);
+            });
+          }
+
+          // Exit: lift and fade just before the next scene, then hide.
+          if (!last) {
+            const exitAt = Math.max(start + 0.6, end - EXIT);
+            tl.to(b.root, { opacity: 0, y: -24, duration: EXIT, ease: EASE_IN }, exitAt);
+            tl.set(b.root, { opacity: 0, y: 0 }, end);
+          }
+        });
+
+        // Captions: the current chunk sits in the lower third; the spoken word
+        // takes the ink color, the rest stays muted.
+        (story.captions || []).forEach((chunk, c) => {
+          const { node, spans } = caps[c];
+          tl.set(node, { opacity: 1 }, chunk.start);
+          tl.fromTo(node, { y: 10 }, { y: 0, duration: 0.2, ease: EASE_OUT, immediateRender: false }, chunk.start);
+          tl.set(node, { opacity: 0 }, chunk.end);
+          chunk.at.forEach((at, w) => {
+            tl.set(spans[w], { color: ink }, at);
+          });
+          tl.set(spans, { color: ink2 }, 0);
+        });
+
+        window.__timelines["main"] = tl;
+      }
+
+      document.fonts.ready.then(build);
+    </script>
+  </body>
+</html>
