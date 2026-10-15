@@ -8,6 +8,7 @@ __pycache__/
 output/
 assets/background/*
 assets/character/*
+assets/characters/*
 assets/fonts/*
 !assets/**/.gitkeep
 newsletter_video/hf_template/renders/

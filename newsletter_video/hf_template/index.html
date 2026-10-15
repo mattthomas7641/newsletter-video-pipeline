@@ -349,6 +349,11 @@
       document.getElementById("badge").textContent = story.badge;
       document.getElementById("kicker").textContent = story.kicker;
       document.getElementById("outro-box").textContent = story.outro.text;
+      // Avatars come in different shapes; the builder sizes each one so it stays
+      // bottom-left without crowding the cards and captions.
+      if (story.avatar && story.avatar.height) {
+        document.getElementById("avatar").style.height = story.avatar.height + "px";
+      }
       if (!story.background) {
         // No gameplay clip this run: fall back to the plain graph paper.
         document.getElementById("bg").style.opacity = "0";
