@@ -85,7 +85,9 @@ Copy `.env.example` to `.env`. Everything is optional:
 | `KOKORO_VOICE`, `KOKORO_SPEED` | Kokoro voice and pace (`npx hyperframes tts --list` for voices) |
 | `VOICEBOX_PROFILE_ID`, `VOICEBOX_ENGINE`, `VOICEBOX_MODEL_SIZE`, `VOICEBOX_INSTRUCT` | Voicebox settings (see [Custom voice](#custom-voice)) |
 | `VOICE_EFFECT`, `CARTOON_PITCH` | `cartoon` pitches any voice up (1.3 subtle to 1.6 squeaky); `none` (default) keeps it natural |
-| `BACKGROUND_STYLE` | `gameplay` (default) or `none` for the plain graph-paper background |
+| `VIDEO_STYLE` | `avatar` (default) or `explainer`, a clean typographic explainer with no avatar or footage (see [Video styles](#video-styles)) |
+| `VIDEO_THEME` | Explainer style only: `light` (default) or `dark` |
+| `BACKGROUND_STYLE` | Avatar style only: `gameplay` (default) or `none` for the plain graph-paper background |
 | `YOUTUBE_UPLOAD` | `1` uploads each day's videos after rendering |
 | `YOUTUBE_PRIVACY`, `YOUTUBE_SCHEDULE` | Visibility and timed publishing (once your API project is audited) |
 
@@ -93,6 +95,46 @@ Videos land between 40 and 45 seconds: Claude aims for 100–110 words, and if t
 still runs long or short it's re-voiced slightly faster or slower. Prices and units are
 rewritten into spoken words before voicing ("$0.10" → "10 cents"), and coined words the voice
 gets wrong can be respelled in `PRONUNCIATIONS` in `tts.py`.
+
+## Video styles
+
+`VIDEO_STYLE` in `.env` picks one of two looks. Everything else (scraping, Jev, story
+exclusion, the cloned voice, word alignment, upload, metadata) is shared.
+
+- **`avatar`** (default): the original look described above: a narrator cutout, gameplay
+  footage, highlighted cards and heavy captions. Unset `VIDEO_STYLE` and nothing changes.
+- **`explainer`**: no avatar, no footage. A clean, typographic explainer built from a fixed
+  scene library (title, statement, big stat, comparison, list, timeline, quote, bar chart,
+  outro) with self-hosted fonts, one accent colour, light or dark theme (`VIDEO_THEME`), and
+  a subtle lower-third caption. Shorts/TikTok/Reels safe zones are respected: nothing
+  important sits in the top 150 px, the bottom 380 px or the right-hand button column.
+
+In explainer mode Claude writes a **scene plan** instead of a card script: an ordered list of
+scenes, each with typed on-screen fields under hard length caps and the line spoken over
+it (`EXPLAINER_WRITER_SYSTEM` in `explainer_writer.py`; still one call per day). Every plan is
+validated in code (`scene_plan.py`) before anything is voiced: a plan that breaks a cap, has
+the wrong shape, or cites an emphasis phrase that isn't in its text is logged with every
+error and that video is skipped, so a bad plan never crashes the day's run and is never
+rendered broken. Scene timing comes from the real word timestamps: a scene appears when the
+voice reaches its line, list rows and chart bars land as their words are spoken, and a stat
+counts up when its number is said. The selected character's persona still shapes the tone;
+its avatar image is simply not used.
+
+Without an Anthropic key, the rule-based scripts are rendered as a plainer structural plan
+(headlines and statements), with a warning in the log. Each video's `.json` sidecar gains a
+`scene_plan` key so it can be re-rendered exactly; any older sidecar can be re-rendered in
+this style too:
+
+```bash
+./venv/bin/python -m newsletter_video.explainer_builder output/2026-10-13/07_x.json --out /tmp/07.mp4               # structural plan from the saved script
+./venv/bin/python -m newsletter_video.explainer_builder output/2026-10-13/07_x.json --out /tmp/07.mp4 --write-plan  # ask Claude for a scene plan (one call)
+```
+
+The composition is `newsletter_video/hf_template_explainer/index.html`; its design system
+(tokens, type scale, spacing, motion, safe zones, the scene library) is documented in
+`newsletter_video/hf_template_explainer/DESIGN.md`. Validate it after changes with
+`npx hyperframes check` in that folder (lint, layout, motion and WCAG contrast), and run the
+validator tests with `./venv/bin/python -m pytest tests/` (`pytest` is the only extra dependency).
 
 ## Customizing
 
