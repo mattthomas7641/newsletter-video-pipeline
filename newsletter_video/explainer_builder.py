@@ -196,18 +196,61 @@ def _emphasis_cue(emphasis: str, words: list[tuple[str, float]], start: float) -
     return None
 
 
+_GLUE = {"a", "an", "the", "and", "or", "but", "to", "of", "in", "on", "at", "for", "with", "than",
+         "as", "by", "from", "into", "that", "its", "is", "are", "was", "were", "not", "no", "per"}
+_NUMBER_WORDS = {"zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+                 "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen",
+                 "nineteen", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
+                 "hundred", "thousand", "million", "billion", "trillion", "point", "percent", "times",
+                 "half", "dollars", "cents", "and"}
+CAPTION_MAX_WORDS = 8  # a chunk may stretch this far to keep a phrase or number together
+
+
+def _is_number_word(word: str) -> bool:
+    w = _norm(word)
+    return bool(w) and (any(ch.isdigit() for ch in w) or w in _NUMBER_WORDS)
+
+
 def caption_chunks(words: list[tuple[str, float]]) -> list[list[tuple[str, float]]]:
+    """Lower-third chunks that read as phrases: about 4 words / 24 characters,
+    cut at punctuation, never cut inside a spoken number ("one point eight
+    and five point one"), and never starting on a dangling function word
+    ("and", "to", "of"...): such a word stays with the phrase before it."""
     chunks: list[list[tuple[str, float]]] = []
     chunk: list[tuple[str, float]] = []
-    for word, at in words:
+    n = len(words)
+
+    def clean_cut(left: str, right: str) -> bool:
+        """A break between `left` and `right` leaves neither a chunk ending
+        on a function word, one starting on one, nor a number split in two."""
+        return (_norm(left) not in _GLUE and _norm(right) not in _GLUE
+                and not (_is_number_word(left) and _is_number_word(right) and left[-1] not in ".!?"))
+
+    for i, (word, at) in enumerate(words):
         chunk.append((word, at))
+        nxt = words[i + 1][0] if i + 1 < n else None
+        if nxt is None:
+            break
         chars = sum(len(w) for w, _ in chunk)
+        full = len(chunk) >= CAPTION_WORDS or chars >= CAPTION_CHARS
         ends_clause = word[-1] in ",.!?:;" and len(chunk) >= 2
-        if len(chunk) >= CAPTION_WORDS or chars >= CAPTION_CHARS or ends_clause:
+        hard = len(chunk) >= CAPTION_MAX_WORDS
+        if ends_clause or (full and clean_cut(word, nxt)):
             chunks.append(chunk)
             chunk = []
+        elif hard:
+            # Too long to wait for a clean cut at the end: cut at the last clean
+            # spot inside the chunk and carry the rest forward.
+            for j in range(len(chunk) - 1, 1, -1):
+                if clean_cut(chunk[j - 1][0], chunk[j][0]):
+                    chunks.append(chunk[:j])
+                    chunk = chunk[j:]
+                    break
+            else:
+                chunks.append(chunk)
+                chunk = []
     if chunk:
-        if len(chunk) == 1 and chunks and len(chunks[-1]) < CAPTION_WORDS + 1:
+        if len(chunk) == 1 and chunks and len(chunks[-1]) < CAPTION_MAX_WORDS:
             chunks[-1].extend(chunk)
         else:
             chunks.append(chunk)
@@ -247,6 +290,10 @@ def story_payload(plan: ScenePlan, per_line: list[list[tuple[str, float]]], spee
             entry["cues"] = cue_times([p["label"] for p in f["series"]], words, start, end)
         elif scene.type == "comparison":
             entry["cues"] = cue_times([f["left"]["label"], f["right"]["label"]], words, start, end)
+        elif scene.type == "diagram":
+            entry["cues"] = cue_times([n["label"] + " " + n["text"] for n in f["nodes"]], words, start, end)
+        elif scene.type == "device":
+            entry["cues"] = cue_times(f["lines"], words, start, end)
         scenes.append(entry)
 
     all_words = [(w, t) for words in per_line for w, t in words]
