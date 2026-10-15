@@ -60,7 +60,8 @@ def normalize_status(raw) -> dict | None:
         error = ""
     if not state and not error:
         return None
-    return {"state": state or ("failed" if error else ""), "error": error, "tone": _tone(state) if state else "bad"}
+    label = state[:1].upper() + state[1:] if state else "Failed"
+    return {"state": label, "error": error, "tone": _tone(state) if state else "bad"}
 
 
 def _status_for(folder: Path, mp4: Path, whole) -> dict | None:
@@ -176,11 +177,12 @@ def setup_check(paths: UIPaths, store: EnvStore, voicebox_running: bool) -> list
     keys = store.secret_presence()
     uses_voicebox = store.read_only().get("TTS_PROVIDER") == "voicebox" or \
         store.read()["values"]["CHARACTER"] != "" or store.has_value("VOICEBOX_PROFILE_ID")
+    uploading = store.read()["values"]["YOUTUBE_UPLOAD"] == "1"
     token = (paths.secrets_dir / "youtube_token.json").is_file()
     client = (paths.secrets_dir / "youtube_client_secret.json").is_file()
     clips = len(list(paths.background_dir.glob("*.mp4"))) if paths.background_dir.is_dir() else 0
     return [
-        {"id": "writer", "label": "AI writer", "ok": keys["ANTHROPIC_API_KEY"],
+        {"id": "writer", "label": "AI writer", "ok": keys["ANTHROPIC_API_KEY"], "optional": True,
          "detail": "API key found." if keys["ANTHROPIC_API_KEY"]
          else "No API key. Scripts come from the simpler rule-based writer."},
         {"id": "voicebox", "label": "Voicebox", "ok": voicebox_running,
@@ -188,7 +190,7 @@ def setup_check(paths: UIPaths, store: EnvStore, voicebox_running: bool) -> list
          "detail": "Running." if voicebox_running
          else ("Not running. It starts automatically when a voice is needed." if uses_voicebox
                else "Not running. Only needed for cloned voices.")},
-        {"id": "youtube", "label": "YouTube", "ok": token,
+        {"id": "youtube", "label": "YouTube", "ok": token, "optional": not uploading,
          "detail": "Signed in." if token
          else ("Not signed in. Run: python -m newsletter_video.youtube_upload --auth" if client
                else "Not set up. See Uploading to YouTube Shorts in the README.")},
