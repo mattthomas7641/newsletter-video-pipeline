@@ -276,7 +276,7 @@ def test_videos_endpoint_is_tolerant_of_missing_and_partial_files(client, paths)
     assert videos["01_a.mp4"]["title"] == "Story A!"
     assert videos["01_a.mp4"]["youtube"]["url"] == "https://www.youtube.com/shorts/abcDEF12345"
     assert videos["01_a.mp4"]["status"]["state"] == "Uploaded"
-    assert videos["02_b.mp4"]["status"] == {"state": "failed", "error": "render crashed", "tone": "bad"}
+    assert videos["02_b.mp4"]["status"] == {"state": "Failed", "error": "render crashed", "tone": "bad"}
     assert videos["03_c.mp4"]["has_file"] is False and videos["03_c.mp4"]["url"] is None
 
 
@@ -294,7 +294,7 @@ def test_day_level_status_json_in_several_shapes(client, paths):
                                                               "02_b.mp4": {"status": "done"}}}))
     _, data = client.get_json("/api/videos")
     states = {v["name"]: (v["status"]["state"], v["status"]["tone"]) for v in data["today"]["videos"]}
-    assert states == {"01_a.mp4": ("rendering", "active"), "02_b.mp4": ("done", "good")}
+    assert states == {"01_a.mp4": ("Rendering", "active"), "02_b.mp4": ("Done", "good")}
     (today / "status.json").write_text("[1, 2, 3]")  # unexpected shape: ignored, not a crash
     assert client.get_json("/api/videos")[0] == 200
 

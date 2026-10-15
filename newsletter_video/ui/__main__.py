@@ -22,7 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     paths = UIPaths.default(PROJECT_ROOT, env_path=args.env_file.resolve() if args.env_file else None)
     server, app = make_server(paths, port=args.port)
     url = f"http://127.0.0.1:{app.guard.port}/"
-    print(f"ByteSize control panel running at {url}")
+    print(f"ByteSize control panel running at {url}", flush=True)
     print("Only this computer can reach it. Press Ctrl+C to stop; runs already started keep going.")
     if not args.no_browser:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()
