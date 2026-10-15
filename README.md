@@ -107,10 +107,30 @@ cards with highlight and timing, captions), so the template works the same in
 Studio and in automated renders.
 
 ### The narrator character
-The narrator is a single cutout image: the first `.png` or `.jpg` in `assets/character/`
-(gitignored, so it never goes into the repo). The composition places it at the bottom of
-the frame with a slight idle bob, and keeps the cards and captions clear of its head. To
-change the narrator, swap the file. With the folder empty, videos render without one.
+A character is an avatar image, optionally a cloned voice, and optionally a writing
+persona, stored in `assets/characters/<name>/` (gitignored, so it never goes into the repo).
+The composition places the avatar at the bottom-left of the frame with a slight idle bob,
+shrinks wide images so they don't crowd the cards, and keeps cards and captions clear of it.
+
+```bash
+# clone a voice from a clean clip and add the avatar (a transparent-background PNG works best)
+python -m newsletter_video.characters add "My Character" --avatar me.png --voice-audio me.wav \
+  --persona "upbeat, loves puns" --use
+python -m newsletter_video.characters list
+python -m newsletter_video.characters say my-character "Does this sound right?"
+python -m newsletter_video.characters use none      # back to the original setup
+```
+
+- **Voice:** `--voice-audio` clones a voice in Voicebox (the app must be installed; it's started
+  for you). Use 5-30 seconds of clean, single-speaker speech, with no background music, laughs or
+  long pauses; those leak into the cloned voice as odd pauses and noise. Pass `--voice-audio` more
+  than once for several clips, or `--profile-id` to reuse a voice you already made in Voicebox.
+  Without either, the character uses your default `TTS_PROVIDER` voice.
+- **Persona:** `--persona` tells the script writer how this narrator talks. It changes tone and
+  wording only; the facts still come from the stories.
+- **Selecting:** `CHARACTER=<name>` in `.env` (what `use` sets). With it blank, the pipeline uses
+  the first image in `assets/character/` and `VOICEBOX_PROFILE_ID`, as before.
+- Only use avatars and voices you have the rights to.
 
 ### Gameplay background
 Set `BACKGROUND_STYLE=none` to skip it entirely. Otherwise, drop any vertical gameplay `.mp4` into `assets/background/` (or download one with

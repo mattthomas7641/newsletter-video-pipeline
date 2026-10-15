@@ -552,6 +552,21 @@ def _jev_rank_candidates(candidates: list[Story], n_videos: int) -> list[Story] 
     return ranked  # may legitimately be [] if nothing cleared the bar — not the same as Jev being unavailable
 
 
+def _writer_system() -> str:
+    """WRITER_SYSTEM plus the active character's persona, if it has one."""
+    from .characters import active
+
+    character = active()
+    if not (character and character.persona):
+        return WRITER_SYSTEM
+    return (
+        WRITER_SYSTEM
+        + f"\nNarrator character\n- The narrator is {character.name}: {character.persona.rstrip('. ')}. "
+        "This shapes tone and word choice only. Every fact, number and claim must still come "
+        "from the stories, and the word budget and spoken-text rules above still apply.\n"
+    )
+
+
 def _llm_scripts(candidates: list[Story], n_videos: int) -> list[Script] | None:
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return None
@@ -579,7 +594,7 @@ def _llm_scripts(candidates: list[Story], n_videos: int) -> list[Script] | None:
         with client.beta.messages.stream(
             model=WRITER_MODEL,
             max_tokens=64000,
-            system=WRITER_SYSTEM,
+            system=_writer_system(),
             messages=[{"role": "user", "content": user}],
             output_config=output_config,
             betas=["server-side-fallback-2026-07-01"],

@@ -207,11 +207,16 @@ def _voicebox_backend(text: str, out_path: Path, speed: float | None = None) -> 
     import urllib.error
     import urllib.request
 
+    from .characters import active
+
     _ensure_voicebox_running()
-    profile_id = os.environ["VOICEBOX_PROFILE_ID"]
-    engine = os.environ.get("VOICEBOX_ENGINE", DEFAULT_VOICEBOX_ENGINE)
-    model_size = os.environ.get("VOICEBOX_MODEL_SIZE", DEFAULT_VOICEBOX_MODEL_SIZE)
-    instruct = os.environ.get("VOICEBOX_INSTRUCT", DEFAULT_VOICEBOX_INSTRUCT)
+    character = active()  # the selected character's voice settings win over the .env defaults
+    profile_id = (character.voicebox_profile_id if character else None) or os.environ["VOICEBOX_PROFILE_ID"]
+    engine = (character.engine if character else None) or os.environ.get("VOICEBOX_ENGINE", DEFAULT_VOICEBOX_ENGINE)
+    model_size = ((character.model_size if character else None)
+                  or os.environ.get("VOICEBOX_MODEL_SIZE", DEFAULT_VOICEBOX_MODEL_SIZE))
+    instruct = ((character.instruct if character else None)
+                or os.environ.get("VOICEBOX_INSTRUCT", DEFAULT_VOICEBOX_INSTRUCT))
 
     request_body = {"profile_id": profile_id, "text": text, "engine": engine, "model_size": model_size}
     if instruct:
@@ -348,7 +353,13 @@ def synthesize(text: str, out_path: Path, speed: float | None = None) -> Path:
     `speed` overrides KOKORO_SPEED (Kokoro only)."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     text = speakable(text)
-    provider = os.environ.get("TTS_PROVIDER", "kokoro")
+    from .characters import active
+
+    character = active()
+    if character and character.voicebox_profile_id:
+        provider = "voicebox"  # a character with its own cloned voice always uses it
+    else:
+        provider = os.environ.get("TTS_PROVIDER", "kokoro")
     if provider == "voicebox":
         _voicebox_backend(text, out_path, speed)
     elif provider == "elevenlabs":
