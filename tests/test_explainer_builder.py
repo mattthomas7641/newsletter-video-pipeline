@@ -30,6 +30,12 @@ def test_unnamed_items_are_spread_evenly_and_never_go_backwards():
     assert mixed[1] == 12.4 and mixed[0] < mixed[1] <= mixed[2]
 
 
+def test_cues_match_inflected_words():
+    line = [("Senior", 1.0), ("jobs", 1.3), ("supplied", 1.6), ("most", 1.9), ("of", 2.0), ("it.", 2.2)]
+    assert cue_times(["Seniors"], line, 0.0, 4.0) == [1.0]
+    assert cue_times(["Juniors"], line, 0.0, 4.0) == [0.35]  # not said: lands at the floor
+
+
 def test_caption_chunks_break_on_length_and_clauses():
     chunks = caption_chunks(LINE)
     assert [len(c) for c in chunks] == [4, 4, 3]
