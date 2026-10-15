@@ -60,6 +60,7 @@ CAPTION_CHARS = 24  # ...or fewer, if the words are long
 CUE_MIN_DELAY = 0.35  # a cued element never lands before the scene has settled
 CUE_SPAN = 0.7  # un-cued items spread across this fraction of the spoken line
 FIRST_CUE_MAX = 1.6  # the first item lands by then even when the voice names it later (no empty hero)
+CUE_MAX_GAP = 1.4  # ...and each later item within this much of the previous one
 EXPLAINER_MIN_SPEED = 0.88  # a touch slower than the avatar floor: a 100-word line from a fast cloned voice still reaches ~38-40 s
 _STOPWORDS = {"the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with", "is", "are",
               "was", "were", "it", "its", "this", "that", "than", "then", "now", "how", "what", "who"}
@@ -165,12 +166,14 @@ def cue_times(items: list[str], words: list[tuple[str, float]], start: float, en
             for k in range(i, j):
                 cues[k] = lo + (hi - lo) * (k - i + 1) / (j - i + 1)
         i = j
-    if cues:
-        cues[0] = min(float(cues[0]), start + FIRST_CUE_MAX)
     result: list[float] = []
     last = floor
-    for c in cues:
-        c = min(max(float(c), last), max(end - 0.3, last))
+    for k, c in enumerate(cues):
+        # Speech sync, but never a hole: the k-th item lands no later than
+        # FIRST_CUE_MAX + k * CUE_MAX_GAP after the scene starts, even when the
+        # voice names it later (an empty tile reads as broken, not as timing).
+        c = min(float(c), start + FIRST_CUE_MAX + k * CUE_MAX_GAP)
+        c = min(max(c, last), max(end - 0.3, last))
         result.append(round(c, 3))
         last = c
     return result
