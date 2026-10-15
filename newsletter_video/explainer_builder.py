@@ -109,6 +109,13 @@ def _key_words(text: str) -> list[str]:
     return [w for w in (_norm(t) for t in text.split()) if len(w) >= 4 and w not in _STOPWORDS]
 
 
+def _same_word(spoken: str, key: str) -> bool:
+    """Exact, or the same 5-letter stem ("seniors" / "senior", "narrows" /
+    "narrower"): the on-screen wording and the spoken line rarely inflect
+    the same way."""
+    return spoken == key or (len(spoken) >= 5 and len(key) >= 5 and spoken[:5] == key[:5])
+
+
 def cue_times(items: list[str], words: list[tuple[str, float]], start: float, end: float) -> list[float]:
     """When each on-screen item (list row, timeline step, chart bar) should
     appear: the moment the voice says one of its key words, searched in
@@ -124,7 +131,7 @@ def cue_times(items: list[str], words: list[tuple[str, float]], start: float, en
         keys = set(_key_words(item))
         hit = None
         for j in range(cursor, len(spoken)):
-            if spoken[j][0] in keys:
+            if any(_same_word(spoken[j][0], k) for k in keys):
                 hit = max(spoken[j][1], floor)
                 cursor = j + 1
                 break
@@ -184,7 +191,7 @@ def _emphasis_cue(emphasis: str, words: list[tuple[str, float]], start: float) -
         return None
     keys = set(_key_words(emphasis)) or {_norm(emphasis.split()[0])}
     for w, t in words:
-        if _norm(w) in keys:
+        if any(_same_word(_norm(w), k) for k in keys):
             return round(max(t, start + 0.5), 3)
     return None
 
