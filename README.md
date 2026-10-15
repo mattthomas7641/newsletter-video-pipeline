@@ -103,22 +103,26 @@ exclusion, the cloned voice, word alignment, upload, metadata) is shared.
 
 - **`avatar`** (default): the original look described above: a narrator cutout, gameplay
   footage, highlighted cards and heavy captions. Unset `VIDEO_STYLE` and nothing changes.
-- **`explainer`**: no avatar, no footage. A clean, typographic explainer built from a fixed
-  scene library (title, statement, big stat, comparison, list, timeline, quote, bar chart,
-  outro) with self-hosted fonts, one accent colour, light or dark theme (`VIDEO_THEME`), and
+- **`explainer`**: no avatar, no footage. A clean editorial explainer where every scene is
+  built around a graphic: a hand-drawn pictogram set, big numbers with a trend chart or
+  progress ring, bar / column / line / dots-of-100 charts, comparison discs drawn to scale, a
+  timeline with a travelling marker, diagrams (flow, stack, hub, funnel) and device
+  wireframes (phone, laptop, terminal, chat), all authored vector, with self-hosted fonts,
+  one accent colour, light or dark theme (`VIDEO_THEME`), designed push/wipe transitions and
   a subtle lower-third caption. Shorts/TikTok/Reels safe zones are respected: nothing
   important sits in the top 150 px, the bottom 380 px or the right-hand button column.
 
 In explainer mode Claude writes a **scene plan** instead of a card script: an ordered list of
-scenes, each with typed on-screen fields under hard length caps and the line spoken over
-it (`EXPLAINER_WRITER_SYSTEM` in `explainer_writer.py`; still one call per day). Every plan is
-validated in code (`scene_plan.py`) before anything is voiced: a plan that breaks a cap, has
-the wrong shape, or cites an emphasis phrase that isn't in its text is logged with every
-error and that video is skipped, so a bad plan never crashes the day's run and is never
+scenes, each with a scene type, typed on-screen fields under hard length caps and the line
+spoken over it (`EXPLAINER_WRITER_SYSTEM` in `explainer_writer.py`; still one call per day).
+Every plan is validated in code (`scene_plan.py`) before anything is voiced: caps, shape,
+98+ spoken words, at least two graphic scenes, never two text-only scenes in a row. A plan
+that fails gets one repair round with the validator's exact errors; if it still fails it is
+logged and that video is skipped, so a bad plan never crashes the day's run and is never
 rendered broken. Scene timing comes from the real word timestamps: a scene appears when the
-voice reaches its line, list rows and chart bars land as their words are spoken, and a stat
-counts up when its number is said. The selected character's persona still shapes the tone;
-its avatar image is simply not used.
+voice reaches its line, rows, nodes and bars land as their words are spoken, a stat counts up
+when its number is said. The selected character's persona still shapes the tone; its avatar
+image is simply not used.
 
 Without an Anthropic key, the rule-based scripts are rendered as a plainer structural plan
 (headlines and statements), with a warning in the log. Each video's `.json` sidecar gains a

@@ -266,19 +266,52 @@ def _call_writer(user: str) -> dict | None:
     return data
 
 
-def _accept(video: dict, stories: list[Story]) -> ExplainerScript | None:
-    """Validates one video's plan; logs and drops it when it fails."""
-    title = str(video.get("title", "")).strip() or "Untitled"
-    try:
-        plan = validate_plan(video.get("scenes"), strict=True)
-    except ScenePlanError as exc:
-        log.error("Explainer: skipping %r, its scene plan failed validation:\n  %s",
-                  title, "\n  ".join(exc.errors))
+def _validated_videos(user: str, n_videos: int) -> list[tuple[dict, ScenePlan]] | None:
+    """Asks for the videos, validates every plan (strict), and gives Claude
+    one chance to fix the rejected ones with the validator's exact errors
+    before they are dropped. Returns the accepted (video, plan) pairs in
+    order; None when Claude could not be used at all."""
+    data = _call_writer(user)
+    if data is None:
         return None
-    for note in plan.repairs:
-        log.info("Explainer: %r plan repair: %s", title, note)
-    return script_from_plan(plan, title, str(video.get("badge", "NEWS")), stories,
-                            str(video.get("post_caption", "")), list(video.get("hashtags", [])))
+    videos = data.get("videos", [])[:n_videos]
+    results: list[tuple[dict, ScenePlan | None, list[str]]] = []
+    for video in videos:
+        try:
+            results.append((video, validate_plan(video.get("scenes"), strict=True), []))
+        except ScenePlanError as exc:
+            results.append((video, None, exc.errors))
+    rejected = [(i, v, errs) for i, (v, p, errs) in enumerate(results) if p is None]
+    if rejected:
+        notes = "\n".join(
+            f"- video {i + 1} ({str(v.get('title', ''))[:60]!r}):\n  " + "\n  ".join(errs) for i, v, errs in rejected
+        )
+        log.info("Explainer: %d of %d plans rejected, asking Claude to fix them once", len(rejected), len(results))
+        repair = (
+            user + "\n\nYour previous answer is below. The automatic checks rejected these videos:\n"
+            + notes + "\n\nReturn all videos again: keep the accepted ones exactly as they were and "
+            "rewrite the rejected ones so they pass.\n\nPrevious answer:\n" + json.dumps(data)
+        )
+        data2 = _call_writer(repair)
+        if data2 is not None:
+            videos2 = data2.get("videos", [])[:n_videos]
+            for i, _, _ in rejected:
+                if i >= len(videos2):
+                    continue
+                try:
+                    results[i] = (videos2[i], validate_plan(videos2[i].get("scenes"), strict=True), [])
+                except ScenePlanError as exc:
+                    results[i] = (videos2[i], None, exc.errors)
+    accepted = []
+    for video, plan, errs in results:
+        title = str(video.get("title", "")).strip() or "Untitled"
+        if plan is None:
+            log.error("Explainer: skipping %r, its scene plan failed validation:\n  %s", title, "\n  ".join(errs))
+            continue
+        for note in plan.repairs:
+            log.info("Explainer: %r plan repair: %s", title, note)
+        accepted.append((video, plan))
+    return accepted
 
 
 def llm_explainer_scripts(candidates: list[Story], n_videos: int) -> list[ExplainerScript] | None:
@@ -295,18 +328,17 @@ def llm_explainer_scripts(candidates: list[Story], n_videos: int) -> list[Explai
         f"Write exactly {n_videos} videos from today's stories below, each as a scene plan. "
         f"Order them with the strongest video first. Reference stories by their [id].\n\n{stories}"
     )
-    data = _call_writer(user)
-    if data is None:
+    accepted = _validated_videos(user, n_videos)
+    if accepted is None:
         return None
     scripts = []
-    for video in data.get("videos", [])[:n_videos]:
+    for video, plan in accepted:
         ids = [i for i in video.get("story_ids", []) if isinstance(i, int) and 0 <= i < len(candidates)]
-        script = _accept(video, [candidates[i] for i in ids])
-        if script is not None:
-            scripts.append(script)
-    written = len(data.get("videos", [])[:n_videos])
-    if len(scripts) < written:
-        log.warning("Explainer: %d of %d videos dropped for invalid scene plans", written - len(scripts), written)
+        scripts.append(script_from_plan(plan, str(video.get("title", "")).strip() or "Untitled",
+                                        str(video.get("badge", "NEWS")), [candidates[i] for i in ids],
+                                        str(video.get("post_caption", "")), list(video.get("hashtags", []))))
+    if len(scripts) < n_videos:
+        log.warning("Explainer: %d of %d videos dropped for invalid scene plans", n_videos - len(scripts), n_videos)
     return scripts
 
 
@@ -351,10 +383,9 @@ def replan_sidecar(meta: dict) -> ScenePlan:
         "the same facts (you may reuse or rephrase the narration), but choose scene types that "
         "fit each beat. Use story_ids [0].\n\n[0] " + source
     )
-    data = _call_writer(user)
-    if data is None:
+    accepted = _validated_videos(user, 1)
+    if accepted is None:
         raise RuntimeError("Claude is unavailable (no ANTHROPIC_API_KEY, SDK, or the call failed)")
-    videos = data.get("videos", [])
-    if not videos:
-        raise RuntimeError("Claude returned no video")
-    return validate_plan(videos[0].get("scenes"), strict=True)
+    if not accepted:
+        raise ScenePlanError(["Claude's plan failed validation twice; see the log for the errors"])
+    return accepted[0][1]
