@@ -61,6 +61,9 @@ def run(target_date: date | None = None) -> list[Path]:
 
     narrator = active_character()  # raises now, not mid-run, if CHARACTER names a missing character
     log.info("Narrator: %s", narrator.name if narrator else "default (assets/character/)")
+    from .explainer_builder import video_style
+
+    log.info("Video style: %s", video_style())  # raises now if VIDEO_STYLE is misspelled
 
     if not _wait_for_network():
         log.warning(
