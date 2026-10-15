@@ -19,6 +19,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from .characters import active as active_character
 from .scraper import DEFAULT_EDITIONS, fetch_editions
 from .script_writer import build_scripts
 from .video_builder import build_shorts
@@ -57,6 +58,9 @@ def _wait_for_network(host: str = "tldr.tech") -> bool:
 def run(target_date: date | None = None) -> list[Path]:
     load_dotenv(PROJECT_ROOT / ".env")
     target_date = target_date or date.today()
+
+    narrator = active_character()  # raises now, not mid-run, if CHARACTER names a missing character
+    log.info("Narrator: %s", narrator.name if narrator else "default (assets/character/)")
 
     if not _wait_for_network():
         log.warning(
