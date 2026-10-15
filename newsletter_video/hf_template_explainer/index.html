@@ -422,7 +422,7 @@
       }
       .comparison .columns {
         display: grid;
-        grid-template-columns: 1fr 72px 1fr;
+        grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr); /* tracks never grow for nowrap figures */
         align-items: start;
         column-gap: var(--s-2);
       }
@@ -1329,7 +1329,7 @@
           const hero = el("div", "hero");
           const columns = el("div", "columns");
           const left = s.left, right = s.right;
-          const hasNums = left.number != null && right.number != null;
+          const hasNums = [left.number, right.number].every((v) => typeof v === "number" && isFinite(v) && v > 0);
           const max = hasNums ? Math.max(left.number, right.number) : 1;
           const cols = [left, right].map((side) => {
             const col = el("div", "el col");
