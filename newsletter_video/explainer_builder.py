@@ -59,6 +59,8 @@ CAPTION_WORDS = 4  # max words per lower-third chunk
 CAPTION_CHARS = 24  # ...or fewer, if the words are long
 CUE_MIN_DELAY = 0.35  # a cued element never lands before the scene has settled
 CUE_SPAN = 0.7  # un-cued items spread across this fraction of the spoken line
+FIRST_CUE_MAX = 1.6  # the first item lands by then even when the voice names it later (no empty hero)
+EXPLAINER_MIN_SPEED = 0.88  # a touch slower than the avatar floor: a 100-word line from a fast cloned voice still reaches ~38-40 s
 _STOPWORDS = {"the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with", "is", "are",
               "was", "were", "it", "its", "this", "that", "than", "then", "now", "how", "what", "who"}
 
@@ -163,6 +165,8 @@ def cue_times(items: list[str], words: list[tuple[str, float]], start: float, en
             for k in range(i, j):
                 cues[k] = lo + (hi - lo) * (k - i + 1) / (j - i + 1)
         i = j
+    if cues:
+        cues[0] = min(float(cues[0]), start + FIRST_CUE_MAX)
     result: list[float] = []
     last = floor
     for c in cues:
@@ -336,7 +340,7 @@ def _voice_paced(lines: list[str], audio_path: Path) -> tuple[list[list[tuple[st
         if speech_duration * base_speed() / speed > hard:
             speed = min(base_speed() * speech_duration / hard, MAX_SPEED)
     elif speech_duration < floor:
-        speed = max(base_speed() * speech_duration / floor, MIN_SPEED)
+        speed = max(base_speed() * speech_duration / floor, min(MIN_SPEED, EXPLAINER_MIN_SPEED))
     if speed is not None:
         per_line, speech_duration = _voice_script(lines, audio_path, speed=speed)
     return per_line, speech_duration
