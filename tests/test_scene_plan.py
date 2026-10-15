@@ -222,7 +222,8 @@ def test_plan_from_classic_script_dict():
     plan = plan_from_script(script)
     assert [s.type for s in plan.scenes] == ["title", "statement", "stat", "statement", "statement", "outro"]
     assert plan.scenes[0].fields["kicker"] == "AI AGENTS"
-    assert plan.scenes[2].fields == {"value": "5.1x", "label": "the max cost multiplier for teams", "context": "", "source": ""}
+    assert plan.scenes[2].fields == {"value": "5.1x", "label": "the max cost multiplier for teams", "context": "",
+                                     "source": "", "trend": []}
     assert plan.scenes[1].fields["emphasis"] == "teams"
     assert plan.lines == [script["hook"]] + [b["say"] for b in script["beats"]] + [script["outro"]]
 
@@ -240,6 +241,91 @@ def test_plan_from_script_shortens_long_titles_at_word_boundaries():
     headline = plan.scenes[0].fields["headline"]
     assert len(headline) <= CAPS["title"]["headline"] and not headline.endswith(" ")
     assert len(plan.scenes[0].fields["kicker"]) <= CAPS["title"]["kicker"]
+
+
+def visual_plan() -> list[dict]:
+    """A strict-valid plan: 100+ words, graphics between every text scene."""
+    long = "This spoken line carries the beat with enough words to reach the budget for the video."
+    return [
+        {"type": "title", "say": long, "kicker": "AI AGENTS", "headline": "Agent teams cost 5x more", "icon": "robot"},
+        {"type": "stat", "say": long, "value": "5.1x", "label": "Top cost multiplier", "trend": [1.8, 3.2, 5.1]},
+        {"type": "statement", "say": long, "text": "It depends on the task", "emphasis": "depends", "icon": "scale"},
+        {"type": "diagram", "say": long, "kind": "flow", "title": "How a team runs",
+         "nodes": [{"label": "Planner", "text": "splits the task"}, {"label": "Workers", "text": "run in parallel"}]},
+        {"type": "device", "say": long, "kind": "terminal", "label": "claude",
+         "lines": ["$ claude projects run", "3 workers running"]},
+        {"type": "chart", "say": long, "kind": "dots", "title": "Share of tasks", "unit": "%",
+         "series": [{"label": "Team won", "value": 12}, {"label": "Tie", "value": 88}], "highlight": 0},
+        {"type": "outro", "say": long, "text": "Worth the bill?"},
+    ]
+
+
+def test_strict_plan_passes_and_keeps_visual_fields():
+    plan = validate_plan(visual_plan(), strict=True)
+    assert plan.scenes[0].fields["icon"] == "robot"
+    assert plan.scenes[1].fields["trend"] == [1.8, 3.2, 5.1]
+    assert plan.scenes[3].fields["kind"] == "flow" and len(plan.scenes[3].fields["nodes"]) == 2
+    assert plan.scenes[4].fields == {"title": "", "kind": "terminal", "label": "claude",
+                                     "lines": ["$ claude projects run", "3 workers running"]}
+    assert plan.scenes[5].fields["kind"] == "dots"
+
+
+def test_strict_rules_reject_text_heavy_or_short_plans():
+    raw = visual_plan()
+    raw[2]["say"] = raw[3]["say"] = "Four words are here."  # drop below the strict word floor
+    assert any("words, allowed 95" in e for e in errors_of_strict(raw))
+    raw = visual_plan()
+    raw[3] = {"type": "quote", "say": raw[3]["say"], "text": "A quotation", "attribution": "Someone"}
+    assert any("both text-only" in e for e in errors_of_strict(raw))
+    raw = visual_plan()
+    for i in (1, 3, 4, 5):
+        raw[i] = {"type": "statement", "say": raw[i]["say"], "text": f"Text card {i}"}
+    errs = errors_of_strict(raw)
+    assert any("graphic scene" in e for e in errs)
+    validate_plan(raw)  # the same plan is fine as a non-strict structural plan
+
+
+def errors_of_strict(raw) -> list[str]:
+    with pytest.raises(ScenePlanError) as info:
+        validate_plan(raw, strict=True)
+    return info.value.errors
+
+
+def test_unknown_icon_and_kind_handling():
+    raw = visual_plan()
+    raw[0]["icon"] = "unicorn"
+    raw[3]["kind"] = "spiral"
+    errs = errors_of_strict(raw)
+    assert any("'kind' must be one of flow, stack, hub, funnel" in e for e in errs)
+    raw[3]["kind"] = "hub"  # hub needs 3-5 nodes and a center
+    errs = errors_of_strict(raw)
+    assert any("'nodes' has 2 entries, allowed 3-5" in e for e in errs)
+    assert any("'center' is missing" in e for e in errs)
+    raw[3]["kind"] = "stack"
+    plan = validate_plan(raw, strict=True)
+    assert plan.scenes[0].fields["icon"] == "" and any("unknown icon 'unicorn'" in r for r in plan.repairs)
+
+
+def test_dots_chart_must_sum_to_at_most_100_and_trend_bounds():
+    raw = visual_plan()
+    raw[5]["series"] = [{"label": "A", "value": 70}, {"label": "B", "value": 60}]
+    assert any("shares of 100" in e for e in errors_of_strict(raw))
+    raw = visual_plan()
+    raw[1]["trend"] = [1]
+    assert any("'trend' has 1 points" in e for e in errors_of_strict(raw))
+    raw = visual_plan()
+    raw[1]["trend"] = [1, -2]
+    assert any("non-negative" in e for e in errors_of_strict(raw))
+
+
+def test_list_icons_must_match_items():
+    raw = visual_plan()
+    raw[2] = {"type": "list", "say": raw[2]["say"], "title": "Three things", "items": ["A", "B", "C"],
+              "icons": ["chip", "gear"]}
+    plan = validate_plan(raw, strict=True)
+    assert plan.scenes[2].fields["icons"] == [] and any("icons dropped" in r for r in plan.repairs)
+    raw[2]["icons"] = ["chip", "gear", "wallet"]
+    assert validate_plan(raw, strict=True).scenes[2].fields["icons"] == ["chip", "gear", "wallet"]
 
 
 def test_schema_is_flat_and_strict():

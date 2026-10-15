@@ -1,9 +1,10 @@
 <!doctype html>
 <!--
   ByteSize explainer (1080x1920), 35-45 s, one scene plan per render.
-  The "explainer" video style: no avatar, no footage — a typographic,
-  editorial explainer built from a fixed scene library. Design system:
-  DESIGN.md next to this file.
+  The "explainer" video style: no avatar, no footage — an editorial explainer
+  whose scenes are pictograms, charts, diagrams and device wireframes with
+  the text as their labels. Design system: DESIGN.md next to this file;
+  pictograms: icons.js.
 
   Driven by newsletter_video/explainer_builder.py, which per video:
     - writes assets/voice.wav (the narration)
@@ -22,13 +23,14 @@
 <html
   lang="en"
   data-composition-variables='[
-    {"id":"story","type":"string","label":"Story JSON","default":"{\"theme\":\"light\",\"kicker\":\"TLDR · OCT 13\",\"duration\":36,\"scenes\":[{\"type\":\"title\",\"start\":0,\"end\":4.2,\"kicker\":\"AI AGENTS\",\"headline\":\"Agent teams cost 5x more. Do they win?\"},{\"type\":\"stat\",\"start\":4.2,\"end\":9.4,\"value\":\"5.1x\",\"label\":\"the cost of a team vs one agent\",\"context\":\"Vibe Code Bench, GPT-6 Sol and Claude Opus 5.5\",\"source\":\"Vals AI\",\"countAt\":5.0},{\"type\":\"comparison\",\"start\":9.4,\"end\":14.6,\"title\":\"Same benchmark, two setups\",\"left\":{\"label\":\"Single agent\",\"value\":\"1x\",\"note\":\"baseline cost\",\"number\":1},\"right\":{\"label\":\"Agent team\",\"value\":\"5.1x\",\"note\":\"no significant score gain\",\"number\":5.1},\"cues\":[9.9,11.2]},{\"type\":\"chart\",\"start\":14.6,\"end\":20,\"title\":\"Cost multiplier by model\",\"unit\":\"x\",\"series\":[{\"label\":\"Sol low\",\"value\":1.8},{\"label\":\"Sol med\",\"value\":3.2},{\"label\":\"Opus 5.5\",\"value\":5.1}],\"highlight\":2,\"cues\":[15.1,16.2,17.3]},{\"type\":\"statement\",\"start\":20,\"end\":24.4,\"label\":\"The catch\",\"text\":\"Whether a team pays off depends on model, task and budget\",\"emphasis\":\"depends\",\"emphasisAt\":21.4},{\"type\":\"list\",\"start\":24.4,\"end\":28.8,\"title\":\"What decides it\",\"items\":[\"Which model you run\",\"How hard the task is\",\"How much budget you have\"],\"cues\":[24.9,26.0,27.1]},{\"type\":\"timeline\",\"start\":28.8,\"end\":32.6,\"title\":\"Claude Code Projects\",\"steps\":[{\"label\":\"Sept\",\"text\":\"Waitlist opens\"},{\"label\":\"Now\",\"text\":\"Every Pro and Max user is in\"}],\"cues\":[29.3,30.6]},{\"type\":\"outro\",\"start\":32.6,\"end\":36,\"text\":\"Do you run multiple agents? Tell us below.\"}],\"captions\":[{\"words\":[\"Agent\",\"teams\",\"cost\"],\"at\":[0.2,0.5,0.8],\"start\":0.2,\"end\":1.3},{\"words\":[\"up\",\"to\",\"five\",\"times\"],\"at\":[1.3,1.45,1.7,2.0],\"start\":1.3,\"end\":2.5},{\"words\":[\"more.\",\"Do\",\"they\",\"win?\"],\"at\":[2.5,2.9,3.1,3.4],\"start\":2.5,\"end\":4.2}]}"}
+    {"id":"story","type":"string","label":"Story JSON","default":"{\"theme\":\"light\",\"kicker\":\"TLDR · OCT 13\",\"duration\":52,\"scenes\":[{\"type\":\"title\",\"start\":0,\"end\":4.2,\"kicker\":\"AI AGENTS\",\"headline\":\"Agent teams cost 5x more. Do they win?\",\"icon\":\"robot\"},{\"type\":\"stat\",\"start\":4.2,\"end\":9.4,\"value\":\"5.1x\",\"label\":\"the cost of a team vs one agent\",\"context\":\"Vibe Code Bench, GPT-6 Sol and Claude Opus 5.5\",\"source\":\"Vals AI\",\"trend\":[1.8,2.4,3.2,4.1,5.1],\"countAt\":5.0},{\"type\":\"comparison\",\"start\":9.4,\"end\":14.6,\"title\":\"Same benchmark, two setups\",\"left\":{\"label\":\"Single agent\",\"value\":\"1x\",\"note\":\"baseline cost\",\"number\":1,\"icon\":\"user\"},\"right\":{\"label\":\"Agent team\",\"value\":\"5.1x\",\"note\":\"no significant score gain\",\"number\":5.1,\"icon\":\"users\"},\"cues\":[9.9,11.2]},{\"type\":\"chart\",\"start\":14.6,\"end\":20,\"kind\":\"columns\",\"title\":\"Cost multiplier by model\",\"unit\":\"x\",\"series\":[{\"label\":\"Sol low\",\"value\":1.8},{\"label\":\"Sol med\",\"value\":3.2},{\"label\":\"Opus 5.5\",\"value\":5.1}],\"highlight\":2,\"cues\":[15.1,16.2,17.3]},{\"type\":\"diagram\",\"start\":20,\"end\":25.5,\"kind\":\"flow\",\"title\":\"How a team runs a task\",\"nodes\":[{\"label\":\"Planner\",\"text\":\"splits the task\"},{\"label\":\"Workers\",\"text\":\"run in parallel threads\"},{\"label\":\"Reviewer\",\"text\":\"merges the result\"}],\"cues\":[20.5,21.8,23.1]},{\"type\":\"statement\",\"start\":25.5,\"end\":29.5,\"label\":\"The catch\",\"text\":\"Whether a team pays off depends on model, task and budget\",\"emphasis\":\"depends\",\"icon\":\"scale\",\"emphasisAt\":26.9},{\"type\":\"chart\",\"start\":29.5,\"end\":34.5,\"kind\":\"dots\",\"title\":\"Tasks where a team scored higher\",\"unit\":\"%\",\"series\":[{\"label\":\"Team won\",\"value\":12},{\"label\":\"No difference\",\"value\":88}],\"highlight\":0,\"cues\":[30,31.5]},{\"type\":\"device\",\"start\":34.5,\"end\":40,\"kind\":\"terminal\",\"title\":\"Claude Code Projects\",\"label\":\"claude\",\"lines\":[\"$ claude projects run deploy\",\"planner: 3 tasks queued\",\"workers: 3/3 running\",\"review: merged in 41s\"],\"cues\":[35,36.2,37.4,38.6]},{\"type\":\"timeline\",\"start\":40,\"end\":44.5,\"title\":\"Claude Code Projects\",\"steps\":[{\"label\":\"Sept\",\"text\":\"Waitlist opens\"},{\"label\":\"Oct\",\"text\":\"Pro and Max users let in\"},{\"label\":\"Now\",\"text\":\"Parallel threads for everyone\"}],\"cues\":[40.5,41.8,43.1]},{\"type\":\"list\",\"start\":44.5,\"end\":48.5,\"title\":\"What decides it\",\"items\":[\"Which model you run\",\"How hard the task is\",\"How much budget you have\"],\"icons\":[\"chip\",\"gear\",\"wallet\"],\"cues\":[45,46,47]},{\"type\":\"outro\",\"start\":48.5,\"end\":52,\"text\":\"Do you run multiple agents? Tell us below.\"}],\"captions\":[{\"words\":[\"Agent\",\"teams\",\"cost\"],\"at\":[0.2,0.5,0.8],\"start\":0.2,\"end\":1.3},{\"words\":[\"up\",\"to\",\"five\",\"times\"],\"at\":[1.3,1.45,1.7,2.0],\"start\":1.3,\"end\":2.5},{\"words\":[\"more.\",\"Do\",\"they\",\"win?\"],\"at\":[2.5,2.9,3.1,3.4],\"start\":2.5,\"end\":4.2}]}"}
   ]'
 >
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1080, height=1920" />
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="icons.js"></script>
     <style>
       /* ---- fonts (self-hosted, see fonts/FONTS.md) ------------------------ */
       @font-face {
@@ -58,30 +60,29 @@
 
       /* ---- tokens (DESIGN.md) --------------------------------------------- */
       :root {
-        /* color: light theme */
         --bg: #f6f4ee;
         --ink: #17191e;
         --ink-2: #5b606b;
         --hair: rgba(23, 25, 30, 0.16);
         --dot: rgba(23, 25, 30, 0.11);
         --accent: #1f49d6;
+        --accent-soft: rgba(31, 73, 214, 0.14);
         --bar: #dcd9d0;
-        /* type */
-        /* generic fallbacks only: named fallbacks make the compiler fetch
-           their Google Fonts aliases at build time. */
+        --panel: #ffffff;
+        --screen: #17191e;
+        --screen-ink: #f3f1ea;
         --serif: "Instrument Serif", serif;
         --sans: "Geist", sans-serif;
         --mono: "Geist Mono", monospace;
-        --t-display: 124px;
-        --t-h1: 92px;
+        --t-display: 136px;
+        --t-h1: 100px;
         --t-h2: 68px;
-        --t-quote: 76px;
-        --t-stat: 272px;
-        --t-value: 96px;
+        --t-quote: 80px;
+        --t-stat: 300px;
+        --t-value: 88px;
         --t-body: 44px;
         --t-caption: 40px;
         --t-label: 26px;
-        /* spacing (8-point) */
         --s-1: 8px;
         --s-2: 16px;
         --s-3: 24px;
@@ -89,10 +90,9 @@
         --s-6: 48px;
         --s-8: 64px;
         --s-12: 96px;
-        /* grid: 1080 wide, 80px gutter, content stops at 900 to stay clear of
-           the right-hand action column (TikTok / Shorts / Reels). */
         --m: 80px;
         --content-w: 820px;
+        --stroke: 1.5; /* pictogram stroke on the 24-unit grid */
       }
       :root[data-theme="dark"] {
         --bg: #111318;
@@ -101,7 +101,11 @@
         --hair: rgba(243, 241, 234, 0.18);
         --dot: rgba(243, 241, 234, 0.1);
         --accent: #7b96ff;
+        --accent-soft: rgba(123, 150, 255, 0.18);
         --bar: #2a2f3a;
+        --panel: #181b22;
+        --screen: #050608;
+        --screen-ink: #f3f1ea;
       }
 
       * {
@@ -124,11 +128,8 @@
         background: var(--bg);
         color: var(--ink);
         font-family: var(--sans);
-        font-feature-settings: "ss01" 0;
         -webkit-font-smoothing: antialiased;
       }
-      /* paper: a quiet dot grid gives the light field some texture without
-         competing with type (no gradients, no blobs). */
       #paper {
         position: absolute;
         inset: 0;
@@ -137,7 +138,7 @@
         background-position: 16px 16px;
       }
 
-      /* ---- chrome: kicker row + progress rule (y 176-216) ----------------- */
+      /* ---- chrome: kicker row + progress rule (y 176-230) ----------------- */
       #chrome {
         position: absolute;
         top: 176px;
@@ -175,13 +176,13 @@
         transform-origin: left center;
       }
 
-      /* ---- stage: scenes live here (y 300-1300) ---------------------------- */
+      /* ---- stage: scenes live here (y 272-1336) ---------------------------- */
       #stage {
         position: absolute;
-        top: 300px;
+        top: 272px;
         left: var(--m);
         width: var(--content-w);
-        height: 1000px;
+        height: 1064px;
       }
       .scene {
         position: absolute;
@@ -189,12 +190,30 @@
         opacity: 0;
         display: flex;
         flex-direction: column;
-        justify-content: center;
       }
-      .block {
-        display: block;
+      .scene > .head {
+        flex: 0 0 auto;
+      }
+      .scene > .hero {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        transform-origin: 50% 50%;
+      }
+      .scene > .foot {
+        flex: 0 0 auto;
+      }
+      #wipe {
+        position: absolute;
+        left: 0;
         width: 100%;
-        will-change: transform, opacity;
+        top: 0;
+        height: 4px;
+        background: var(--accent);
+        opacity: 0;
+        pointer-events: none;
       }
       .el {
         display: block;
@@ -218,15 +237,15 @@
       .display {
         font-family: var(--serif);
         font-size: var(--t-display);
-        line-height: 1.02;
+        line-height: 1.0;
         letter-spacing: -0.015em;
         overflow-wrap: anywhere;
-        text-wrap: balance; /* no one-word last lines on headlines */
+        text-wrap: balance;
       }
       .h1 {
         font-family: var(--serif);
         font-size: var(--t-h1);
-        line-height: 1.08;
+        line-height: 1.06;
         letter-spacing: -0.01em;
         overflow-wrap: anywhere;
         text-wrap: balance;
@@ -237,6 +256,7 @@
         line-height: 1.1;
         letter-spacing: -0.01em;
         overflow-wrap: anywhere;
+        text-wrap: balance;
       }
       .body {
         font-family: var(--sans);
@@ -256,39 +276,89 @@
       .em {
         color: var(--ink);
       }
-
-      /* title */
-      .title .display {
-        margin-top: var(--s-4);
+      .num {
+        font-family: var(--sans);
+        font-weight: 700;
+        letter-spacing: -0.04em;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        line-height: 1;
       }
-      .title .date {
-        margin-top: var(--s-6);
+
+      /* pictograms */
+      .icon {
+        display: block;
+        overflow: visible;
+      }
+      .icon path {
+        fill: none;
+        stroke: var(--ink);
+        stroke-width: var(--stroke);
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .icon path.f {
+        fill: var(--ink);
+        stroke: none;
+      }
+      .icon.accent path {
+        stroke: var(--accent);
+      }
+      .icon.accent path.f {
+        fill: var(--accent);
+      }
+      .icon.muted path {
+        stroke: var(--ink-2);
+      }
+      .icon.muted path.f {
+        fill: var(--ink-2);
+      }
+
+      /* ---- scenes ------------------------------------------------------------ */
+      .head .h2 {
+        margin-top: var(--s-3);
+      }
+      .foot {
         padding-top: var(--s-3);
         border-top: 2px solid var(--hair);
       }
+      .foot .body {
+        margin-bottom: var(--s-2);
+      }
 
-      /* statement */
-      .statement .h1 {
+      /* title / outro */
+      .title .display,
+      .outro .h1 {
         margin-top: var(--s-4);
+      }
+      .title .hero .icon,
+      .statement .hero .icon {
+        margin: 0 auto;
+      }
+      .title .hero {
+        justify-content: space-between;
+        padding: var(--s-8) 0 var(--s-6);
+      }
+      .statement .hero,
+      .outro .hero {
+        justify-content: center;
+        gap: var(--s-12);
+        padding: var(--s-6) 0;
+      }
+      .outro .hero .icon {
+        margin: 0 auto;
       }
 
       /* stat */
       .stat .value {
-        font-family: var(--sans);
         font-size: var(--t-stat);
-        font-weight: 700;
-        line-height: 1;
-        letter-spacing: -0.045em;
-        font-variant-numeric: tabular-nums;
-        white-space: nowrap;
-        margin-top: var(--s-3);
         transform-origin: left center;
+        margin: var(--s-2) 0;
       }
       .stat .stat-rule {
         position: relative;
         width: 100%;
         height: 6px;
-        margin-top: var(--s-4);
         background: var(--bar);
         overflow: hidden;
       }
@@ -301,63 +371,112 @@
         transform: scaleX(0);
         transform-origin: left center;
       }
-      .stat .context {
-        margin-top: var(--s-4);
+      .stat .trend {
+        display: flex;
+        align-items: flex-end;
+        gap: var(--s-2);
+        height: 300px;
+        margin-top: var(--s-6);
       }
-      .stat .source {
-        margin-top: var(--s-3);
+      .stat .trend .col {
+        flex: 1 1 0;
+        background: var(--bar);
+        transform: scaleY(0);
+        transform-origin: bottom center;
+      }
+      .stat .trend .col.lead {
+        background: var(--accent);
+      }
+      .stat .ring-wrap {
+        display: grid;
+        place-items: center;
+      }
+      .stat .ring-wrap .ring {
+        grid-area: 1 / 1;
+        width: 620px;
+        height: 620px;
+      }
+      .stat .ring-wrap .value {
+        grid-area: 1 / 1;
+        margin: 0;
+        text-align: center;
+        transform-origin: center center;
+      }
+      .ring circle {
+        fill: none;
+        stroke-width: 22;
+      }
+      .ring .track {
+        stroke: var(--bar);
+      }
+      .ring .fill {
+        stroke: var(--accent);
+        stroke-linecap: butt;
+        transform: rotate(-90deg);
+        transform-origin: 50% 50%;
       }
 
       /* comparison */
+      .comparison .hero {
+        justify-content: center;
+      }
       .comparison .columns {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        column-gap: var(--s-6);
-        margin-top: var(--s-6);
+        grid-template-columns: 1fr 72px 1fr;
+        align-items: start;
+        column-gap: var(--s-2);
       }
       .comparison .col {
-        position: relative;
-        padding-top: var(--s-3);
-        border-top: 2px solid var(--hair);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+      .comparison .vs {
+        align-self: center;
+        text-align: center;
+        font-family: var(--mono);
+        font-size: var(--t-label);
+        color: var(--ink-2);
+        letter-spacing: 0.14em;
+      }
+      .comparison .object {
+        display: grid;
+        place-items: center;
+        width: 374px;
+        height: 374px;
+      }
+      .comparison .disc {
+        grid-area: 1 / 1;
+        border-radius: 50%;
+        background: var(--bar);
+        transform: scale(0);
+      }
+      .comparison .col.lead .disc {
+        background: var(--accent);
+      }
+      .comparison .tile {
+        width: 300px;
+        height: 300px;
+        border: 2px solid var(--hair);
+        display: grid;
+        place-items: center;
+      }
+      .comparison .col .label {
+        margin-top: var(--s-4);
       }
       .comparison .col .value {
-        font-family: var(--sans);
         font-size: var(--t-value);
-        font-weight: 700;
-        line-height: 1;
-        letter-spacing: -0.04em;
-        font-variant-numeric: tabular-nums;
-        white-space: nowrap;
         margin-top: var(--s-2);
-      }
-      .comparison .col .note {
-        margin-top: var(--s-2);
-        font-size: 36px;
-        line-height: 1.25;
-        min-height: 90px;
-      }
-      .comparison .col .track {
-        position: relative;
-        width: 100%;
-        height: 20px;
-        margin-top: var(--s-3);
-        background: var(--bar);
-        overflow: hidden;
-      }
-      .comparison .col .fill {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        background: var(--ink-2);
-        transform: scaleX(0);
-        transform-origin: left center;
-      }
-      .comparison .col.lead .fill {
-        background: var(--accent);
       }
       .comparison .col.lead .value {
         color: var(--accent);
+      }
+      .comparison .col .note {
+        margin-top: var(--s-2);
+        font-size: 34px;
+        line-height: 1.25;
+        min-height: 88px;
       }
 
       /* list */
@@ -366,11 +485,12 @@
       }
       .list .row {
         display: grid;
-        grid-template-columns: 72px 1fr;
+        grid-template-columns: 96px 1fr;
         column-gap: var(--s-3);
-        align-items: baseline;
+        align-items: center;
         padding: var(--s-3) 0;
         border-top: 2px solid var(--hair);
+        min-height: 150px;
       }
       .list .row .index {
         font-family: var(--mono);
@@ -381,20 +501,20 @@
         font-variant-numeric: tabular-nums;
       }
       .list .row .body {
-        font-size: 52px;
+        font-size: 56px;
       }
 
       /* timeline */
       .timeline .steps {
         position: relative;
         margin-top: var(--s-4);
-        padding-left: 56px;
+        padding-left: 80px;
       }
       .timeline .rail {
         position: absolute;
-        left: 12px;
-        top: 24px;
-        bottom: 24px;
+        left: 22px;
+        top: 28px;
+        bottom: 28px;
         width: 4px;
         background: var(--hair);
       }
@@ -407,63 +527,71 @@
         transform: scaleY(0);
         transform-origin: top center;
       }
+      .timeline .marker {
+        position: absolute;
+        left: 0;
+        top: 8px;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: 4px solid var(--accent);
+        background: var(--accent-soft);
+        opacity: 0;
+      }
       .timeline .step {
         position: relative;
-        padding: var(--s-2) 0 var(--s-3);
-      }
-      .timeline .step + .step {
-        margin-top: var(--s-2);
+        padding: var(--s-2) 0 var(--s-4);
       }
       .timeline .node {
         position: absolute;
-        left: -56px;
-        top: calc(var(--s-2) + 8px);
-        width: 28px;
-        height: 28px;
+        left: -68px;
+        top: calc(var(--s-2) + 10px);
+        width: 20px;
+        height: 20px;
         border-radius: 50%;
         background: var(--bg);
-        border: 4px solid var(--accent);
+        border: 4px solid var(--ink-2);
         transform-origin: center center;
       }
       .timeline .step .body {
         margin-top: var(--s-1);
+        font-size: 48px;
       }
 
       /* quote */
       .quote .mark {
         font-family: var(--serif);
-        font-size: 180px;
-        line-height: 0.6;
+        font-size: 220px;
+        line-height: 0.7;
         color: var(--accent);
-        height: 110px;
+        height: 150px;
       }
       .quote .text {
         font-family: var(--serif);
         font-style: italic;
         font-size: var(--t-quote);
         line-height: 1.15;
-        letter-spacing: -0.005em;
         overflow-wrap: anywhere;
         text-wrap: balance;
       }
       .quote .attribution {
-        margin-top: var(--s-4);
+        margin-top: var(--s-6);
         padding-top: var(--s-3);
         border-top: 2px solid var(--hair);
       }
 
-      /* chart */
+      /* chart: bars */
       .chart .bars {
-        margin-top: var(--s-6);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: var(--s-3);
       }
       .chart .bar-row {
         display: grid;
         grid-template-columns: 200px 1fr;
         column-gap: var(--s-3);
         align-items: center;
-      }
-      .chart .bar-row + .bar-row {
-        margin-top: var(--s-3);
       }
       .chart .bar-label {
         font-family: var(--mono);
@@ -477,21 +605,20 @@
       }
       .chart .bar-track {
         position: relative;
-        height: 72px;
-        display: flex;
-        align-items: center;
+        height: 84px;
       }
       .chart .bar {
         position: absolute;
         left: 0;
         top: 0;
         height: 100%;
-        width: calc(100% - 150px); /* the last 150px are reserved for the value label */
+        width: calc(100% - 160px);
         background: var(--bar);
         transform: scaleX(0);
         transform-origin: left center;
       }
-      .chart .bar-row.lead .bar {
+      .chart .lead .bar,
+      .chart .lead .column {
         background: var(--accent);
       }
       .chart .bar-value {
@@ -502,37 +629,429 @@
         display: flex;
         align-items: center;
         padding-left: var(--s-2);
-        font-family: var(--sans);
-        font-size: 36px;
-        font-weight: 600;
-        letter-spacing: -0.02em;
-        font-variant-numeric: tabular-nums;
-        white-space: nowrap;
-        color: var(--ink);
+        font-size: 40px;
       }
       .chart .baseline {
         margin-top: var(--s-4);
         height: 2px;
         background: var(--hair);
       }
-
-      /* outro */
-      .outro .h1 {
-        margin-top: var(--s-4);
+      /* chart: columns */
+      .chart .columns {
+        display: flex;
+        align-items: flex-end;
+        gap: var(--s-4);
+        height: 560px;
       }
-      .outro .sign {
+      .chart .column-cell {
+        flex: 1 1 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        height: 100%;
+      }
+      .chart .column-value {
+        text-align: center;
+        font-size: 44px;
+        margin-bottom: var(--s-2);
+      }
+      .chart .column {
+        width: 100%;
+        background: var(--bar);
+        transform: scaleY(0);
+        transform-origin: bottom center;
+      }
+      .chart .column-labels {
+        display: flex;
+        gap: var(--s-4);
+        margin-top: var(--s-3);
+      }
+      .chart .column-label {
+        flex: 1 1 0;
+        text-align: center;
+        font-family: var(--mono);
+        font-size: var(--t-label);
+        color: var(--ink-2);
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      /* chart: line */
+      .chart .line-wrap {
+        width: 100%;
+      }
+      .chart .line-svg {
+        display: block;
+        width: 100%;
+        height: 560px;
+        overflow: visible;
+      }
+      .chart .line-svg .area {
+        fill: var(--accent-soft);
+        opacity: 0;
+      }
+      .chart .line-svg .line {
+        fill: none;
+        stroke: var(--accent);
+        stroke-width: 8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .chart .line-svg .pt {
+        fill: var(--bg);
+        stroke: var(--accent);
+        stroke-width: 6;
+        transform-origin: center center;
+        transform-box: fill-box;
+      }
+      .chart .line-svg .pt.lead {
+        fill: var(--accent);
+      }
+      .chart .line-svg .grid {
+        stroke: var(--hair);
+        stroke-width: 2;
+      }
+      .chart .line-callout {
+        font-size: 44px;
+        text-align: right;
+        margin-top: var(--s-3);
+      }
+      /* chart: dots (waffle of 100) */
+      .chart .dots {
+        display: grid;
+        grid-template-columns: repeat(10, 1fr);
+        gap: 12px;
+        width: 640px;
+      }
+      .chart .dotc {
+        aspect-ratio: 1;
+        border-radius: 50%;
+        background: var(--bar);
+      }
+      .chart .legend {
         margin-top: var(--s-6);
-        padding-top: var(--s-3);
-        border-top: 2px solid var(--hair);
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-2);
+      }
+      .chart .legend-row {
+        display: flex;
+        align-items: center;
+        gap: var(--s-3);
+        font-size: 40px;
+      }
+      .chart .swatch {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--bar);
+        flex: 0 0 auto;
+      }
+      .chart .legend-value {
+        margin-left: auto;
+        font-size: 44px;
       }
 
-      /* ---- captions: lower third (y 1380-1500), inside the safe zone ------ */
+      /* diagram */
+      .diagram .hero {
+        justify-content: center;
+      }
+      .diagram .node {
+        position: relative;
+        border: 2px solid var(--hair);
+        background: var(--panel);
+        padding: var(--s-3) var(--s-4);
+        will-change: transform, opacity;
+      }
+      .diagram .node .label {
+        color: var(--accent);
+      }
+      .diagram .node .body {
+        margin-top: var(--s-1);
+        font-size: 40px;
+      }
+      .diagram .flow {
+        display: flex;
+        flex-direction: column;
+      }
+      .diagram .flow .connector {
+        width: 100%;
+        height: 72px;
+        display: block;
+        overflow: visible;
+      }
+      .diagram .flow .connector path {
+        fill: none;
+        stroke: var(--accent);
+        stroke-width: 4;
+      }
+      .diagram .stack {
+        display: flex;
+        flex-direction: column-reverse;
+        gap: var(--s-2);
+      }
+      .diagram .stack .node {
+        transform-origin: bottom center;
+      }
+      .diagram .stack .node.top {
+        border-color: var(--accent);
+      }
+      .diagram .hub {
+        position: relative;
+        width: 100%;
+        height: 820px;
+      }
+      .diagram .hub svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+      .diagram .hub svg path {
+        fill: none;
+        stroke: var(--accent);
+        stroke-width: 4;
+      }
+      .diagram .hub .node {
+        position: absolute;
+        width: 290px;
+        padding: var(--s-2) var(--s-3);
+        text-align: center;
+        transform-origin: center center;
+      }
+      .diagram .hub .center {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 260px;
+        height: 260px;
+        margin: -130px 0 0 -130px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #fff;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        font-family: var(--serif);
+        font-size: 48px;
+        line-height: 1.05;
+        padding: var(--s-3);
+        transform-origin: center center;
+      }
+      :root[data-theme="dark"] .diagram .hub .center {
+        color: #111318;
+      }
+      .diagram .funnel {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--s-2);
+      }
+      .diagram .funnel .band {
+        position: relative;
+        height: 150px;
+        background: var(--bar);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 var(--s-4);
+        transform-origin: top center;
+      }
+      .diagram .funnel .band.lead {
+        background: var(--accent);
+        color: #fff;
+      }
+      :root[data-theme="dark"] .diagram .funnel .band.lead {
+        color: #111318;
+      }
+      .diagram .funnel .band .label {
+        color: inherit;
+        opacity: 0.85;
+      }
+      .diagram .funnel .band .body {
+        font-size: 40px;
+        white-space: nowrap;
+      }
+
+      /* device wireframes */
+      .device .hero {
+        justify-content: center;
+        align-items: center;
+      }
+      .device .frame {
+        border: 4px solid var(--ink);
+        background: var(--panel);
+        position: relative;
+        overflow: hidden;
+        transform-origin: center center;
+      }
+      .device .frame.phone {
+        width: 470px;
+        height: 880px;
+        border-radius: 56px;
+        padding: 96px 32px 40px;
+      }
+      .device .frame.phone::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 24px;
+        width: 150px;
+        height: 36px;
+        margin-left: -75px;
+        border-radius: 18px;
+        background: var(--ink);
+      }
+      .device .frame.laptop {
+        width: 820px;
+        height: 540px;
+        border-radius: 24px 24px 0 0;
+        padding: 0;
+      }
+      .device .lid {
+        width: 820px;
+        height: 22px;
+        background: var(--ink);
+        border-radius: 0 0 20px 20px;
+      }
+      .device .frame.laptop .screen,
+      .device .frame.terminal .screen {
+        height: 100%;
+      }
+      .device .frame.terminal,
+      .device .frame.chat {
+        width: 820px;
+        min-height: 560px;
+        border-radius: 24px;
+      }
+      .device .frame.terminal {
+        background: var(--screen);
+        color: var(--screen-ink);
+        border-color: var(--screen);
+      }
+      .device .titlebar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 64px;
+        padding: 0 var(--s-3);
+        border-bottom: 2px solid var(--hair);
+        font-family: var(--mono);
+        font-size: 24px;
+        color: var(--ink-2);
+        letter-spacing: 0.06em;
+      }
+      .device .frame.terminal .titlebar {
+        border-color: rgba(243, 241, 234, 0.18);
+        color: rgba(243, 241, 234, 0.6);
+      }
+      .device .titlebar .dotz {
+        display: flex;
+        gap: 8px;
+      }
+      .device .titlebar .dotz i {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--bar);
+        display: block;
+      }
+      .device .titlebar .name {
+        margin-left: var(--s-2);
+      }
+      .device .lines {
+        padding: var(--s-4);
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-3);
+      }
+      .device .line {
+        font-family: var(--sans);
+        font-size: 36px;
+        font-weight: 500;
+        line-height: 1.25;
+        will-change: transform, opacity;
+      }
+      .device .frame.phone .line {
+        border: 2px solid var(--hair);
+        border-radius: 20px;
+        padding: var(--s-3);
+        font-size: 32px;
+      }
+      .device .frame.phone .line::before {
+        content: "";
+        display: block;
+        width: 72px;
+        height: 10px;
+        border-radius: 5px;
+        background: var(--accent);
+        margin-bottom: 14px;
+      }
+      .device .frame.laptop .line {
+        display: grid;
+        grid-template-columns: 1fr 160px;
+        align-items: center;
+        gap: var(--s-3);
+        padding-bottom: var(--s-2);
+        border-bottom: 2px solid var(--hair);
+      }
+      .device .frame.laptop .line .meter {
+        height: 14px;
+        background: var(--bar);
+        position: relative;
+        overflow: hidden;
+      }
+      .device .frame.laptop .line .meter i {
+        position: absolute;
+        inset: 0;
+        display: block;
+        width: 100%;
+        background: var(--accent);
+        transform: scaleX(0);
+        transform-origin: left center;
+      }
+      .device .frame.terminal .line {
+        font-family: var(--mono);
+        font-size: 34px;
+        white-space: pre;
+        overflow: hidden;
+        color: var(--screen-ink);
+      }
+      .device .frame.terminal .line .caret {
+        display: inline-block;
+        width: 18px;
+        height: 36px;
+        background: var(--accent);
+        vertical-align: -6px;
+        opacity: 0;
+      }
+      .device .frame.chat .line {
+        max-width: 78%;
+        padding: var(--s-3) var(--s-4);
+        border-radius: 28px;
+        background: var(--bar);
+      }
+      .device .frame.chat .line.me {
+        align-self: flex-end;
+        background: var(--accent);
+        color: #fff;
+      }
+      :root[data-theme="dark"] .device .frame.chat .line.me {
+        color: #111318;
+      }
+      .device .caption-label {
+        margin-top: var(--s-4);
+        text-align: center;
+      }
+
+      /* ---- captions: lower third (y 1376-1500) ------------------------------ */
       #captions {
         position: absolute;
-        top: 1380px;
+        top: 1376px;
         left: var(--m);
         width: var(--content-w);
-        height: 120px;
+        height: 124px;
       }
       .cap {
         position: absolute;
@@ -561,7 +1080,7 @@
       </div>
       <div id="rule"><div id="progress"></div></div>
 
-      <div id="stage"></div>
+      <div id="stage"><div id="wipe"></div></div>
 
       <div id="captions" data-layout-allow-caption-zone></div>
 
@@ -570,17 +1089,23 @@
 
     <script>
       const story = JSON.parse(window.__hyperframes.getVariables().story);
+      const ICONS = window.EXPLAINER_ICONS || {};
       const FPS = 30;
-      const EXIT = 0.28; // scene exit length, ends exactly at the next scene's start
       const ENTER = 0.6;
+      const EXIT = 0.3;
+      const TRANSITION = 0.5;
       const EASE_OUT = "power3.out";
       const EASE_IN = "power2.in";
+      const STAGE_W = 820;
+      const STAGE_H = 1064;
 
       if (story.theme === "dark") document.documentElement.setAttribute("data-theme", "dark");
       document.getElementById("kicker").textContent = story.kicker || "";
 
       const stage = document.getElementById("stage");
+      const wipe = document.getElementById("wipe");
       const pad2 = (n) => String(n).padStart(2, "0");
+      const SVG = "http://www.w3.org/2000/svg";
 
       // ---- DOM helpers -------------------------------------------------------
       function el(tag, className, text) {
@@ -589,8 +1114,26 @@
         if (text !== undefined && text !== null) node.textContent = text;
         return node;
       }
+      function svgEl(tag, attrs) {
+        const node = document.createElementNS(SVG, tag);
+        for (const k in attrs) node.setAttribute(k, attrs[k]);
+        return node;
+      }
+      function icon(name, size, className) {
+        // A pictogram from icons.js at `size` px; returns null for unknown names.
+        const paths = ICONS[name];
+        if (!paths) return null;
+        const svg = svgEl("svg", { viewBox: "0 0 24 24", width: size, height: size });
+        svg.setAttribute("class", "icon " + (className || ""));
+        paths.forEach((d) => {
+          const fill = d.startsWith("f ");
+          const p = svgEl("path", { d: fill ? d.slice(2) : d });
+          if (fill) p.setAttribute("class", "f");
+          svg.append(p);
+        });
+        return svg;
+      }
       function words(container, text, className) {
-        // One span per word so a phrase can be revealed as a wave.
         const spans = [];
         text.split(/\s+/).filter(Boolean).forEach((w) => {
           const span = el("span", className, w);
@@ -600,8 +1143,6 @@
         return spans;
       }
       function emphasized(container, text, emphasis) {
-        // Splits `text` around `emphasis` (exact substring) and returns the
-        // emphasis span, or null when there is none.
         const idx = emphasis ? text.indexOf(emphasis) : -1;
         if (idx < 0) {
           container.append(text);
@@ -612,9 +1153,6 @@
         container.append(span, text.slice(idx + emphasis.length));
         return span;
       }
-
-      // Number formatting for count-ups: "5.1x" -> prefix "", number 5.1,
-      // decimals 1, suffix "x". Non-numeric values are shown as-is.
       function parseNumber(value) {
         const m = /^([^\d]*)(\d[\d,]*(?:\.\d+)?)(.*)$/.exec(value);
         if (!m) return null;
@@ -628,8 +1166,11 @@
         const fixed = n.toFixed(spec.decimals);
         if (!spec.grouped) return spec.prefix + fixed + spec.suffix;
         const [whole, frac] = fixed.split(".");
-        const groupedWhole = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-        return spec.prefix + groupedWhole + (frac ? "." + frac : "") + spec.suffix;
+        return spec.prefix + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (frac ? "." + frac : "") + spec.suffix;
+      }
+      function shortNumber(n, unit) {
+        const spec = { prefix: "", number: n, decimals: Number.isInteger(n) ? 0 : 1, grouped: n >= 10000, suffix: unit || "" };
+        return formatNumber(n, spec);
       }
       // Pre-baked frame rows (deterministic under seek): one tl.set per frame.
       function countUp(tl, node, spec, at, duration, ease) {
@@ -637,134 +1178,210 @@
         const easeFn = gsap.parseEase(ease);
         const frames = Math.max(1, Math.round(duration * FPS));
         for (let f = 0; f <= frames; f++) {
-          const p = easeFn(f / frames);
-          tl.set(node, { textContent: formatNumber(spec.number * p, spec) }, at + (f / frames) * duration);
+          tl.set(node, { textContent: formatNumber(spec.number * easeFn(f / frames), spec) }, at + (f / frames) * duration);
         }
+      }
+      function drawable(pathEl) {
+        // Measure once at build time; dashoffset tweens to 0 to draw.
+        const len = pathEl.getTotalLength() * 1.02;
+        pathEl.style.strokeDasharray = len;
+        pathEl.style.strokeDashoffset = len;
+        return len;
+      }
+      function drawIcon(tl, svg, at, duration) {
+        if (!svg) return;
+        const paths = Array.from(svg.querySelectorAll("path"));
+        const strokes = paths.filter((p) => !p.classList.contains("f"));
+        const fills = paths.filter((p) => p.classList.contains("f"));
+        strokes.forEach((p, i) => {
+          drawable(p);
+          const t = at + Math.min(i * 0.09, 0.4);
+          tl.to(p, { strokeDashoffset: 0, duration, ease: "power2.out" }, t);
+        });
+        fills.forEach((p) => {
+          tl.set(p, { opacity: 0 }, 0);
+          tl.to(p, { opacity: 1, duration: 0.3, ease: "power1.out" }, at + duration * 0.7);
+        });
+      }
+      function head(title, label) {
+        const h = el("div", "head");
+        if (label) h.append(el("div", "el label", label));
+        if (title) h.append(el("div", "el h2", title));
+        return h;
       }
 
       // ---- scene builders --------------------------------------------------
-      // Each returns { root, parts } where parts is the ordered reveal list:
-      // [{ node, at }] (at = seconds after scene start; cues override).
+      // Each returns { root, hero, parts, ...handles }: parts is the ordered
+      // reveal list [{ node, at }] (seconds after scene start).
       const builders = {
         title(s) {
           const root = el("div", "scene title");
           const label = el("div", "el label accent", s.kicker);
+          const hero = el("div", "hero");
+          const ic = icon(s.icon, 360, "accent");
+          if (ic) hero.append(ic);
           const display = el("div", "el display fit");
-          display.dataset.fitMax = "600";
-          display.dataset.fitMin = "72";
+          display.dataset.fitMax = ic ? "500" : "760";
+          display.dataset.fitMin = "80";
           const wordEls = words(display, s.headline, "word");
-          const date = el("div", "el label date", "ByteSize News \u00B7 daily tech, under a minute");
-          root.append(label, display, date);
-          return { root, parts: [{ node: label, at: 0.1 }, { node: date, at: 0.9 }], wordEls };
+          hero.append(display);
+          const foot = el("div", "foot");
+          foot.append(el("div", "el label", "ByteSize News · daily tech, under a minute"));
+          root.append(el("div", "head"), hero, foot);
+          root.querySelector(".head").append(label);
+          return { root, hero, parts: [{ node: label, at: 0.1 }, { node: foot, at: 0.9 }], wordEls, ic };
         },
         statement(s) {
           const root = el("div", "scene statement");
           const parts = [];
+          const h = el("div", "head");
           if (s.label) {
             const label = el("div", "el label", s.label);
-            root.append(label);
+            h.append(label);
             parts.push({ node: label, at: 0.1 });
           }
+          const hero = el("div", "hero");
           const h1 = el("div", "el h1 fit");
-          h1.dataset.fitMax = "560";
-          h1.dataset.fitMin = "56";
+          h1.dataset.fitMax = s.icon ? "460" : "760";
+          h1.dataset.fitMin = "60";
           const em = emphasized(h1, s.text, s.emphasis);
-          root.append(h1);
-          parts.push({ node: h1, at: 0.22 });
-          return { root, parts, em };
+          hero.append(h1);
+          parts.push({ node: h1, at: 0.2 });
+          const ic = icon(s.icon, 360, "accent");
+          if (ic) hero.append(ic);
+          else hero.style.justifyContent = "center";
+          root.append(h, hero);
+          return { root, hero, parts, em, ic };
         },
         stat(s) {
           const root = el("div", "scene stat");
           const label = el("div", "el label", s.label);
-          const value = el("div", "el value fit-w");
-          value.dataset.fitMin = "120";
+          const h = el("div", "head");
+          h.append(label);
+          const hero = el("div", "hero");
           const spec = parseNumber(s.value);
+          const value = el("div", "el value num fit-w");
+          value.dataset.fitMin = "120";
+          value.dataset.longest = s.value;
           value.textContent = spec ? formatNumber(0, spec) : s.value;
-          const rule = el("div", "el stat-rule");
-          const fill = el("div", "stat-fill");
-          rule.append(fill);
-          root.append(label, value, rule);
-          const parts = [{ node: label, at: 0.1 }, { node: value, at: 0.25 }, { node: rule, at: 0.35 }];
+          const parts = [{ node: label, at: 0.1 }];
+          let ring = null, fill = null, cols = [];
+          const pct = spec && /^%$/.test(spec.suffix.trim()) && spec.number <= 100 ? spec.number : null;
+          if (pct !== null && !(s.trend && s.trend.length)) {
+            // Percentage: the number sits inside a progress ring.
+            const wrap = el("div", "el ring-wrap");
+            const svg = svgEl("svg", { viewBox: "0 0 200 200", class: "ring" });
+            svg.append(svgEl("circle", { class: "track", cx: 100, cy: 100, r: 88 }));
+            ring = svgEl("circle", { class: "fill", cx: 100, cy: 100, r: 88 });
+            svg.append(ring);
+            value.dataset.fitMin = "100";
+            value.style.fontSize = "190px";
+            wrap.append(svg, value);
+            hero.append(wrap);
+            parts.push({ node: wrap, at: 0.2 });
+          } else {
+            const rule = el("div", "el stat-rule");
+            fill = el("div", "stat-fill");
+            rule.append(fill);
+            hero.append(value, rule);
+            parts.push({ node: value, at: 0.2 }, { node: rule, at: 0.3 });
+            if (s.trend && s.trend.length >= 2) {
+              const trend = el("div", "el trend");
+              const max = Math.max(...s.trend, 0) || 1;
+              const lead = s.trend.indexOf(max);
+              s.trend.forEach((v, i) => {
+                const col = el("div", "col" + (i === s.trend.length - 1 ? " lead" : ""));
+                col.style.height = Math.max(4, Math.round((v / max) * 300)) + "px";
+                trend.append(col);
+                cols.push(col);
+              });
+              hero.append(trend);
+              parts.push({ node: trend, at: 0.4 });
+            }
+          }
+          const foot = el("div", "foot");
           if (s.context) {
-            const context = el("div", "el body context fit");
+            const context = el("div", "el body fit");
             context.dataset.fitMax = "180";
             context.dataset.fitMin = "32";
             context.textContent = s.context;
-            root.append(context);
-            parts.push({ node: context, at: 0.5 });
+            foot.append(context);
           }
-          if (s.source) {
-            const source = el("div", "el label source", "Source · " + s.source);
-            root.append(source);
-            parts.push({ node: source, at: 0.65 });
-          }
-          return { root, parts, value, spec, fill, finalText: s.value };
+          foot.append(el("div", "el label", s.source ? "Source · " + s.source : (story.kicker || "")));
+          parts.push({ node: foot, at: 0.6 });
+          root.append(h, hero, foot);
+          return { root, hero, parts, value, spec, fill, ring, pct, cols, finalText: s.value };
         },
         comparison(s) {
           const root = el("div", "scene comparison");
           const parts = [];
-          if (s.title) {
-            const title = el("div", "el h2", s.title);
-            root.append(title);
-            parts.push({ node: title, at: 0.1 });
-          }
+          const h = head(s.title);
+          if (s.title) parts.push({ node: h, at: 0.1 });
+          const hero = el("div", "hero");
           const columns = el("div", "columns");
           const left = s.left, right = s.right;
-          const hasBars = left.number != null && right.number != null && (left.number > 0 || right.number > 0);
-          const max = hasBars ? Math.max(left.number, right.number) : 1;
-          const cols = [left, right].map((side, i) => {
+          const hasNums = left.number != null && right.number != null;
+          const max = hasNums ? Math.max(left.number, right.number) : 1;
+          const cols = [left, right].map((side) => {
             const col = el("div", "el col");
-            if (hasBars && side.number === max && left.number !== right.number) col.classList.add("lead");
-            col.append(el("div", "label", side.label));
-            const value = el("div", "value fit-w");
+            if (hasNums && side.number === max && left.number !== right.number) col.classList.add("lead");
+            const object = el("div", "object");
+            let disc = null, ic = null;
+            if (hasNums) {
+              // Area-proportional discs: diameter scales with the square root.
+              disc = el("div", "disc");
+              const d = Math.round(374 * Math.sqrt(Math.max(side.number, 0) / max));
+              disc.style.width = disc.style.height = Math.max(d, 56) + "px";
+              object.append(disc);
+            } else {
+              const tile = el("div", "tile");
+              ic = icon(side.icon || "box", 180, "accent");
+              tile.append(ic);
+              object.append(tile);
+            }
+            col.append(object, el("div", "label", side.label));
+            const value = el("div", "value num fit-w");
             value.dataset.fitMin = "48";
             value.textContent = side.value;
             col.append(value);
             if (side.note) col.append(el("div", "body note muted", side.note));
-            let fill = null;
-            if (hasBars) {
-              const track = el("div", "track");
-              fill = el("div", "fill");
-              track.append(fill);
-              col.append(track);
-            }
-            columns.append(col);
-            return { col, fill, ratio: hasBars ? side.number / max : 0 };
+            return { col, disc, ic };
           });
-          root.append(columns);
-          return { root, parts, cols };
+          columns.append(cols[0].col, el("div", "vs", "vs"), cols[1].col);
+          hero.append(columns);
+          root.append(h, hero);
+          return { root, hero, parts, cols };
         },
         list(s) {
           const root = el("div", "scene list");
           const parts = [];
-          if (s.title) {
-            const title = el("div", "el h2", s.title);
-            root.append(title);
-            parts.push({ node: title, at: 0.1 });
-          }
+          const h = head(s.title);
+          if (s.title) parts.push({ node: h, at: 0.1 });
+          const hero = el("div", "hero");
           const rows = el("div", "rows");
           const rowEls = s.items.map((item, i) => {
             const row = el("div", "el row");
-            row.append(el("div", "index", pad2(i + 1)), el("div", "body", item));
+            const ic = s.icons && s.icons[i] ? icon(s.icons[i], 72, "accent") : null;
+            row.append(ic || el("div", "index", pad2(i + 1)), el("div", "body", item));
             rows.append(row);
-            return row;
+            return { row, ic };
           });
-          root.append(rows);
-          return { root, parts, rowEls };
+          hero.append(rows);
+          root.append(h, hero);
+          return { root, hero, parts, rowEls };
         },
         timeline(s) {
           const root = el("div", "scene timeline");
           const parts = [];
-          if (s.title) {
-            const title = el("div", "el h2", s.title);
-            root.append(title);
-            parts.push({ node: title, at: 0.1 });
-          }
+          const h = head(s.title);
+          if (s.title) parts.push({ node: h, at: 0.1 });
+          const hero = el("div", "hero");
           const steps = el("div", "steps");
           const rail = el("div", "rail");
           const railFill = el("div", "rail-fill");
           rail.append(railFill);
-          steps.append(rail);
+          const marker = el("div", "marker");
+          steps.append(rail, marker);
           const stepEls = s.steps.map((step) => {
             const node = el("div", "el step");
             const dot = el("div", "node");
@@ -772,61 +1389,265 @@
             steps.append(node);
             return { node, dot };
           });
-          root.append(steps);
-          return { root, parts, stepEls, railFill };
+          hero.append(steps);
+          root.append(h, hero);
+          return { root, hero, parts, stepEls, railFill, marker, steps };
         },
         quote(s) {
           const root = el("div", "scene quote");
+          const hero = el("div", "hero");
           const mark = el("div", "el mark", "“");
           const text = el("div", "el text fit");
-          text.dataset.fitMax = "560";
+          text.dataset.fitMax = "640";
           text.dataset.fitMin = "52";
-          const lineEls = words(text, s.text, "word");
+          const wordEls = words(text, s.text, "word");
           const attribution = el("div", "el label attribution", s.attribution);
-          root.append(mark, text, attribution);
-          return { root, parts: [{ node: mark, at: 0.1 }, { node: attribution, at: 1.1 }], wordEls: lineEls };
+          hero.append(mark, text, attribution);
+          root.append(el("div", "head"), hero);
+          return { root, hero, parts: [{ node: mark, at: 0.1 }, { node: attribution, at: 1.0 }], wordEls };
         },
         chart(s) {
           const root = el("div", "scene chart");
-          const title = el("div", "el h2", s.title);
-          const bars = el("div", "bars");
+          const kind = s.kind || "bars";
+          const h = head(s.title);
+          const hero = el("div", "hero");
+          const parts = [{ node: h, at: 0.1 }];
+          const unit = s.unit || "";
           const max = Math.max(...s.series.map((p) => p.value), 0) || 1;
-          const barEls = s.series.map((point, i) => {
-            const row = el("div", "el bar-row");
-            if (i === s.highlight) row.classList.add("lead");
-            const track = el("div", "bar-track");
-            const bar = el("div", "bar");
-            const value = el("div", "bar-value");
-            const spec = parseNumber(String(point.value));
-            value.textContent = spec ? formatNumber(0, spec) + (s.unit || "") : String(point.value) + (s.unit || "");
-            track.append(bar, value);
-            row.append(el("div", "bar-label", point.label), track);
-            bars.append(row);
-            return { row, bar, track, value, ratio: point.value / max, spec: spec ? { ...spec, suffix: spec.suffix + (s.unit || "") } : null };
+          const items = [];
+          if (kind === "columns") {
+            const columns = el("div", "columns");
+            const labels = el("div", "column-labels");
+            s.series.forEach((p, i) => {
+              const cell = el("div", "el column-cell" + (i === s.highlight ? " lead" : ""));
+              const value = el("div", "column-value num");
+              const spec = parseNumber(shortNumber(p.value, unit));
+              value.textContent = spec ? formatNumber(0, spec) : shortNumber(p.value, unit);
+              const column = el("div", "column");
+              column.style.height = Math.max(6, Math.round((p.value / max) * 460)) + "px";
+              cell.append(value, column);
+              columns.append(cell);
+              const lab = el("div", "column-label", p.label);
+              labels.append(lab);
+              items.push({ row: cell, bar: column, value, spec, ratio: p.value / max, axis: "y" });
+            });
+            hero.append(columns, el("div", "el baseline"), labels);
+            parts.push({ node: labels, at: 0.3 });
+          } else if (kind === "line") {
+            const wrap = el("div", "el line-wrap");
+            const W = 820, H = 560, PAD = 40;
+            const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "line-svg" });
+            const n = s.series.length;
+            const pts = s.series.map((p, i) => [PAD + (i * (W - 2 * PAD)) / Math.max(n - 1, 1), H - PAD - (p.value / max) * (H - 2 * PAD)]);
+            [0.25, 0.5, 0.75].forEach((f) => {
+              svg.append(svgEl("line", { class: "grid", x1: 0, x2: W, y1: PAD + (H - 2 * PAD) * f, y2: PAD + (H - 2 * PAD) * f }));
+            });
+            const area = svgEl("path", { class: "area", d: `M${pts[0][0]} ${H - PAD} ` + pts.map((p) => `L${p[0]} ${p[1]}`).join(" ") + ` L${pts[n - 1][0]} ${H - PAD} Z` });
+            const line = svgEl("path", { class: "line", d: pts.map((p, i) => (i ? "L" : "M") + p[0] + " " + p[1]).join(" ") });
+            svg.append(area, line);
+            const dots = pts.map((p, i) => {
+              const c = svgEl("circle", { class: "pt" + (i === s.highlight ? " lead" : ""), cx: p[0], cy: p[1], r: 14 });
+              svg.append(c);
+              return c;
+            });
+            wrap.append(svg);
+            const labels = el("div", "column-labels");
+            s.series.forEach((p) => labels.append(el("div", "column-label", p.label)));
+            const callout = el("div", "el line-callout num");
+            const hp = s.series[s.highlight] || s.series[n - 1];
+            const spec = parseNumber(shortNumber(hp.value, unit));
+            callout.textContent = spec ? formatNumber(0, spec) : shortNumber(hp.value, unit);
+            hero.append(wrap, labels, callout);
+            parts.push({ node: labels, at: 0.3 });
+            return { root, hero, parts, kind, line, area, dots, callout, spec, pts };
+          } else if (kind === "dots") {
+            // A waffle of 100: each series takes its share, in order.
+            const grid = el("div", "el dots");
+            const cells = [];
+            for (let i = 0; i < 100; i++) {
+              const c = el("div", "dotc");
+              grid.append(c);
+              cells.push(c);
+            }
+            const legend = el("div", "legend");
+            let cursor = 0;
+            const groups = s.series.map((p, i) => {
+              const count = Math.round(p.value);
+              const own = cells.slice(cursor, cursor + count);
+              cursor += count;
+              const row = el("div", "el legend-row");
+              const sw = el("div", "swatch");
+              if (i === s.highlight) sw.style.background = "var(--accent)";
+              else if (i % 2 === 0) sw.style.background = "var(--ink-2)";
+              else sw.style.background = "var(--bar)";
+              const value = el("div", "legend-value num", "0" + (unit || ""));
+              const spec = parseNumber(shortNumber(p.value, unit));
+              row.append(sw, el("div", "body", p.label), value);
+              legend.append(row);
+              return { cells: own, row, value, spec, color: sw.style.background, hl: i === s.highlight };
+            });
+            hero.append(grid, legend);
+            root.append(h, hero);
+            return { root, hero, parts, kind, groups };
+          } else {
+            const bars = el("div", "bars");
+            s.series.forEach((p, i) => {
+              const row = el("div", "el bar-row" + (i === s.highlight ? " lead" : ""));
+              const track = el("div", "bar-track");
+              const bar = el("div", "bar");
+              const value = el("div", "bar-value num");
+              const spec = parseNumber(shortNumber(p.value, unit));
+              value.textContent = spec ? formatNumber(0, spec) : shortNumber(p.value, unit);
+              track.append(bar, value);
+              row.append(el("div", "bar-label", p.label), track);
+              bars.append(row);
+              items.push({ row, bar, track, value, spec, ratio: p.value / max, axis: "x" });
+            });
+            hero.append(bars, el("div", "el baseline"));
+          }
+          root.append(h, hero);
+          return { root, hero, parts, kind, items };
+        },
+        diagram(s) {
+          const root = el("div", "scene diagram");
+          const kind = s.kind || "flow";
+          const h = head(s.title);
+          const hero = el("div", "hero");
+          const parts = [{ node: h, at: 0.1 }];
+          const nodes = [];
+          const connectors = [];
+          const mkNode = (n, cls) => {
+            const node = el("div", "node " + (cls || ""));
+            node.append(el("div", "label", n.label));
+            if (n.text) node.append(el("div", "body", n.text));
+            return node;
+          };
+          if (kind === "stack") {
+            const stack = el("div", "stack");
+            s.nodes.forEach((n, i) => {
+              const node = mkNode(n, i === s.nodes.length - 1 ? "top" : "");
+              stack.append(node);
+              nodes.push(node);
+            });
+            hero.append(stack);
+          } else if (kind === "hub") {
+            const hub = el("div", "hub");
+            const svg = svgEl("svg", { viewBox: "0 0 820 820" });
+            hub.append(svg);
+            const center = el("div", "center", s.center || s.title || "");
+            const n = s.nodes.length;
+            s.nodes.forEach((nd, i) => {
+              const node = mkNode(nd);
+              const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+              const rx = 265, ry = 300;
+              const x = 410 + rx * Math.cos(a), y = 410 + ry * Math.sin(a);
+              node.style.left = x - 145 + "px";
+              node.style.top = y - 60 + "px";
+              const path = svgEl("path", { d: `M410 410 L${x} ${y}` });
+              svg.append(path);
+              hub.append(node);
+              nodes.push(node);
+              connectors.push(path);
+            });
+            hub.append(center);
+            hero.append(hub);
+            root.append(h, hero);
+            return { root, hero, parts, kind, nodes, connectors, center };
+          } else if (kind === "funnel") {
+            const funnel = el("div", "funnel");
+            const n = s.nodes.length;
+            s.nodes.forEach((nd, i) => {
+              const band = el("div", "band" + (i === n - 1 ? " lead" : ""));
+              band.style.width = Math.round(820 * (1 - (i * 0.55) / Math.max(n - 1, 1))) + "px";
+              band.append(el("div", "label", nd.label));
+              if (nd.text) band.append(el("div", "body num", nd.text));
+              funnel.append(band);
+              nodes.push(band);
+            });
+            hero.append(funnel);
+          } else {
+            const flow = el("div", "flow");
+            s.nodes.forEach((n, i) => {
+              if (i) {
+                const svg = svgEl("svg", { viewBox: "0 0 820 72", class: "connector" });
+                const path = svgEl("path", { d: "M410 0 L410 54 M394 40 L410 56 L426 40" });
+                svg.append(path);
+                flow.append(svg);
+                connectors.push(path);
+              }
+              const node = mkNode(n);
+              flow.append(node);
+              nodes.push(node);
+            });
+            hero.append(flow);
+          }
+          root.append(h, hero);
+          return { root, hero, parts, kind, nodes, connectors };
+        },
+        device(s) {
+          const root = el("div", "scene device");
+          const kind = s.kind || "phone";
+          const h = head(s.title);
+          const hero = el("div", "hero");
+          const parts = [{ node: h, at: 0.1 }];
+          const frame = el("div", "el frame " + kind);
+          const lines = el("div", "lines");
+          const lineEls = [];
+          if (kind !== "phone") {
+            const bar = el("div", "titlebar");
+            const dotz = el("div", "dotz");
+            dotz.append(el("i"), el("i"), el("i"));
+            bar.append(dotz, el("div", "name", s.label || (kind === "terminal" ? "terminal" : kind)));
+            frame.append(bar);
+          }
+          s.lines.forEach((text, i) => {
+            const line = el("div", "line" + (kind === "chat" && i % 2 ? " me" : ""));
+            if (kind === "laptop") {
+              line.append(el("div", "", text));
+              const meter = el("div", "meter");
+              meter.append(el("i"));
+              line.append(meter);
+            } else if (kind === "terminal") {
+              line.append(el("span", "text", ""), el("span", "caret"));
+              line.dataset.full = text;
+            } else {
+              line.textContent = text;
+            }
+            lines.append(line);
+            lineEls.push(line);
           });
-          const baseline = el("div", "el baseline");
-          root.append(title, bars, baseline);
-          return { root, parts: [{ node: title, at: 0.1 }, { node: baseline, at: 0.3 }], barEls };
+          frame.append(lines);
+          hero.append(frame);
+          if (kind === "laptop") hero.append(el("div", "lid"));
+          if (kind === "phone" && s.label) hero.append(el("div", "el label caption-label", s.label));
+          root.append(h, hero);
+          return { root, hero, parts, kind, frame, lineEls };
         },
         outro(s) {
           const root = el("div", "scene outro");
           const label = el("div", "el label accent", "Your turn");
+          const hd = el("div", "head");
+          hd.append(label);
+          const hero = el("div", "hero");
           const h1 = el("div", "el h1 fit", s.text);
-          h1.dataset.fitMax = "480";
-          h1.dataset.fitMin = "56";
-          const sign = el("div", "el label sign", "ByteSize News \u00B7 new every morning");
-          root.append(label, h1, sign);
-          return { root, parts: [{ node: label, at: 0.1 }, { node: h1, at: 0.22 }, { node: sign, at: 0.8 }] };
+          h1.dataset.fitMax = "640";
+          h1.dataset.fitMin = "60";
+          const ic = icon("megaphone", 300, "accent");
+          hero.append(h1, ic);
+          hero.classList.add("statement");
+          const foot = el("div", "foot");
+          foot.append(el("div", "el label", "ByteSize News · new every morning"));
+          root.append(hd, hero, foot);
+          return { root, hero, parts: [{ node: label, at: 0.1 }, { node: h1, at: 0.2 }, { node: foot, at: 0.8 }], ic };
         },
       };
 
       const built = story.scenes.map((s) => {
         const b = builders[s.type](s);
-        stage.append(b.root);
+        stage.insertBefore(b.root, wipe);
         return { scene: s, ...b };
       });
 
-      // Captions: one element per chunk, one span per word.
       const capRoot = document.getElementById("captions");
       const caps = (story.captions || []).map((chunk) => {
         const node = el("div", "cap");
@@ -839,7 +1660,7 @@
         return { node, spans };
       });
 
-      // ---- text fit: shrink until the block fits its box (build time only) --
+      // ---- text fit (build time only) ------------------------------------------
       function fitAll() {
         stage.querySelectorAll(".fit").forEach((node) => {
           const max = parseFloat(node.dataset.fitMax);
@@ -852,12 +1673,10 @@
         });
         stage.querySelectorAll(".fit-w").forEach((node) => {
           const min = parseFloat(node.dataset.fitMin);
-          const width = node.parentElement.clientWidth;
+          const width = node.parentElement.clientWidth || STAGE_W;
           let size = parseFloat(getComputedStyle(node).fontSize);
           const probe = node.textContent;
-          // Measure against the longest text this node will show.
-          const longest = node.dataset.longest || probe;
-          node.textContent = longest;
+          node.textContent = node.dataset.longest || probe;
           while (node.scrollWidth > width && size > min) {
             size -= 8;
             node.style.fontSize = size + "px";
@@ -868,11 +1687,7 @@
 
       // ---- timeline ----------------------------------------------------------
       function build() {
-        built.forEach((b) => {
-          if (b.value) b.value.dataset.longest = b.finalText;
-        });
         fitAll();
-
         const tl = gsap.timeline({ paused: true });
         const total = story.duration;
         const n = story.scenes.length;
@@ -880,43 +1695,58 @@
         const ink = css.getPropertyValue("--ink").trim();
         const ink2 = css.getPropertyValue("--ink-2").trim();
         const accent = css.getPropertyValue("--accent").trim();
+        const bar = css.getPropertyValue("--bar").trim();
 
-        // Progress rule: fills over the whole video (the one continuous motion).
         tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: total, ease: "none" }, 0);
         tl.fromTo("#chrome", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.5, ease: EASE_OUT }, 0.05);
+
+        // Every revealed element is hidden from t=0 (a set, so seeking to any
+        // earlier time shows nothing) and arrives at its cue.
+        const enter = (node, from, at, dur, ease) => {
+          tl.set(node, { opacity: 0, ...from }, 0);
+          const to = { opacity: 1, duration: dur || ENTER, ease: ease || EASE_OUT };
+          for (const k in from) to[k] = k === "scale" || k === "scaleY" ? 1 : 0;
+          tl.to(node, to, at);
+        };
+        const reveal = (node, at, dy, dur) => enter(node, { y: dy == null ? 36 : dy }, at, dur);
+        const cueAt = (cues, k, start, fallback) => (cues[k] != null ? Math.max(cues[k], start + 0.3) : fallback);
 
         built.forEach((b, i) => {
           const s = b.scene;
           const start = s.start;
           const end = s.end;
           const last = i === n - 1;
+          const len = end - start;
           const cues = Array.isArray(s.cues) ? s.cues : [];
+          const transition = i === 0 ? "none" : i % 2 ? "wipe" : "push";
 
+          // --- entrance of the scene container --------------------------------
           tl.set(b.root, { opacity: 1 }, start);
           tl.set("#counter", { textContent: pad2(i + 1) + " / " + pad2(n) }, start);
+          if (transition === "push") {
+            tl.fromTo(b.root, { y: 72 }, { y: 0, duration: TRANSITION, ease: EASE_OUT, immediateRender: false }, start);
+          } else if (transition === "wipe") {
+            // Top-to-bottom reveal behind a travelling accent edge.
+            tl.fromTo(b.root, { clipPath: "inset(0px 0px " + STAGE_H + "px 0px)" }, { clipPath: "inset(0px 0px 0px 0px)", duration: TRANSITION, ease: "power3.inOut", immediateRender: false }, start);
+            tl.set(wipe, { opacity: 1, y: 0 }, start);
+            tl.to(wipe, { y: STAGE_H - 4, duration: TRANSITION, ease: "power3.inOut" }, start);
+            tl.set(wipe, { opacity: 0 }, start + TRANSITION);
+          }
+          // Slow push-in on the hero layer: the one continuous motion while a scene holds.
+          if (b.hero) tl.fromTo(b.hero, { scale: 1 }, { scale: 1.035, duration: Math.max(len, 0.1), ease: "none", immediateRender: false }, start);
 
-          // Ordered reveal: label first, then the main element, then secondary
-          // chrome. Each arrives on its own beat (power3 long tail).
-          b.parts.forEach((p) => {
-            tl.fromTo(
-              p.node,
-              { opacity: 0, y: 36 },
-              { opacity: 1, y: 0, duration: ENTER, ease: EASE_OUT, immediateRender: false },
-              start + p.at,
-            );
-          });
+          b.parts.forEach((p) => reveal(p.node, start + (transition === "wipe" ? p.at * 0.4 : p.at)));
 
-          // Headline words arrive as a wave (waterfall-entry: binary opacity,
-          // whip from below, overlapping), timed so the whole line lands by ~0.7s.
           if (b.wordEls) {
             const step = Math.min(0.055, 0.45 / Math.max(1, b.wordEls.length));
             b.wordEls.forEach((w, k) => {
-              const t = start + 0.2 + k * step;
+              const t = start + 0.25 + k * step;
               tl.set(w, { opacity: 0, y: 44 }, 0);
               tl.set(w, { opacity: 1 }, t);
               tl.to(w, { y: 0, duration: 0.5, ease: "power4.out" }, t);
             });
           }
+          if (b.ic) drawIcon(tl, b.ic, start + 0.35, 0.8);
 
           if (s.type === "statement" && b.em) {
             const at = s.emphasisAt != null ? Math.max(s.emphasisAt, start + 0.5) : start + 0.9;
@@ -929,69 +1759,176 @@
             countUp(tl, b.value, b.spec, at, COUNT, "power2.out");
             if (!b.spec) tl.set(b.value, { textContent: b.finalText }, at);
             tl.fromTo(b.value, { scale: 0.94 }, { scale: 1, duration: COUNT, ease: "power2.out", immediateRender: false }, at);
-            tl.fromTo(b.fill, { scaleX: 0 }, { scaleX: 1, duration: COUNT, ease: "power2.out", immediateRender: false }, at);
-          }
-
-          if (s.type === "comparison") {
-            b.cols.forEach((c, k) => {
-              const at = cues[k] != null ? Math.max(cues[k], start + 0.3) : start + 0.4 + k * 0.5;
-              tl.fromTo(c.col, { opacity: 0, y: 36 }, { opacity: 1, y: 0, duration: ENTER, ease: EASE_OUT, immediateRender: false }, at);
-              if (c.fill) {
-                tl.fromTo(c.fill, { scaleX: 0 }, { scaleX: Math.max(0.02, c.ratio), duration: 0.9, ease: "power2.out", immediateRender: false }, at + 0.25);
-              }
+            if (b.fill) tl.fromTo(b.fill, { scaleX: 0 }, { scaleX: 1, duration: COUNT, ease: "power2.out", immediateRender: false }, at);
+            if (b.ring) {
+              const len = drawable(b.ring) / 1.02;
+              b.ring.style.strokeDasharray = len;
+              tl.fromTo(b.ring, { strokeDashoffset: len }, { strokeDashoffset: len * (1 - b.pct / 100), duration: COUNT, ease: "power2.out", immediateRender: false }, at);
+            }
+            b.cols.forEach((col, k) => {
+              tl.fromTo(col, { scaleY: 0 }, { scaleY: 1, duration: 0.7, ease: "power3.out", immediateRender: false }, at + 0.2 + k * 0.08);
             });
           }
 
+          if (s.type === "comparison") {
+            // Both columns land together (left from the left, right from the right)
+            // so their baselines are always identical.
+            const at = cueAt(cues, 0, start, start + 0.35);
+            const at2 = cueAt(cues, 1, start, at + 0.45);
+            b.cols.forEach((c, k) => {
+              enter(c.col, { x: k ? 40 : -40 }, at);
+              const t = k ? at2 : at;
+              if (c.disc) tl.fromTo(c.disc, { scale: 0 }, { scale: 1, duration: 0.9, ease: "power3.out", immediateRender: false }, t + 0.1);
+              if (c.ic) drawIcon(tl, c.ic, t + 0.1, 0.7);
+            });
+            enter(b.root.querySelector(".vs"), {}, at + 0.3, 0.4, "power1.out");
+          }
+
           if (s.type === "list") {
-            b.rowEls.forEach((row, k) => {
-              const at = cues[k] != null ? Math.max(cues[k], start + 0.3) : start + 0.4 + k * 0.45;
-              tl.fromTo(row, { opacity: 0, y: 28 }, { opacity: 1, y: 0, duration: 0.5, ease: EASE_OUT, immediateRender: false }, at);
+            b.rowEls.forEach((r, k) => {
+              const at = cueAt(cues, k, start, start + 0.4 + k * 0.45);
+              reveal(r.row, at, 28, 0.5);
+              if (r.ic) drawIcon(tl, r.ic, at + 0.05, 0.6);
             });
           }
 
           if (s.type === "timeline") {
-            const firstAt = cues[0] != null ? Math.max(cues[0], start + 0.3) : start + 0.4;
-            const lastAt = cues[b.stepEls.length - 1] != null ? Math.max(cues[b.stepEls.length - 1], firstAt + 0.4) : firstAt + (b.stepEls.length - 1) * 0.6;
-            tl.fromTo(b.railFill, { scaleY: 0 }, { scaleY: 1, duration: Math.max(0.6, lastAt - firstAt + 0.4), ease: "power1.inOut", immediateRender: false }, firstAt);
+            const ats = b.stepEls.map((_, k) => cueAt(cues, k, start, start + 0.4 + k * 0.6));
+            const lastAt = ats[ats.length - 1];
+            tl.fromTo(b.railFill, { scaleY: 0 }, { scaleY: 1, duration: Math.max(0.6, lastAt - ats[0] + 0.4), ease: "power1.inOut", immediateRender: false }, ats[0]);
+            // The marker rides the rail to each step as it is spoken.
+            const railTop = b.steps.querySelector(".rail").offsetTop;
             b.stepEls.forEach((step, k) => {
-              const at = cues[k] != null ? Math.max(cues[k], start + 0.3) : start + 0.4 + k * 0.6;
-              tl.fromTo(step.node, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.5, ease: EASE_OUT, immediateRender: false }, at);
-              tl.fromTo(step.dot, { scale: 0.4 }, { scale: 1, duration: 0.45, ease: EASE_OUT, immediateRender: false }, at);
+              const at = ats[k];
+              reveal(step.node, at, 24, 0.5);
+              const y = step.node.offsetTop + parseFloat(getComputedStyle(step.dot).top) - 20;
+              if (k === 0) tl.set(b.marker, { opacity: 1, y }, at);
+              else tl.to(b.marker, { y, duration: Math.min(0.6, Math.max(0.3, at - ats[k - 1] - 0.1)), ease: "power3.inOut" }, at - 0.3);
+              tl.fromTo(step.dot, { scale: 0.4, borderColor: ink2 }, { scale: 1, borderColor: accent, duration: 0.45, ease: EASE_OUT, immediateRender: false }, at);
             });
           }
 
           if (s.type === "chart") {
-            b.barEls.forEach((bar, k) => {
-              const at = cues[k] != null ? Math.max(cues[k], start + 0.3) : start + 0.45 + k * 0.3;
-              tl.fromTo(bar.row, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.45, ease: EASE_OUT, immediateRender: false }, at);
-              tl.fromTo(bar.bar, { scaleX: 0 }, { scaleX: Math.max(0.02, bar.ratio), duration: 0.9, ease: "power3.out", immediateRender: false }, at + 0.1);
-              if (bar.spec) countUp(tl, bar.value, bar.spec, at + 0.1, 0.9, "power3.out");
-              // The value label rides the bar's leading edge: translate by the
-              // bar's final width (ratio × bar width), in step with the fill.
-              // Measured once at build time (single composition), never per frame.
-              const barWidth = bar.track.clientWidth - 150;
-              tl.fromTo(bar.value, { x: 0 }, { x: Math.max(0.02, bar.ratio) * barWidth, duration: 0.9, ease: "power3.out", immediateRender: false }, at + 0.1);
-            });
+            if (b.kind === "line") {
+              const len = drawable(b.line);
+              const at = cueAt(cues, 0, start, start + 0.4);
+              const lastCue = cueAt(cues, b.dots.length - 1, start, at + 1.2);
+              const dur = Math.max(0.9, lastCue - at);
+              tl.to(b.line, { strokeDashoffset: 0, duration: dur, ease: "power2.inOut" }, at);
+              tl.to(b.area, { opacity: 1, duration: 0.6, ease: "power1.out" }, at + dur * 0.5);
+              b.dots.forEach((d, k) => {
+                enter(d, { scale: 0 }, at + (dur * k) / Math.max(b.dots.length - 1, 1), 0.35);
+              });
+              reveal(b.callout, at + dur - 0.2, 20, 0.5);
+              countUp(tl, b.callout, b.spec, at + dur - 0.2, 0.8, "power2.out");
+            } else if (b.kind === "dots") {
+              let t0 = start + 0.3;
+              b.groups.forEach((g, k) => {
+                const at = cueAt(cues, k, start, t0);
+                reveal(g.row, at, 20, 0.5);
+                const dur = Math.min(1.1, 0.25 + g.cells.length * 0.012);
+                g.cells.forEach((c, j) => {
+                  tl.fromTo(c, { backgroundColor: bar, scale: 0.6 }, { backgroundColor: g.color.startsWith("var") ? css.getPropertyValue(g.color.slice(4, -1)).trim() : g.color, scale: 1, duration: 0.3, ease: EASE_OUT, immediateRender: false }, at + (dur * j) / Math.max(g.cells.length, 1));
+                });
+                countUp(tl, g.value, g.spec, at, dur, "power2.out");
+                t0 = at + dur + 0.2;
+              });
+            } else {
+              b.items.forEach((it, k) => {
+                const at = cueAt(cues, k, start, start + 0.45 + k * 0.3);
+                reveal(it.row, at, 20, 0.45);
+                if (it.axis === "x") {
+                  tl.fromTo(it.bar, { scaleX: 0 }, { scaleX: Math.max(0.02, it.ratio), duration: 0.9, ease: "power3.out", immediateRender: false }, at + 0.1);
+                  const barWidth = it.track.clientWidth - 160;
+                  tl.fromTo(it.value, { x: 0 }, { x: Math.max(0.02, it.ratio) * barWidth, duration: 0.9, ease: "power3.out", immediateRender: false }, at + 0.1);
+                } else {
+                  tl.fromTo(it.bar, { scaleY: 0 }, { scaleY: 1, duration: 0.9, ease: "power3.out", immediateRender: false }, at + 0.1);
+                }
+                countUp(tl, it.value, it.spec, at + 0.1, 0.9, "power3.out");
+              });
+            }
           }
 
-          // Exit: lift and fade just before the next scene, then hide.
+          if (s.type === "diagram") {
+            if (b.kind === "hub") {
+              enter(b.center, { scale: 0.6 }, start + 0.3, 0.6);
+              b.nodes.forEach((node, k) => {
+                const at = cueAt(cues, k, start, start + 0.7 + k * 0.35);
+                drawable(b.connectors[k]);
+                tl.to(b.connectors[k], { strokeDashoffset: 0, duration: 0.45, ease: "power2.out" }, at - 0.2);
+                enter(node, { scale: 0.8 }, at, 0.5);
+              });
+            } else if (b.kind === "flow") {
+              b.nodes.forEach((node, k) => {
+                const at = cueAt(cues, k, start, start + 0.4 + k * 0.6);
+                reveal(node, at, 28, 0.5);
+                if (k) {
+                  drawable(b.connectors[k - 1]);
+                  tl.to(b.connectors[k - 1], { strokeDashoffset: 0, duration: 0.4, ease: "power2.out" }, at - 0.25);
+                }
+              });
+            } else if (b.kind === "stack") {
+              b.nodes.forEach((node, k) => {
+                const at = cueAt(cues, k, start, start + 0.4 + k * 0.45);
+                enter(node, { y: 40, scaleY: 0.9 }, at, 0.55);
+              });
+            } else {
+              b.nodes.forEach((band, k) => {
+                const at = cueAt(cues, k, start, start + 0.4 + k * 0.45);
+                enter(band, { scaleY: 0.6 }, at, 0.55);
+              });
+            }
+          }
+
+          if (s.type === "device") {
+            enter(b.frame, { y: 48, scale: 0.97 }, start + 0.2, 0.7);
+            b.lineEls.forEach((line, k) => {
+              const at = cueAt(cues, k, start, start + 0.8 + k * 0.55);
+              if (b.kind === "terminal") {
+                // Types on character by character (discrete states, seek-safe).
+                const full = line.dataset.full;
+                const textEl = line.querySelector(".text");
+                const caret = line.querySelector(".caret");
+                const perChar = Math.min(0.045, 0.9 / Math.max(full.length, 1));
+                tl.set(line, { opacity: 1 }, at);
+                tl.set(caret, { opacity: 1 }, at);
+                for (let c = 1; c <= full.length; c++) tl.set(textEl, { textContent: full.slice(0, c) }, at + c * perChar);
+                const done = at + full.length * perChar;
+                // Caret blinks until the next line starts.
+                const next = k + 1 < b.lineEls.length ? cueAt(cues, k + 1, start, start + 0.8 + (k + 1) * 0.55) : end;
+                for (let t = done; t < next - 0.05; t += 0.5) {
+                  tl.set(caret, { opacity: 0 }, t + 0.25);
+                  tl.set(caret, { opacity: 1 }, Math.min(t + 0.5, next - 0.05));
+                }
+                tl.set(caret, { opacity: 0 }, next - 0.05);
+              } else {
+                const fromX = b.kind === "chat" ? (k % 2 ? 40 : -40) : 0;
+                enter(line, fromX ? { x: fromX } : { y: 28 }, at, 0.5);
+                const meter = line.querySelector(".meter i");
+                if (meter) tl.fromTo(meter, { scaleX: 0 }, { scaleX: 0.35 + ((k * 37) % 60) / 100, duration: 0.8, ease: "power2.out", immediateRender: false }, at + 0.2);
+              }
+            });
+            if (b.kind === "terminal") b.lineEls.forEach((line) => tl.set(line, { opacity: 0 }, 0));
+          }
+
+          // --- exit ----------------------------------------------------------------
           if (!last) {
-            const exitAt = Math.max(start + 0.6, end - EXIT);
-            tl.to(b.root, { opacity: 0, y: -24, duration: EXIT, ease: EASE_IN }, exitAt);
-            tl.set(b.root, { opacity: 0, y: 0 }, end);
+            const nextTransition = (i + 1) % 2 ? "wipe" : "push";
+            if (nextTransition === "push") {
+              tl.to(b.root, { opacity: 0, y: -56, duration: EXIT, ease: EASE_IN }, Math.max(start + 0.6, end - EXIT));
+            } else {
+              tl.to(b.root, { opacity: 0, duration: TRANSITION * 0.8, ease: "power1.in" }, end);
+            }
+            tl.set(b.root, { opacity: 0, y: 0 }, end + TRANSITION);
           }
         });
 
-        // Captions: the current chunk sits in the lower third; the spoken word
-        // takes the ink color, the rest stays muted.
         (story.captions || []).forEach((chunk, c) => {
           const { node, spans } = caps[c];
           tl.set(node, { opacity: 1 }, chunk.start);
           tl.fromTo(node, { y: 10 }, { y: 0, duration: 0.2, ease: EASE_OUT, immediateRender: false }, chunk.start);
           tl.set(node, { opacity: 0 }, chunk.end);
-          chunk.at.forEach((at, w) => {
-            tl.set(spans[w], { color: ink }, at);
-          });
+          chunk.at.forEach((at, w) => tl.set(spans[w], { color: ink }, at));
           tl.set(spans, { color: ink2 }, 0);
         });
 
