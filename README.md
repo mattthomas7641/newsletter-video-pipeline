@@ -71,6 +71,48 @@ conda create -p ./venv python=3.11 ffmpeg -c conda-forge
 ./venv/bin/python -m pip install -r requirements.txt
 ```
 
+## Control panel
+
+Everything above can be set up by clicking instead of editing files. Start the panel:
+
+```bash
+./ui.sh                                   # or double-click ui.command in Finder
+./venv/bin/python -m newsletter_video.ui  # the same thing
+```
+
+It opens `http://127.0.0.1:8765` in your browser (another port is used if that one is busy)
+and needs nothing beyond the packages already in `requirements.txt`. Light or dark follows
+your system. Press Ctrl+C in the terminal to stop it; anything already running keeps going.
+
+- **Studio.** *Make a test video* renders exactly one video with the choices currently on
+  screen, saved or not, and never uploads it. It writes to `output/_previews/<id>/`, a folder
+  the real run's story history, YouTube step and clean-up all ignore, so a test can't be
+  posted by accident or use up a story. Progress and the log stream live, then the video
+  plays inline. *Run today's batch…* asks for confirmation, then runs the real pipeline with
+  your saved settings, as the 7:00 AM job would. Only one run at a time: the panel refuses to
+  start if it, the scheduled job or a terminal is already running one.
+- **Look and voice.** Pick *Avatar* or *Explainer*. Avatar shows the character gallery and the
+  gameplay/plain background; Explainer shows light/dark. Selecting a character selects their
+  voice, and *Hear voice* plays a short sample through the same code a real run uses. *Add a
+  character* takes a name, a picture (it warns when there is no transparent background),
+  voice recordings to clone (5 to 30 seconds of clean, single-speaker speech each) or an
+  existing Voicebox voice, and an optional personality. Cloning runs in the background.
+- **Settings.** Videos per day, YouTube upload and privacy, and what happens to videos made by
+  the fallback writer. Changes are only written when you press *Save*, and apply from the next
+  run, including the scheduled one, because they live in `.env`.
+- **Videos.** Test videos and the last two weeks of daily videos, with YouTube links where
+  uploads were recorded. A *Setup check* in Settings shows whether Voicebox, an API key and
+  the YouTube sign-in are present (never their values).
+
+**Safety.** The panel listens on `127.0.0.1` only. It will only ever read or write these
+`.env` keys: `CHARACTER`, `VIDEO_STYLE`, `VIDEO_THEME`, `BACKGROUND_STYLE`, `VIDEOS_PER_DAY`,
+`YOUTUBE_UPLOAD`, `YOUTUBE_PRIVACY`, `FALLBACK_UPLOAD`. Comments, other lines and the file's
+permissions are left as they were. API keys and tokens are never sent to the browser or
+written to its logs; the panel only says whether one is set. Requests are checked for the
+loopback `Host`, a same-origin `Origin`, and a random per-launch token, so another web page
+can't drive it. Uploaded pictures and recordings are checked by content, size-capped and
+stored under generated names.
+
 ## Configuration (`.env`)
 
 Copy `.env.example` to `.env`. Everything is optional:

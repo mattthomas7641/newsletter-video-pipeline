@@ -10,6 +10,7 @@ import logging
 import mimetypes
 import re
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -95,6 +96,7 @@ class App:
         self.runs = RunService(paths, self.jobs, self.store, **kwargs)
         self.characters = CharacterService(paths, self.jobs, self.store, **({"voicebox": voicebox} if voicebox else {}))
         self.support = feature_support(paths.root)
+        self._schedule_cache: tuple[float, dict] | None = None
         self.index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
     # --- dispatch ---
@@ -143,7 +145,7 @@ class App:
         if path == "/api/setup":
             vb = self.characters.voicebox_status()["running"]
             return json_response({"checks": history.setup_check(self.paths, self.store, vb),
-                                  "schedule": history.schedule(self.paths)})
+                                  "schedule": self._schedule()})
         if path == "/api/runs":
             return json_response(self._runs())
         if path == "/api/videos":
@@ -209,7 +211,14 @@ class App:
     def _runs(self) -> dict:
         activity = [a.to_json() for a in self.runs.activity()]
         latest = self.runs.describe(self.runs.latest())
-        return {"activity": activity, "latest": latest, "schedule": history.schedule(self.paths)}
+        return {"activity": activity, "latest": latest, "schedule": self._schedule()}
+
+    def _schedule(self) -> dict:
+        """`launchctl list` is comparatively slow, so cache it briefly."""
+        now = time.monotonic()
+        if self._schedule_cache is None or now - self._schedule_cache[0] > 30:
+            self._schedule_cache = (now, history.schedule(self.paths))
+        return self._schedule_cache[1]
 
     def _job(self, job_id: str, since: int) -> Response:
         view = self.jobs.get(job_id)
