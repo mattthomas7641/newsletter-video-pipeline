@@ -16,3 +16,5 @@ newsletter_video/hf_template/.thumbnails/
 newsletter_video/hf_template/assets/
 secrets/
 assets/voice/*
+
+.pipeline.lock
