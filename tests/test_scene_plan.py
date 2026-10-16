@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from newsletter_video.scene_plan import (  # noqa: E402
     CAPS,
+    ICON_MEANINGS,
     PLAN_WORDS,
     SCENE_SCHEMA,
     ScenePlanError,
@@ -336,3 +337,20 @@ def test_schema_is_flat_and_strict():
     assert set(SCENE_SCHEMA["required"]) == set(SCENE_SCHEMA["properties"])
     assert "anyOf" not in json.dumps(SCENE_SCHEMA)
     assert SCENE_SCHEMA["properties"]["type"]["enum"][0] == "title"
+
+
+def test_icon_rules_outro_question_and_repeats():
+    plan = validate_plan(visual_plan(), strict=True)
+    assert plan.scenes[-1].fields["icon"] == "comment"  # the outro always invites a comment
+    raw = visual_plan()
+    raw[2]["text"] = "Does it pay off?"
+    raw[2]["icon"] = "megaphone"  # a speaker icon on a question is dropped
+    plan = validate_plan(raw, strict=True)
+    assert plan.scenes[2].fields["icon"] == "" and any("question" in r for r in plan.repairs)
+    raw = visual_plan()
+    raw[1] = {"type": "statement", "say": raw[1]["say"], "text": "A bridge card", "icon": "scale"}
+    raw[2]["icon"] = "scale"  # the same pictogram twice in a row is filler: the second is dropped
+    plan = validate_plan(raw)
+    assert plan.scenes[1].fields["icon"] == "scale" and plan.scenes[2].fields["icon"] == ""
+    assert any("repeats" in r for r in plan.repairs)
+    assert "comment" in ICON_MEANINGS and all(len(v) > 10 for v in ICON_MEANINGS.values())

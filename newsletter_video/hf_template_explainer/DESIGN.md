@@ -72,16 +72,16 @@ Scale (px on the 1080 canvas):
 
 | Role | Family | Size | Line | Notes |
 |---|---|---|---|---|
-| display | serif | 136 | 1.0 | title headline, ≤ 56 chars |
-| h1 | serif | 100 | 1.06 | statement / outro, ≤ 72 chars |
-| quote | serif italic | 80 | 1.15 | ≤ 110 chars |
-| h2 | serif | 68 | 1.1 | scene titles, ≤ 40 chars |
-| stat | sans 700 | 300 (190 inside a ring) | 1.0 | ≤ 9 chars, shrinks to fit the column |
-| value | sans 700 | 88 | 1.0 | comparison figures, ≤ 12 chars |
-| figure | sans 700 | 40–44 | 1.0 | bar, column, legend and callout values |
-| body | sans 500 | 44 / 48 / 56 | 1.3 | context · timeline text · list rows |
-| caption | sans 500 | 40 | 1.3 | lower third |
-| label | mono 500 | 26 | 1.2 | uppercase, tracked |
+| display | serif | 140 | 1.0 | title headline, ≤ 56 chars |
+| h1 | serif | 104 | 1.06 | statement / outro, ≤ 72 chars |
+| quote | serif italic | 84 | 1.15 | ≤ 110 chars |
+| h2 | serif | 72 | 1.1 | scene titles, ≤ 40 chars |
+| stat | sans 700 | 320 (190 inside a ring) | 1.0 | ≤ 9 chars, shrinks to fit the column |
+| value | sans 700 | 96 | 1.0 | comparison figures, ≤ 12 chars |
+| figure | sans 700 | 44–56 | 1.0 | bar, column, legend and callout values |
+| body | sans 500 | 48 / 54 / 60 | 1.3 | context · timeline text · list rows |
+| caption | sans 500 | 44 | 1.3 | lower third, ≤ 5 words per chunk |
+| label | mono 500 | 34 | 1.2 | uppercase, tracked; the floor for any secondary text on a phone |
 
 Every text field has a hard character cap in `scene_plan.CAPS`; the scale
 above fits the longest allowed string in its box. A build-time fit pass
@@ -94,6 +94,16 @@ them taller or wider than their box. Nothing is ever clipped.
 8-point scale: 8 · 16 · 24 · 32 · 48 · 64 · 96. Vertical rhythm inside a
 scene: label → 24/32 → main element → 32/48 → secondary element. Hairlines
 are 2 px of `--hair`; node and frame borders are 2–4 px of `--hair`/`--ink`.
+
+## Pictograms mean something
+
+`icons.js` holds 50 pictograms; `scene_plan.ICON_MEANINGS` documents what each
+stands for and the writer sees that list. Rules the validator enforces: the
+outro always carries the comment bubble; a question never gets a
+speaker-type icon (megaphone, play, mic, video, camera, star, check); the
+same icon never appears in two consecutive scenes (the second is dropped);
+"" is the right choice when nothing fits. A pictogram is a subject marker,
+never decoration.
 
 ## Visual vocabulary
 
@@ -146,7 +156,7 @@ number is said; an emphasis phrase turns accent when it is said.
 |---|---|
 | push (even scenes) | outgoing lifts 56 px and fades over 0.3 s `power2.in`; incoming rises 72 px over 0.5 s `power3.out` |
 | wipe (odd scenes) | incoming is revealed top-to-bottom by a `clip-path` inset over 0.5 s `power3.inOut` behind a 4 px accent edge that travels the stage; outgoing fades underneath; parts of the incoming scene are already in place |
-| hold | the hero layer pushes in 1 → 1.035 over the whole scene, linear — the one continuous motion while a scene holds |
+| hold | nothing holds still for more than 1.2 s (`scripts/motion_audit.py` enforces it): the hero pushes in 1 → 1.06 while the head drifts 10 px (parallax); pictograms re-trace every 2.4 s; a light band sweeps the stat rule and the lead bar every 1.6 s; drawn connectors carry moving dashes; the lead disc and the timeline marker ping every 1.5 s; stack and funnel layers, bar rows and device lines take turns in accent; laptop meters re-level every 1.8 s |
 | enter | 0.6 s `power3.out`, y 36 → 0, opacity 0 → 1; every revealed element is hidden from t = 0 and arrives on its cue |
 | row / node / bar arrival | 0.45–0.55 s `power3.out`, y 20–40 → 0 |
 | word wave | per word, 0.5 s `power4.out` from y 44, binary opacity, 55 ms apart, whole line lands by ~0.7 s |
@@ -155,6 +165,7 @@ number is said; an emphasis phrase turns accent when it is said.
 | emphasis | 0.35 s colour change to accent, on the spoken word |
 | marker travel | 0.3–0.6 s `power3.inOut`, arriving 0.3 s before the step is spoken |
 | caption | chunk fades up 0.2 s; the spoken word takes ink colour |
+| outro CTA | comment bubble draws (0.9 s), typing dots pulse every 0.36 s to the last frame, closing line waves in, follow pill arrives at ~55 % with an arrow nudge every 1.4 s; the kicker echoes the title so a replay loops |
 | progress rule | linear over the whole video |
 
 No bounce, elastic or overshoot anywhere (numbers are data, not decoration).
