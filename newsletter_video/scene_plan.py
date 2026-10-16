@@ -253,6 +253,10 @@ def _validate_scene(index: int, raw: Any) -> tuple[Scene | None, list[str], list
                 c.errors.append(f"{c.where}: 'trend' has {len(points)} points, allowed {TREND_POINTS[0]}-{TREND_POINTS[1]}")
                 points = []
         f["trend"] = points
+        bare = re.fullmatch(r"\d+", f["value"] or "")
+        if bare and int(f["value"]) <= 2 and not points:
+            c.errors.append(f"{c.where}: a stat of {f['value']} with no trend is a weak hero; use a list, cast or "
+                            "diagram for small counts, or add a trend")
     elif kind == "comparison":
         f["title"] = c.text(raw, "title", caps["title"], required=False)
         for side in ("left", "right"):
