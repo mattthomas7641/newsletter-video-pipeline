@@ -395,18 +395,32 @@ def render_plan(plan: ScenePlan, out_path: Path, audio_path: Path, work_dir: Pat
     variables_path = work_dir / "story.json"
     variables_path.write_text(json.dumps({"story": json.dumps(payload)}))
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    # Same render discipline as video_builder.build_short: render into a
+    # side folder under a wall-clock cap, move into place only when complete.
+    from .supervisor import run_subprocess
+    from .video_builder import DEFAULT_RENDER_TIMEOUT_SECONDS
+
+    partial = out_path.parent / ".partial" / out_path.name
+    partial.parent.mkdir(parents=True, exist_ok=True)
+    partial.unlink(missing_ok=True)
     npx = npx_path()
     cmd = [npx, "--yes", f"hyperframes@{HYPERFRAMES_VERSION}", "render", str(work_dir),
-           "--output", str(out_path), "--variables-file", str(variables_path),
+           "--output", str(partial), "--variables-file", str(variables_path),
            "--strict-variables", "--quiet", "--crf", RENDER_CRF]
+    timeout = float(os.environ.get("RENDER_TIMEOUT_SECONDS", DEFAULT_RENDER_TIMEOUT_SECONDS))
     for attempt in range(RENDER_ATTEMPTS):
         try:
-            subprocess.run(cmd, check=True, env=hyperframes_env(npx))
+            run_subprocess(cmd, timeout=timeout, env=hyperframes_env(npx))
             break
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            log.warning("Render attempt %d/%d of %s failed: %s", attempt + 1, RENDER_ATTEMPTS, out_path.name,
+                        type(exc).__name__)
             if attempt == RENDER_ATTEMPTS - 1:
+                partial.unlink(missing_ok=True)
                 raise
+    if not partial.exists() or partial.stat().st_size == 0:
+        raise RuntimeError(f"Renderer exited cleanly but wrote no video for {out_path.name}")
+    partial.replace(out_path)
     return out_path
 
 
