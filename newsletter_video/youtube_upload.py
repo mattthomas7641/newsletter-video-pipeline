@@ -160,8 +160,12 @@ def _publish_times(day: date, count: int) -> list[str | None]:
             continue
         hour, minute = (int(x) for x in slots[i].split(":"))
         local = datetime(day.year, day.month, day.day, hour, minute).astimezone()
-        if local < datetime.now().astimezone():
-            local += timedelta(days=1)
+        now = datetime.now().astimezone()
+        if local < now + timedelta(minutes=5):
+            # The slot has already passed (a slow run, or a leftover from an
+            # earlier day): publish shortly, not 24 hours late. publishAt has
+            # to be in the future, so use a few minutes from now.
+            local = now + timedelta(minutes=5)
         times.append(local.isoformat())
     return times
 
