@@ -85,7 +85,8 @@ Copy `.env.example` to `.env`. Everything is optional:
 | `KOKORO_VOICE`, `KOKORO_SPEED` | Kokoro voice and pace (`npx hyperframes tts --list` for voices) |
 | `VOICEBOX_PROFILE_ID`, `VOICEBOX_ENGINE`, `VOICEBOX_MODEL_SIZE`, `VOICEBOX_INSTRUCT` | Voicebox settings (see [Custom voice](#custom-voice)) |
 | `VOICE_EFFECT`, `CARTOON_PITCH` | `cartoon` pitches any voice up (1.3 subtle to 1.6 squeaky); `none` (default) keeps it natural |
-| `VIDEO_STYLE` | `avatar` (default) or `explainer`, a clean typographic explainer with no avatar or footage (see [Video styles](#video-styles)) |
+| `VIDEO_STYLE` | `explainer` (default), a clean animated explainer with no avatar or footage, or `avatar`, the original look (see [Video styles](#video-styles)) |
+| `SOURCE` | Where stories come from: `tldr` (default, the only source so far; see `newsletter_video/sources/`) |
 | `VIDEO_THEME` | Explainer style only: `light` (default) or `dark` |
 | `BACKGROUND_STYLE` | Avatar style only: `gameplay` (default) or `none` for the plain graph-paper background |
 | `YOUTUBE_UPLOAD` | `1` uploads each day's videos after rendering |
@@ -98,12 +99,14 @@ gets wrong can be respelled in `PRONUNCIATIONS` in `tts.py`.
 
 ## Video styles
 
-`VIDEO_STYLE` in `.env` picks one of two looks. Everything else (scraping, Jev, story
-exclusion, the cloned voice, word alignment, upload, metadata) is shared.
+`VIDEO_STYLE` in `.env` picks one of two looks. **The default is `explainer`.** Everything
+else (fetching, Jev, story exclusion, the cloned voice, word alignment, upload, metadata) is
+shared.
 
-- **`avatar`** (default): the original look described above: a narrator cutout, gameplay
-  footage, highlighted cards and heavy captions. Unset `VIDEO_STYLE` and nothing changes.
-- **`explainer`**: no avatar, no footage. A clean editorial explainer where every scene is
+- **`avatar`**: the original look described above: a narrator cutout, gameplay footage,
+  highlighted cards and heavy captions. Set `VIDEO_STYLE=avatar` to keep it; it is fully
+  supported, just no longer the default.
+- **`explainer`** (default): no avatar, no footage. A clean editorial explainer where every scene is
   built around a graphic: a hand-drawn pictogram set, big numbers with a trend chart or
   progress ring, bar / column / line / dots-of-100 charts, comparison discs drawn to scale, a
   timeline with a travelling marker, diagrams (flow, stack, hub, funnel) and device

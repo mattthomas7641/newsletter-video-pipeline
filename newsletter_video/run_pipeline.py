@@ -20,7 +20,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from .characters import active as active_character
-from .scraper import DEFAULT_EDITIONS, fetch_editions
 from .script_writer import build_scripts
 from .video_builder import build_shorts
 from .youtube_upload import upload_recent, write_metadata
@@ -71,8 +70,11 @@ def run(target_date: date | None = None) -> list[Path]:
             NETWORK_WAIT_TIMEOUT_SECONDS,
         )
 
-    log.info("Scraping editions: %s for %s", DEFAULT_EDITIONS, target_date)
-    editions = fetch_editions(target_date=target_date)
+    from .sources import get_source  # SOURCE=tldr (default); the renderer never sees the source
+
+    source = get_source()
+    log.info("Fetching stories from %s for %s", source.describe(), target_date)
+    editions = source.fetch(target_date)
     total_stories = sum(len(e.stories) for e in editions)
     log.info("Fetched %d editions, %d stories total", len(editions), total_stories)
     if not editions or total_stories == 0:
