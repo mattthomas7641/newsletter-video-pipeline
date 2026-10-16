@@ -1865,7 +1865,7 @@
             if (!svg) return;
             drawIcon(tl, svg, firstAt, 0.8);
             const strokes = Array.from(svg.querySelectorAll("path:not(.f)"));
-            for (let t = firstAt + 2.0; t < end - 0.9; t += 2.0) {
+            for (let t = firstAt + 1.6; t < end - 0.5; t += 1.6) {
               strokes.forEach((p, k) => {
                 const len = parseFloat(p.style.strokeDasharray);
                 tl.set(p, { strokeDashoffset: len }, t + Math.min(k * 0.06, 0.3));
@@ -1900,7 +1900,8 @@
             // a border (panels, bands) or the text colour (lines, rows).
             if (!nodes.length) return;
             const key = prop || "borderColor";
-            const rest = key === "color" ? ink : ink2;
+            const onScreen = nodes[0] && nodes[0].closest(".frame.terminal");
+            const rest = key === "color" ? (onScreen ? css.getPropertyValue("--screen-ink").trim() : ink) : ink2;
             let k = 0;
             for (let t = firstAt; t < end - 0.4; t += period) {
               nodes.forEach((n, j) => {
