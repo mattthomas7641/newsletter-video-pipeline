@@ -30,7 +30,7 @@ SAMPLE_W, SAMPLE_H = 216, 384  # 1080x1920 scaled by 0.2: enough to see motion, 
 CAPTION_BAND = (1376 / 1920, 1512 / 1920)  # the lower-third caption, as fractions of the height
 DEFAULT_FPS = 8
 DEFAULT_MAX_STATIC = 1.2
-DEFAULT_THRESHOLD = 0.15  # percent of pixels that must change (by more than PIXEL_DELTA) for a frame to count as "moved"
+DEFAULT_THRESHOLD = 0.06  # percent of pixels that must change (by more than PIXEL_DELTA) for a frame to count as "moved"
 PIXEL_DELTA = 20  # per-pixel change (0-255) that counts as a change, above compression noise
 
 

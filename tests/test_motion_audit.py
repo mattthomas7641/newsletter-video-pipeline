@@ -56,6 +56,6 @@ def test_short_holds_under_the_limit_are_fine():
 
 def test_static_stretch_helper_counts_runs():
     diffs = np.array([5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 5], dtype=float)
-    stretches = static_stretches(diffs, fps=8, threshold=0.15, max_static=1.0)
+    stretches = static_stretches(diffs, fps=8, threshold=0.06, max_static=1.0)
     assert len(stretches) == 1 and abs(stretches[0].length - 10 / 8) < 0.02
     assert frame_diffs(np.zeros((1, 4, 4), dtype=np.uint8)).size == 0

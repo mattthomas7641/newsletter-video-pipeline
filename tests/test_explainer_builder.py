@@ -27,7 +27,8 @@ def test_unnamed_items_are_spread_evenly_and_never_go_backwards():
     assert cues == sorted(cues)
     assert cues[-1] <= 14.0 - 0.3
     mixed = cue_times(["alpha", "budget", "zeta"], LINE, 9.8, 14.0)
-    assert mixed[1] == 12.4 and mixed[0] < mixed[1] <= mixed[2]
+    # "budget" is said at 12.4 but a 4.2 s scene caps the second cue earlier (no late holes)
+    assert mixed[1] <= 12.4 and mixed[0] < mixed[1] <= mixed[2]
 
 
 def test_cues_match_inflected_words():
@@ -73,7 +74,7 @@ def test_story_payload_times_scenes_from_word_times():
     assert scenes[1]["start"] == pytest.approx(3.8)  # 0.2 s lead before the first word
     assert all(a["end"] == b["start"] for a, b in zip(scenes, scenes[1:]))
     assert scenes[-1]["end"] == 23.6
-    assert scenes[1]["countAt"] == pytest.approx(5.2)  # "five" is the 5th word of the stat line
+    assert scenes[1]["countAt"] == pytest.approx(4.8)  # "five" is said at 5.2 but the count never waits past start + 1 s
     assert scenes[2]["emphasisAt"] == pytest.approx(10.5)  # "depends" is the 6th word of its line
     assert scenes[3]["cues"] == sorted(scenes[3]["cues"]) and len(scenes[3]["cues"]) == 3
     assert scenes[3]["cues"][0] >= scenes[3]["start"] + 0.35
