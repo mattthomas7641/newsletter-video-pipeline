@@ -848,7 +848,7 @@
       }
       .diagram .hub .node {
         position: absolute;
-        width: 320px;
+        width: 280px;
         padding: var(--s-3) var(--s-3);
         text-align: center;
         transform-origin: center center;
@@ -860,9 +860,9 @@
         position: absolute;
         left: 50%;
         top: 50%;
-        width: 300px;
-        height: 300px;
-        margin: -150px 0 0 -150px;
+        width: 240px;
+        height: 240px;
+        margin: -120px 0 0 -120px;
         border-radius: 50%;
         background: var(--accent);
         color: #fff;
@@ -870,7 +870,7 @@
         place-items: center;
         text-align: center;
         font-family: var(--serif);
-        font-size: 56px;
+        font-size: 52px;
         line-height: 1.05;
         padding: var(--s-3);
         transform-origin: center center;
@@ -1639,18 +1639,20 @@
             hero.append(stack);
           } else if (kind === "hub") {
             const hub = el("div", "hub");
-            const svg = svgEl("svg", { viewBox: "0 0 820 820" });
+            // viewBox matches the 820x900 box so spokes land on the nodes.
+            const svg = svgEl("svg", { viewBox: "0 0 820 900" });
             hub.append(svg);
             const center = el("div", "center", s.center || s.title || "");
             const n = s.nodes.length;
             s.nodes.forEach((nd, i) => {
               const node = mkNode(nd);
               const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
-              const rx = 265, ry = 300;
-              const x = 410 + rx * Math.cos(a), y = 410 + ry * Math.sin(a);
-              node.style.left = x - 145 + "px";
-              node.style.top = y - 60 + "px";
-              const path = svgEl("path", { d: `M410 410 L${x} ${y}` });
+              const rx = 270, ry = 320;
+              const x = 410 + rx * Math.cos(a), y = 450 + ry * Math.sin(a);
+              // Anchor the node's near edge on the ellipse so lower nodes clear the centre disc.
+              node.style.left = x - 140 + "px";
+              node.style.top = y - 65 + 65 * Math.sin(a) + "px";
+              const path = svgEl("path", { d: `M410 450 L${x} ${y}` });
               svg.append(path);
               hub.append(node);
               nodes.push(node);
