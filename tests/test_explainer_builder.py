@@ -84,7 +84,7 @@ def test_story_payload_times_scenes_from_word_times():
 
 def test_video_style_is_validated(monkeypatch):
     monkeypatch.delenv("VIDEO_STYLE", raising=False)
-    assert video_style() == "avatar"
+    assert video_style() == "explainer"
     monkeypatch.setenv("VIDEO_STYLE", " Explainer ")
     assert video_style() == "explainer"
     monkeypatch.setenv("VIDEO_STYLE", "cartoon")
