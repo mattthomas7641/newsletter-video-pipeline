@@ -46,7 +46,7 @@ def fake_claude(monkeypatch):
             return ctl["response"]
 
     client = types.SimpleNamespace(beta=types.SimpleNamespace(messages=types.SimpleNamespace(stream=lambda **kw: Stream())))
-    fake = types.SimpleNamespace(APIError=APIError, Anthropic=lambda: client)
+    fake = types.SimpleNamespace(APIError=APIError, Anthropic=lambda **kw: client)
     monkeypatch.setitem(__import__("sys").modules, "anthropic", fake)
     ctl["APIError"] = APIError
     return ctl
