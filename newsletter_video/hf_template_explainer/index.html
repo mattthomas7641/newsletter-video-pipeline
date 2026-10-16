@@ -788,7 +788,7 @@
       }
       .diagram .node {
         position: relative;
-        border: 3px solid var(--hair);
+        border: 3px solid var(--ink-2);
         background: var(--panel);
         padding: var(--s-4) var(--s-6);
         will-change: transform, opacity;
@@ -816,7 +816,7 @@
       .diagram .flow .connector path {
         fill: none;
         stroke: var(--accent);
-        stroke-width: 4;
+        stroke-width: 6;
       }
       .diagram .stack {
         display: flex;
@@ -844,7 +844,7 @@
       .diagram .hub svg path {
         fill: none;
         stroke: var(--accent);
-        stroke-width: 4;
+        stroke-width: 6;
       }
       .diagram .hub .node {
         position: absolute;
@@ -965,7 +965,7 @@
       .device .frame.terminal,
       .device .frame.chat {
         width: 820px;
-        min-height: 660px;
+        min-height: 520px;
         border-radius: 24px;
       }
       .device .frame.terminal {
@@ -1057,17 +1057,27 @@
         transform: scaleX(0);
         transform-origin: left center;
       }
+      .device .line.lit {
+        color: var(--accent);
+      }
+      .device .frame.terminal .line.lit {
+        color: var(--accent);
+      }
+      .chart .bar-row.lit .bar-label,
+      .chart .column-cell.lit .column-value {
+        color: var(--accent);
+      }
       .device .frame.terminal .line {
         font-family: var(--mono);
-        font-size: 38px;
+        font-size: 42px;
         white-space: pre;
         overflow: hidden;
         color: var(--screen-ink);
       }
       .device .frame.terminal .line .caret {
         display: inline-block;
-        width: 18px;
-        height: 36px;
+        width: 24px;
+        height: 44px;
         background: var(--accent);
         vertical-align: -6px;
         opacity: 0;
@@ -1851,7 +1861,7 @@
             if (!svg) return;
             drawIcon(tl, svg, firstAt, 0.8);
             const strokes = Array.from(svg.querySelectorAll("path:not(.f)"));
-            for (let t = firstAt + 2.4; t < end - 1.2; t += 2.4) {
+            for (let t = firstAt + 2.0; t < end - 0.9; t += 2.0) {
               strokes.forEach((p, k) => {
                 const len = parseFloat(p.style.strokeDasharray);
                 tl.set(p, { strokeDashoffset: len }, t + Math.min(k * 0.06, 0.3));

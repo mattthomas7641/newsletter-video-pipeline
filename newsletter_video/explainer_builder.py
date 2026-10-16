@@ -174,7 +174,11 @@ def cue_times(items: list[str], words: list[tuple[str, float]], start: float, en
         # Speech sync, but never a hole: the k-th item lands no later than
         # FIRST_CUE_MAX + k * CUE_MAX_GAP after the scene starts, even when the
         # voice names it later (an empty tile reads as broken, not as timing).
-        c = min(float(c), start + FIRST_CUE_MAX + k * CUE_MAX_GAP)
+        # Short scenes get proportionally earlier cues so the graphic is complete
+        # while the line is still being spoken.
+        first = max(0.6, min(FIRST_CUE_MAX, 0.25 * (end - start)))
+        gap = max(0.4, min(CUE_MAX_GAP, 0.2 * (end - start)))
+        c = min(float(c), start + first + k * gap)
         c = min(max(c, last), max(end - 0.3, last))
         result.append(round(c, 3))
         last = c
@@ -191,7 +195,7 @@ def _number_cue(value: str, words: list[tuple[str, float]], start: float) -> flo
     for w, t in words:
         n = _norm(w)
         if (digits and any(ch.isdigit() for ch in n)) or n in number_words:
-            return round(max(t, start + CUE_MIN_DELAY), 3)
+            return round(min(max(t, start + CUE_MIN_DELAY), start + 1.0), 3)  # never a zero on screen for long
     return round(start + 0.5, 3)
 
 
