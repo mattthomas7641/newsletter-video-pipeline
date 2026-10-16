@@ -2122,7 +2122,13 @@
                 }
               }
             });
-            if (b.kind === "terminal") b.lineEls.forEach((line) => tl.set(line, { opacity: 0 }, 0));
+            if (b.kind === "terminal") {
+              b.lineEls.forEach((line) => tl.set(line, { opacity: 0 }, 0));
+              // Once everything has typed, the accent walks the lines like a selection.
+              const lastAt = cueAt(cues, b.lineEls.length - 1, start, start + 0.8 + (b.lineEls.length - 1) * 0.55);
+              const typed = lastAt + Math.min(0.045, 0.9 / Math.max(b.lineEls[b.lineEls.length - 1].dataset.full.length, 1)) * b.lineEls[b.lineEls.length - 1].dataset.full.length;
+              cycleLit(b.lineEls, typed + 0.4, 0.8, "color");
+            }
           }
 
           if (s.type === "outro") {
