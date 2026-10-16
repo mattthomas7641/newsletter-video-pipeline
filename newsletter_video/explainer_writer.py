@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from .scene_plan import ICON_MEANINGS, SCENE_SCHEMA, ScenePlan, ScenePlanError, plan_from_script, validate_plan
 from .scraper import Story
 from .script_writer import (
+    ANTHROPIC_TIMEOUT_SECONDS,
     DEFAULT_WRITER_EFFORT,
     LLM_SUMMARY_CHARS,
     WRITER_MODEL,
@@ -248,7 +249,7 @@ def _call_writer(user: str) -> dict | None:
         effort = os.environ.get("WRITER_EFFORT", DEFAULT_WRITER_EFFORT)
         if effort:
             output_config["effort"] = effort
-        client = anthropic.Anthropic()
+        client = anthropic.Anthropic(timeout=ANTHROPIC_TIMEOUT_SECONDS, max_retries=2)
         with client.beta.messages.stream(
             model=WRITER_MODEL,
             max_tokens=64000,

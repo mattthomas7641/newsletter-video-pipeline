@@ -465,6 +465,9 @@ _WRITER_SCHEMA = {
 }
 
 
+# Per-read timeout for the Claude call. Without one, a connection that went
+# stale while the Mac slept hung the whole run for hours (2026-10-16).
+ANTHROPIC_TIMEOUT_SECONDS = 180.0
 LLM_SUMMARY_CHARS = 400  # enough for the key facts; trims a few very long blurbs
 
 
@@ -589,7 +592,7 @@ def _llm_scripts(candidates: list[Story], n_videos: int) -> list[Script] | None:
         effort = os.environ.get("WRITER_EFFORT", DEFAULT_WRITER_EFFORT)
         if effort:
             output_config["effort"] = effort  # how hard Claude reasons; lower = fewer output tokens
-        client = anthropic.Anthropic()
+        client = anthropic.Anthropic(timeout=ANTHROPIC_TIMEOUT_SECONDS, max_retries=2)
         # Streamed: several scripts can run past the non-streaming output limit
         # (~3k output tokens per video).
         with client.beta.messages.stream(
