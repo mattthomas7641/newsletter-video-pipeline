@@ -61,7 +61,10 @@ def _beat_from_scene(scene) -> Beat:
 
 
 def script_from_plan(plan: ScenePlan, title: str, badge: str, stories: list[Story],
-                     post_caption: str = "", hashtags: list[str] | None = None) -> ExplainerScript:
+                     post_caption: str = "", hashtags: list[str] | None = None,
+                     writer: str = "claude") -> ExplainerScript:
+    """`writer` is "claude" for Claude's plans and "heuristic" for structural
+    plans, so run_pipeline's FALLBACK_UPLOAD policy applies to both styles."""
     scenes = plan.scenes
     return ExplainerScript(
         title=title,
@@ -72,6 +75,7 @@ def script_from_plan(plan: ScenePlan, title: str, badge: str, stories: list[Stor
         stories=stories,
         post_caption=post_caption.strip(),
         hashtags=[re.sub(r"[^\w]", "", h).lower() for h in (hashtags or []) if h.strip()][:5],
+        writer=writer,
         plan=plan,
     )
 
@@ -362,7 +366,7 @@ def structural_explainer_scripts(scripts: list[Script]) -> list[ExplainerScript]
         log.warning("Explainer: %r uses a structural plan derived from the rule-based script (no Claude plan)",
                     script.title)
         out.append(script_from_plan(plan, script.title, script.badge, script.stories,
-                                    script.post_caption, script.hashtags))
+                                    script.post_caption, script.hashtags, writer="heuristic"))
     return out
 
 

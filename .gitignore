@@ -22,3 +22,5 @@ newsletter_video/hf_template_explainer/snapshots/
 newsletter_video/hf_template_explainer/.thumbnails/
 newsletter_video/hf_template_explainer/assets/
 newsletter_video/hf_template_explainer/.hyperframes/
+
+.pipeline.lock
