@@ -149,7 +149,7 @@ cd newsletter_video/hf_template_explainer && npx hyperframes check         # lin
 ```
 
 `scripts/motion_audit.py` samples a render at 8 fps, masks the lower-third caption band and
-reports every stretch where fewer than 0.15 % of pixels change for longer than 1.2 s, plus a
+reports every stretch where fewer than 0.06 % of pixels change (by more than 20 levels) for longer than 1.2 s, plus a
 motion-per-second curve; exit code 1 means the video holds a still frame somewhere. While
 iterating on a plan, `--reuse-audio` on the `explainer_builder` CLI caches the voice track and
 word alignment per script, so re-renders skip Voicebox.
