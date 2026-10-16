@@ -1897,6 +1897,15 @@
             tl.set(path, { strokeDasharray: "22 14", strokeDashoffset: 0 }, firstAt);
             tl.to(path, { strokeDashoffset: -Math.max(len, 200) * 3, duration: Math.max(end - firstAt, 0.1), ease: "none" }, firstAt);
           };
+          const waitPulse = (node, from, to) => {
+            // While the voice is still on its way to the next cue, the latest
+            // element breathes (a 3 % scale swell every 0.9 s) so nothing holds still.
+            if (!node || to - from < 1.0) return;
+            for (let t = from; t + 0.9 <= to + 0.1; t += 0.9) {
+              tl.to(node, { scale: 1.03, duration: 0.45, ease: "sine.inOut" }, t);
+              tl.to(node, { scale: 1, duration: 0.45, ease: "sine.inOut" }, t + 0.45);
+            }
+          };
           const cycleLit = (nodes, firstAt, period, prop) => {
             // The accent walks through the elements in order, over and over:
             // a border (panels, bands) or the text colour (lines, rows).
@@ -1967,11 +1976,15 @@
           }
 
           if (s.type === "list") {
+            const ats = b.rowEls.map((_, k) => cueAt(cues, k, start, start + 0.4 + k * 0.45));
             b.rowEls.forEach((r, k) => {
-              const at = cueAt(cues, k, start, start + 0.4 + k * 0.45);
+              const at = ats[k];
               reveal(r.row, at, 28, 0.5);
               if (r.ic) loopDraw(r.ic, at + 0.05);
+              if (k + 1 < ats.length) waitPulse(r.row, at + 0.55, ats[k + 1]);
             });
+            // Once every item is up, the accent walks the list.
+            cycleLit(b.rowEls.map((r) => r.row), ats[ats.length - 1] + 0.8, 0.8, "color");
           }
 
           if (s.type === "timeline") {
@@ -2023,6 +2036,7 @@
               b.items.forEach((it, k) => {
                 const at = cueAt(cues, k, start, start + 0.45 + k * 0.3);
                 reveal(it.row, at, 20, 0.45);
+                if (k + 1 < b.items.length) waitPulse(it.row, at + 1.1, cueAt(cues, k + 1, start, start + 0.45 + (k + 1) * 0.3));
                 if (it.axis === "x") {
                   tl.fromTo(it.bar, { scaleX: 0 }, { scaleX: Math.max(0.02, it.ratio), duration: 0.9, ease: "power3.out", immediateRender: false }, at + 0.1);
                   const barWidth = it.track.clientWidth - 160;
@@ -2054,11 +2068,13 @@
                 tl.to(b.connectors[k], { strokeDashoffset: 0, duration: 0.45, ease: "power2.out" }, at - 0.2);
                 enter(node, { scale: 0.8 }, at, 0.5);
                 dashFlow(b.connectors[k], at + 0.3);
+                if (k + 1 < b.nodes.length) waitPulse(node, at + 0.55, cueAt(cues, k + 1, start, start + 0.7 + (k + 1) * 0.35) - 0.2);
               });
             } else if (b.kind === "flow") {
               b.nodes.forEach((node, k) => {
                 const at = cueAt(cues, k, start, start + 0.4 + k * 0.6);
                 reveal(node, at, 28, 0.5);
+                if (k + 1 < b.nodes.length) waitPulse(node, at + 0.55, cueAt(cues, k + 1, start, start + 0.4 + (k + 1) * 0.6) - 0.25);
                 if (k) {
                   drawable(b.connectors[k - 1]);
                   tl.to(b.connectors[k - 1], { strokeDashoffset: 0, duration: 0.4, ease: "power2.out" }, at - 0.25);
@@ -2073,12 +2089,14 @@
               b.nodes.forEach((node, k) => {
                 const at = cueAt(cues, k, start, start + 0.4 + k * 0.45);
                 enter(node, { y: 40, scaleY: 0.9 }, at, 0.55);
+                if (k + 1 < b.nodes.length) waitPulse(node, at + 0.6, cueAt(cues, k + 1, start, start + 0.4 + (k + 1) * 0.45));
               });
               cycleLit(b.nodes, cueAt(cues, b.nodes.length - 1, start, start + 0.4 + (b.nodes.length - 1) * 0.45) + 0.8, 0.8);
             } else {
               b.nodes.forEach((band, k) => {
                 const at = cueAt(cues, k, start, start + 0.4 + k * 0.45);
                 enter(band, { scaleY: 0.6 }, at, 0.55);
+                if (k + 1 < b.nodes.length) waitPulse(band, at + 0.6, cueAt(cues, k + 1, start, start + 0.4 + (k + 1) * 0.45));
               });
               cycleLit(b.nodes, cueAt(cues, b.nodes.length - 1, start, start + 0.4 + (b.nodes.length - 1) * 0.45) + 0.8, 0.8);
             }
@@ -2108,6 +2126,7 @@
               } else {
                 const fromX = b.kind === "chat" ? (k % 2 ? 40 : -40) : 0;
                 enter(line, fromX ? { x: fromX } : { y: 28 }, at, 0.5);
+                if (k + 1 < b.lineEls.length) waitPulse(line, at + 0.55, cueAt(cues, k + 1, start, start + 0.8 + (k + 1) * 0.55));
                 const meter = line.querySelector(".meter i");
                 if (meter) {
                   // Live metrics: each meter settles, then re-levels every couple of seconds.

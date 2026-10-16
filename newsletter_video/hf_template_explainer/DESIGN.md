@@ -156,7 +156,8 @@ number is said; an emphasis phrase turns accent when it is said.
 |---|---|
 | push (even scenes) | outgoing lifts 56 px and fades over 0.3 s `power2.in`; incoming rises 72 px over 0.5 s `power3.out` |
 | wipe (odd scenes) | incoming is revealed top-to-bottom by a `clip-path` inset over 0.5 s `power3.inOut` behind a 4 px accent edge that travels the stage; outgoing fades underneath; parts of the incoming scene are already in place |
-| hold | nothing holds still for more than 1.2 s (`scripts/motion_audit.py` enforces it): the hero pushes in 1 → 1.06 while the head drifts 10 px (parallax); pictograms re-trace every 2.4 s; a light band sweeps the stat rule and the lead bar every 1.6 s; drawn connectors carry moving dashes; the lead disc and the timeline marker ping every 1.5 s; stack and funnel layers, bar rows and device lines take turns in accent; laptop meters re-level every 1.8 s |
+| hold | nothing holds still for more than 1.2 s (`scripts/motion_audit.py` enforces it): the hero pushes in 1 → 1.025 while the head drifts 10 px (parallax); pictograms re-trace every 1.6 s; a light band sweeps the stat rule and the lead bar every 1.6 s; drawn connectors carry moving dashes; the lead disc and the timeline marker ping every 1.5 s; once every item is up, list rows, diagram nodes, bar rows and device lines take turns in accent; laptop meters re-level every 1.8 s |
+| wait pulse | cues follow the voice, so the gap to the next item can be long: while the scene waits, the latest row, node, bar or device line swells 1 → 1.03 → 1 every 0.9 s (`sine.inOut`) until the next cue lands |
 | enter | 0.6 s `power3.out`, y 36 → 0, opacity 0 → 1; every revealed element is hidden from t = 0 and arrives on its cue |
 | row / node / bar arrival | 0.45–0.55 s `power3.out`, y 20–40 → 0 |
 | word wave | per word, 0.5 s `power4.out` from y 44, binary opacity, 55 ms apart, whole line lands by ~0.7 s |
@@ -169,7 +170,8 @@ number is said; an emphasis phrase turns accent when it is said.
 | progress rule | linear over the whole video |
 
 No bounce, elastic or overshoot anywhere (numbers are data, not decoration).
-No breathing, no idle drift, no camera moves beyond the slow push. With
+No idle drift and no camera moves beyond the slow push; the only breathing is
+the wait pulse, and it stops the moment the next cue lands. With
 captions changing every 1–2 s, a count, a draw or a cue landing in every
 scene and the progress rule always moving, something meaningful moves every
 1–2 seconds. All motion is on the one paused GSAP timeline, driven from the
