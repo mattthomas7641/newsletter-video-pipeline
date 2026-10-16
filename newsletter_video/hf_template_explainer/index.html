@@ -1852,7 +1852,7 @@
             tl.set(wipe, { opacity: 0 }, start + TRANSITION);
           }
           // Slow push-in on the hero layer with the head drifting a touch less (parallax).
-          if (b.hero) tl.fromTo(b.hero, { scale: 1 }, { scale: 1.06, duration: Math.max(len, 0.1), ease: "none", immediateRender: false }, start);
+          if (b.hero) tl.fromTo(b.hero, { scale: 1 }, { scale: 1.025, duration: Math.max(len, 0.1), ease: "none", immediateRender: false }, start); // ±10 px: stays inside the safe column
           const headEl = b.root.querySelector(".head");
           if (headEl) tl.fromTo(headEl, { y: 0 }, { y: -10, duration: Math.max(len, 0.1), ease: "none", immediateRender: false }, start);
           // Nothing holds still: every scene gets a re-traced pictogram, a sweep,
