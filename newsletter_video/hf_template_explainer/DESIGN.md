@@ -136,7 +136,7 @@ never decoration.
 | statement | label | sentence with one accent phrase · pictogram | — |
 | stat | label | number · rule · trend chart, or number inside a ring | context · source |
 | comparison | title | discs or tiles, labels, figures, notes | — |
-| list | title | 2–4 rows with pictogram or index | — |
+| list | title | 2–4 rows with pictogram or index; 2–3 rows scale up (76–84 px, 120–140 px pictograms) so a short list fills the stage | — |
 | timeline | title | rail, marker, 2–4 steps | — |
 | quote | — | quotation mark · quote (word wave) · attribution | — |
 | chart | title | bars · columns · line · dots | — |

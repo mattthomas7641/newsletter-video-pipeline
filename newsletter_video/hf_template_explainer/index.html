@@ -533,6 +533,21 @@
       .list .row .body {
         font-size: 60px;
       }
+      /* Short lists fill the stage instead of floating in it. */
+      .list.few .row {
+        grid-template-columns: 150px 1fr;
+        min-height: 250px;
+      }
+      .list.few .row .body {
+        font-size: 76px;
+      }
+      .list.two .row {
+        grid-template-columns: 170px 1fr;
+        min-height: 320px;
+      }
+      .list.two .row .body {
+        font-size: 84px;
+      }
 
       /* timeline */
       .timeline .steps {
@@ -1459,15 +1474,17 @@
           return { root, hero, parts, cols };
         },
         list(s) {
-          const root = el("div", "scene list");
+          const few = s.items.length <= 3;
+          const root = el("div", "scene list" + (few ? " few" : "") + (s.items.length === 2 ? " two" : ""));
           const parts = [];
           const h = head(s.title);
           if (s.title) parts.push({ node: h, at: 0.1 });
           const hero = el("div", "hero");
           const rows = el("div", "rows");
+          const iconSize = s.items.length === 2 ? 140 : few ? 120 : 88;
           const rowEls = s.items.map((item, i) => {
             const row = el("div", "el row");
-            const ic = s.icons && s.icons[i] ? icon(s.icons[i], 88, "accent") : null;
+            const ic = s.icons && s.icons[i] ? icon(s.icons[i], iconSize, "accent") : null;
             row.append(ic || el("div", "index", pad2(i + 1)), el("div", "body", item));
             rows.append(row);
             return { row, ic };
