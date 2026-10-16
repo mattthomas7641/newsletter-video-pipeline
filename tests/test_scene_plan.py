@@ -223,7 +223,7 @@ def test_plan_from_classic_script_dict():
     plan = plan_from_script(script)
     assert [s.type for s in plan.scenes] == ["title", "statement", "stat", "statement", "statement", "outro"]
     assert plan.scenes[0].fields["kicker"] == "AI AGENTS"
-    assert plan.scenes[2].fields == {"value": "5.1x", "label": "the max cost multiplier for teams", "context": "",
+    assert plan.scenes[2].fields == {"value": "5.1x", "label": "the max cost multiplier for", "context": "",
                                      "source": "", "trend": []}
     assert plan.scenes[1].fields["emphasis"] == "teams"
     assert plan.lines == [script["hook"]] + [b["say"] for b in script["beats"]] + [script["outro"]]
