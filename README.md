@@ -140,6 +140,20 @@ this style too:
 ./venv/bin/python -m newsletter_video.explainer_builder output/2026-10-13/07_x.json --out /tmp/07.mp4 --write-plan  # ask Claude for a scene plan (one call)
 ```
 
+Quality gates for the explainer style:
+
+```bash
+./venv/bin/python scripts/motion_audit.py output/2026-10-16/01_x.mp4   # fails on any static stretch > 1.2 s (caption band excluded)
+cd newsletter_video/hf_template_explainer && npx hyperframes check         # lint, layout, motion, WCAG contrast
+./venv/bin/python -m pytest tests/                                         # validator, timing, audit and pipeline tests
+```
+
+`scripts/motion_audit.py` samples a render at 8 fps, masks the lower-third caption band and
+reports every stretch where fewer than 0.15 % of pixels change for longer than 1.2 s, plus a
+motion-per-second curve; exit code 1 means the video holds a still frame somewhere. While
+iterating on a plan, `--reuse-audio` on the `explainer_builder` CLI caches the voice track and
+word alignment per script, so re-renders skip Voicebox.
+
 The composition is `newsletter_video/hf_template_explainer/index.html`; its design system
 (tokens, type scale, spacing, motion, safe zones, the scene library) is documented in
 `newsletter_video/hf_template_explainer/DESIGN.md`. Validate it after changes with
