@@ -32,7 +32,9 @@ import imageio_ffmpeg
 import numpy as np
 import soundfile
 
+from .runstate import next_index, record_video
 from .script_writer import Script
+from .supervisor import FatalPipelineError, run_subprocess
 from .tts import HYPERFRAMES_VERSION, audio_duration_seconds, base_speed, hyperframes_env, npx_path, speakable, synthesize
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -45,6 +47,10 @@ MAX_TAIL_SECONDS = 2.0  # cap on the outro hold for scripts too short to reach M
 HOOK_EXIT_SECONDS = 0.25  # hook clears this long before the first card lands
 HIGHLIGHT_MIN_DELAY = 0.3  # let the card land before its highlight sweeps in
 RENDER_ATTEMPTS = 2
+# Wall-clock cap per render attempt (RENDER_TIMEOUT_SECONDS overrides). A
+# render takes a few minutes; a headless Chrome that has hung (memory
+# pressure, a stuck font/CDN fetch) would otherwise block the day forever.
+DEFAULT_RENDER_TIMEOUT_SECONDS = 1200
 RENDER_CRF = "21"  # ~25-35 MB per video; platforms re-encode uploads anyway
 CAPTION_WORDS = 3  # max words per caption chunk
 CAPTION_CHARS = 16  # ...or fewer, if the words are long
@@ -431,44 +437,86 @@ def build_short(script: Script, out_path: Path, audio_path: Path, work_dir: Path
         shutil.copy(character, assets / "character.png")
     variables_path.write_text(json.dumps({"story": json.dumps(payload)}))
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    # Render into a side folder and move into place only when complete, so
+    # a kill mid-render never leaves a half-written mp4 where the uploader
+    # (or a re-run's numbering) would take it for a finished video.
+    partial = out_path.parent / ".partial" / out_path.name
+    partial.parent.mkdir(parents=True, exist_ok=True)
+    partial.unlink(missing_ok=True)
     npx = npx_path()
     cmd = [npx, "--yes", f"hyperframes@{HYPERFRAMES_VERSION}", "render", str(work_dir),
-           "--output", str(out_path), "--variables-file", str(variables_path),
+           "--output", str(partial), "--variables-file", str(variables_path),
            "--strict-variables", "--quiet", "--crf", RENDER_CRF]
+    timeout = float(os.environ.get("RENDER_TIMEOUT_SECONDS", DEFAULT_RENDER_TIMEOUT_SECONDS))
     # One retry: under memory pressure the renderer's ffmpeg startup probe
     # has failed transiently and then succeeded on the next attempt.
     for attempt in range(RENDER_ATTEMPTS):
         try:
-            subprocess.run(cmd, check=True, env=hyperframes_env(npx))
+            run_subprocess(cmd, timeout=timeout, env=hyperframes_env(npx))
             break
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            log.warning("Render attempt %d/%d of %s failed: %s", attempt + 1, RENDER_ATTEMPTS, out_path.name,
+                        type(exc).__name__)
             if attempt == RENDER_ATTEMPTS - 1:
+                partial.unlink(missing_ok=True)
                 raise
+    if not partial.exists() or partial.stat().st_size == 0:
+        raise RuntimeError(f"Renderer exited cleanly but wrote no video for {out_path.name}")
+    partial.replace(out_path)
     return out_path
 
 
 def build_shorts(scripts: list[Script], out_dir: Path, audio_dir: Path,
-                 target_date: date | None = None) -> list[Path]:
-    """Numbering continues after any videos already in `out_dir`, so a second
-    run on the same day adds videos instead of overwriting them."""
+                 target_date: date | None = None, on_rendered=None) -> list[Path]:
+    """Renders each script as its own video and returns the paths that
+    succeeded. Numbering continues after the highest number already used in
+    `out_dir` (by any file, not just finished videos), so a re-run on the
+    same day adds videos instead of overwriting or colliding.
+
+    Each video is isolated: a failure (TTS, alignment, ffmpeg, render) is
+    logged and recorded in the day's status.json, and the remaining videos
+    still get made. `on_rendered(script, path)` is called the moment a
+    video is complete — run_pipeline uses it to write the metadata sidecar
+    right away, so a crash later in the day leaves no orphan videos.
+    Raises only if every video failed (or the first failure was fatal for
+    the whole day, e.g. TTS cannot run at all)."""
     target_date = target_date or date.today()
     out_dir.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(out_dir / ".partial", ignore_errors=True)  # leftovers of a killed render
     audio_dir.mkdir(parents=True, exist_ok=True)
     work_dir = audio_dir.parent / "_hf_work"
     _prepare_workdir(work_dir)
 
-    first = len(list(out_dir.glob("*.mp4")))
+    first = next_index(out_dir) - 1
     paths = []
-    for i, script in enumerate(scripts, start=first):
-        slug = re.sub(r"-+", "-", "".join(c if c.isalnum() else "-" for c in script.title.lower()))[:40].strip("-")
-        kicker = f"TLDR · {target_date:%b} {target_date.day}".upper()
-        out_path = out_dir / f"{i + 1:02d}_{slug}.mp4"
-        audio_path = audio_dir / f"{i + 1:02d}.wav"
-        build_short(script, out_path, audio_path, work_dir, kicker,
-                    background_seed=f"{target_date.isoformat()}-{i}")
-        paths.append(out_path)
-    _clean_render_cache(work_dir)
+    errors: list[str] = []
+    try:
+        for i, script in enumerate(scripts, start=first):
+            slug = re.sub(r"-+", "-", "".join(c if c.isalnum() else "-" for c in script.title.lower()))[:40].strip("-")
+            kicker = f"TLDR · {target_date:%b} {target_date.day}".upper()
+            out_path = out_dir / f"{i + 1:02d}_{slug}.mp4"
+            audio_path = audio_dir / f"{i + 1:02d}.wav"
+            try:
+                build_short(script, out_path, audio_path, work_dir, kicker,
+                            background_seed=f"{target_date.isoformat()}-{i}")
+                if on_rendered is not None:
+                    on_rendered(script, out_path)
+                record_video(out_dir, out_path.stem, "rendered", title=script.title,
+                             writer=getattr(script, "writer", ""), stories=[s.title for s in script.stories])
+            except Exception as exc:
+                record_video(out_dir, out_path.stem, "failed", title=script.title,
+                             writer=getattr(script, "writer", ""), stories=[s.title for s in script.stories],
+                             error=f"{type(exc).__name__}: {str(exc)[:500]}")
+                if isinstance(exc, FatalPipelineError):
+                    raise
+                log.exception("Video %s failed; continuing with the next one", out_path.name)
+                errors.append(f"{out_path.name}: {type(exc).__name__}: {str(exc)[:200]}")
+                continue
+            paths.append(out_path)
+    finally:
+        _clean_render_cache(work_dir)
+    if scripts and not paths:
+        raise RuntimeError("Every video failed:\n  " + "\n  ".join(errors))
     return paths
 
 

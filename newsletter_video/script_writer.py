@@ -80,6 +80,7 @@ class Script:
     stories: list[Story] = field(default_factory=list)
     post_caption: str = ""  # text for the YouTube description / TikTok caption
     hashtags: list[str] = field(default_factory=list)
+    writer: str = ""  # "claude" or "heuristic": run_pipeline refuses to publish fallback scripts publicly
 
     @property
     def narration(self) -> str:
@@ -340,7 +341,7 @@ def _heuristic_scripts(editions: list[Edition], candidates: list[Story], n_video
         hook = _heuristic_hook(lead)
         outro = _OUTROS[zlib.crc32(lead.title.encode()) % len(_OUTROS)]
         script = Script(title=lead.title, badge=_badge_for(lead.section), hook=hook,
-                        beats=_story_beats(lead, first=True), outro=outro, stories=[lead])
+                        beats=_story_beats(lead, first=True), outro=outro, stories=[lead], writer="heuristic")
         same_edition = [s for s in pool if s.edition == lead.edition]
         for story in same_edition + [s for s in pool if s.edition != lead.edition]:
             if script.word_count >= MIN_WORDS:
@@ -611,7 +612,9 @@ def _llm_scripts(candidates: list[Story], n_videos: int) -> list[Script] | None:
     text = next((b.text for b in response.content if b.type == "text"), "")
     try:
         videos = json.loads(text)["videos"]
-    except (json.JSONDecodeError, KeyError):
+        if not isinstance(videos, list):
+            raise TypeError("videos is not a list")
+    except (json.JSONDecodeError, KeyError, TypeError):
         log.warning("Claude script writer returned unparseable JSON; using rule-based scripts")
         return None
     log.info("Claude wrote %d scripts (%d in / %d out tokens)", len(videos),
@@ -619,25 +622,48 @@ def _llm_scripts(candidates: list[Story], n_videos: int) -> list[Script] | None:
 
     scripts = []
     for video in videos[:n_videos]:
-        beats = []
-        for raw in video["beats"]:
-            highlight = raw["highlight"] if raw["highlight"] and raw["highlight"] in raw["card"] else None
-            is_stat = raw["kind"] == "stat" and raw["stat"].strip()
-            beats.append(Beat(say=raw["say"], card=raw["card"], highlight=highlight,
-                              kind="stat" if is_stat else "fact", stat=raw["stat"].strip() if is_stat else ""))
-        if not beats:
+        try:
+            script = _script_from_llm(video, candidates)
+        except (KeyError, TypeError, AttributeError, ValueError) as exc:  # schema violation
+            log.warning("Claude returned a malformed video (%s: %s); skipping it", type(exc).__name__, exc)
             continue
-        scripts.append(Script(
-            title=video["title"],
-            badge=video["badge"].upper()[:14],
-            hook=video["hook"],
-            beats=beats,
-            outro=video["outro"],
-            stories=[candidates[i] for i in video["story_ids"] if 0 <= i < len(candidates)],
-            post_caption=video["post_caption"].strip(),
-            hashtags=[re.sub(r"[^\w]", "", h).lower() for h in video["hashtags"] if h.strip()][:5],
-        ))
+        if script is None:
+            continue
+        if not (MIN_LLM_WORDS <= script.word_count <= MAX_LLM_WORDS):
+            log.warning("Claude script %r is %d words (allowed %d-%d); skipping it",
+                        script.title, script.word_count, MIN_LLM_WORDS, MAX_LLM_WORDS)
+            continue
+        scripts.append(script)
     return scripts or None
+
+
+# Hard bounds on what the writer may hand to the voice: the pace adjustment in
+# video_builder covers small misses (it aims for 100-110 words); far outside
+# that, the video would run past a minute or be a few seconds of nothing.
+MIN_LLM_WORDS = 50
+MAX_LLM_WORDS = 170
+
+
+def _script_from_llm(video: dict, candidates: list[Story]) -> Script | None:
+    beats = []
+    for raw in video["beats"]:
+        highlight = raw["highlight"] if raw["highlight"] and raw["highlight"] in raw["card"] else None
+        is_stat = raw["kind"] == "stat" and raw["stat"].strip()
+        beats.append(Beat(say=raw["say"], card=raw["card"], highlight=highlight,
+                          kind="stat" if is_stat else "fact", stat=raw["stat"].strip() if is_stat else ""))
+    if not beats or not str(video["hook"]).strip() or not str(video["outro"]).strip() or not str(video["title"]).strip():
+        return None
+    return Script(
+        title=video["title"],
+        badge=video["badge"].upper()[:14],
+        hook=video["hook"],
+        beats=beats,
+        outro=video["outro"],
+        stories=[candidates[i] for i in video["story_ids"] if 0 <= i < len(candidates)],
+        post_caption=video["post_caption"].strip(),
+        hashtags=[re.sub(r"[^\w]", "", h).lower() for h in video["hashtags"] if h.strip()][:5],
+        writer="claude",
+    )
 
 
 def _is_covered(title: str, covered_norm: list[str]) -> bool:

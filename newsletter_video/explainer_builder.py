@@ -54,7 +54,6 @@ TEMPLATE_DIR = Path(__file__).resolve().parent / "hf_template_explainer"
 VIDEO_STYLES = ("avatar", "explainer")
 DEFAULT_STYLE = "explainer"
 EXPLAINER_MAX_TAIL = 1.0  # hold after the last word: short, the outro keeps animating to the end
-VOICE_HANG_SECONDS = 240  # TTS + alignment normally takes 1-3 min; past this Voicebox is wedged
 AUDIO_CACHE_DIRNAME = "_audio_cache"
 THEMES = ("light", "dark")
 SCENE_LEAD_SECONDS = 0.2  # a scene lands this long before its first word is spoken
@@ -332,59 +331,12 @@ def _prepare_workdir(work_dir: Path) -> None:
     (work_dir / "assets").mkdir()
 
 
-def _relaunch_voicebox() -> None:
-    """Voicebox occasionally wedges with a generation stuck at "generating";
-    the only cure is a restart. The app is quit politely, then reopened,
-    and the API is awaited (tts._ensure_voicebox_running waits up to 90 s)."""
-    import time
-
-    from .tts import _ensure_voicebox_running
-
-    log.warning("Voicebox looks wedged; quitting and relaunching it")
-    subprocess.run(["osascript", "-e", 'tell application "Voicebox" to quit'], check=False,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    time.sleep(6)
-    subprocess.run(["pkill", "-f", "Voicebox.app"], check=False)
-    time.sleep(2)
-    subprocess.run(["open", "-a", "Voicebox"], check=False)
-    _ensure_voicebox_running()
-
-
-def _voice_guarded(lines: list[str], audio_path: Path, speed: float | None):
-    """video_builder._voice_script under a watchdog: if voicing hangs past
-    VOICE_HANG_SECONDS (a wedged Voicebox), relaunch the app and retry once.
-    Other providers never hang, so the watchdog only costs a thread."""
-    import threading
-
-    for attempt in range(2):
-        box: dict = {}
-
-        def run() -> None:
-            try:
-                box["result"] = _voice_script(lines, audio_path, speed)
-            except BaseException as exc:  # surfaced on the main thread
-                box["error"] = exc
-
-        worker = threading.Thread(target=run, daemon=True)
-        worker.start()
-        worker.join(VOICE_HANG_SECONDS)
-        if "result" in box:
-            return box["result"]
-        if "error" in box:
-            raise box["error"]
-        if attempt == 0 and os.environ.get("TTS_PROVIDER", "kokoro") == "voicebox":
-            _relaunch_voicebox()  # the hung thread is abandoned; a fresh attempt follows
-            continue
-        raise RuntimeError(f"Voicing did not finish within {VOICE_HANG_SECONDS}s")
-    raise AssertionError("unreachable")
-
-
 def _voice_cached(lines: list[str], audio_path: Path, speed: float | None, cache_dir: Path | None):
     """Voicing with an optional on-disk cache keyed by the exact lines, voice
     settings and speed, so iteration renders of the same plan skip TTS and
     alignment entirely (--reuse-audio)."""
     if cache_dir is None:
-        return _voice_guarded(lines, audio_path, speed)
+        return _voice_script(lines, audio_path, speed)
     import hashlib
 
     from .characters import active
@@ -405,7 +357,7 @@ def _voice_cached(lines: list[str], audio_path: Path, speed: float | None, cache
         shutil.copy(wav, audio_path)
         log.info("Voice: reusing cached audio %s", key)
         return [[(w, t) for w, t in line] for line in data["per_line"]], data["duration"]
-    per_line, duration = _voice_guarded(lines, audio_path, speed)
+    per_line, duration = _voice_script(lines, audio_path, speed)
     shutil.copy(audio_path, wav)
     meta.write_text(json.dumps({"per_line": per_line, "duration": duration}))
     return per_line, duration
