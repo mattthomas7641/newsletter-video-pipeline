@@ -35,14 +35,64 @@ TEXT_TYPES = frozenset({"statement", "quote", "list"})
 CHART_KINDS = ("bars", "columns", "line", "dots")
 DIAGRAM_KINDS = ("flow", "stack", "hub", "funnel")
 DEVICE_KINDS = ("phone", "laptop", "terminal", "chat")
-# The pictogram set in hf_template_explainer/icons.js (one stroke style).
-ICONS = frozenset({
-    "chip", "cloud", "code", "rocket", "lock", "dollar", "trend-up", "trend-down", "users", "user",
-    "robot", "brain", "phone", "laptop", "globe", "bolt", "clock", "warning", "check", "cross", "box",
-    "building", "briefcase", "gavel", "eye", "search", "mail", "play", "shield", "bug", "scale", "car",
-    "star", "database", "key", "gear", "camera", "mic", "video", "document", "chart", "layers", "link",
-    "wallet", "megaphone",
-})
+# The curated pictogram set (hf_template_explainer/icons.js, one stroke style)
+# with what each one stands for. The writer sees this list; an icon that
+# doesn't fit a scene is better left out ("") than used as filler.
+ICON_MEANINGS: dict[str, str] = {
+    "comment": "a question to the viewer, a comment or reply prompt (the outro always uses it)",
+    "question": "an open question, uncertainty, something unresolved",
+    "chip": "chips, GPUs, hardware, compute",
+    "cloud": "cloud services, hosting, infrastructure",
+    "code": "code, developer tools, programming",
+    "robot": "AI agents, bots, automation",
+    "brain": "AI models, intelligence, reasoning, memory",
+    "rocket": "a launch, a release, a startup taking off",
+    "lock": "security, privacy, encryption, access control",
+    "shield": "protection, safety, defence, a guardrail",
+    "key": "credentials, API keys, logins, access",
+    "bug": "bugs, vulnerabilities, exploits, outages",
+    "warning": "a catch, a risk, a caveat, a warning",
+    "dollar": "a price, a cost, revenue",
+    "money": "funding, payments, a deal, valuation",
+    "wallet": "a budget, spending, what users pay",
+    "growth": "growth, adoption, scaling up",
+    "trend-up": "a rise, an increase, a rebound",
+    "trend-down": "a fall, a decline, a cut",
+    "chart": "data, benchmarks, metrics, a study",
+    "users": "people, a team, users, the public",
+    "user": "one person, an individual, an account",
+    "building": "a company, an office, an institution",
+    "briefcase": "jobs, hiring, careers, the workplace",
+    "gavel": "a lawsuit, regulation, policy, a ruling",
+    "scale": "a trade-off, a comparison, balance, fairness",
+    "globe": "the internet, worldwide, a country or region",
+    "bolt": "speed, performance, energy",
+    "energy": "power, electricity, data-centre demand",
+    "clock": "time, a deadline, a delay, a schedule",
+    "search": "search, research, discovery, an investigation",
+    "eye": "surveillance, watching, visibility, attention",
+    "database": "data, storage, datasets, training data",
+    "layers": "a stack, layers, versions, a platform",
+    "link": "an integration, a connection, a partnership",
+    "gear": "settings, tooling, how something works",
+    "document": "a report, a paper, a contract, a filing",
+    "mail": "email, messages, newsletters",
+    "phone": "a phone, mobile, an app",
+    "laptop": "a computer, software, a desktop app",
+    "camera": "photos, imaging, image generation",
+    "video": "video, streaming, animation",
+    "mic": "voice, audio, speech, podcasts",
+    "play": "media playback, entertainment, games",
+    "box": "a product, a package, shipping, a physical thing",
+    "car": "cars, self-driving, transport",
+    "star": "a rating, a favourite, quality, a top pick",
+    "check": "done, approved, confirmed, success",
+    "cross": "blocked, rejected, cancelled, failure",
+    "megaphone": "an announcement, marketing, publicity",
+}
+ICONS = frozenset(ICON_MEANINGS)
+# Icons that read as something other than a question, never on a question or CTA.
+_NOT_FOR_QUESTIONS = frozenset({"megaphone", "play", "mic", "video", "camera", "star", "check"})
 
 # Hard character caps per on-screen field. These are the numbers the
 # composition's type scale was designed against (see DESIGN.md): the largest
@@ -55,9 +105,9 @@ CAPS: dict[str, dict[str, int]] = {
     "list": {"title": 40, "item": 38},
     "timeline": {"title": 40, "step_label": 12, "step_text": 40},
     "quote": {"text": 110, "attribution": 40},
-    "chart": {"title": 40, "series_label": 14, "unit": 8},
+    "chart": {"title": 40, "series_label": 12, "unit": 8},
     "diagram": {"title": 40, "node_label": 16, "node_text": 30, "center": 16},
-    "device": {"title": 40, "label": 18, "line": 36},
+    "device": {"title": 40, "label": 18, "line": 32},
     "outro": {"text": 56},
 }
 LIST_ITEMS = (2, 4)
@@ -307,6 +357,11 @@ def _validate_scene(index: int, raw: Any) -> tuple[Scene | None, list[str], list
         f["lines"] = lines
     elif kind == "outro":
         f["text"] = c.text(raw, "text", caps["text"])
+        f["icon"] = "comment"
+
+    if kind in ("statement", "title") and f.get("icon") in _NOT_FOR_QUESTIONS and "?" in (f.get("text") or f.get("headline") or say):
+        c.repairs.append(f"{c.where}: icon {f['icon']!r} dropped on a question; use 'comment' or 'question' for those")
+        f["icon"] = ""
 
     return Scene(type=kind, say=say, fields=f), c.errors, c.repairs
 
@@ -345,6 +400,11 @@ def validate_plan(raw_scenes: Any, strict: bool = False) -> ScenePlan:
             errors.append("the first scene must be a 'title'")
         if scenes[-1].type != "outro":
             errors.append("the last scene must be an 'outro'")
+        for k, (prev, cur) in enumerate(zip(scenes, scenes[1:]), start=2):
+            icon_prev, icon_cur = prev.fields.get("icon"), cur.fields.get("icon")
+            if icon_prev and icon_cur and icon_prev == icon_cur and cur.type != "outro":
+                repairs.append(f"scene {k} ({cur.type}): icon {icon_cur!r} repeats the previous scene's; dropped")
+                cur.fields["icon"] = ""
         for i, scene in enumerate(scenes[1:-1], start=2):
             if scene.type in ("title", "outro"):
                 errors.append(f"scene {i} ({scene.type}): only the first scene may be a title and only the last an outro")
@@ -447,7 +507,7 @@ SCENE_SCHEMA: dict[str, Any] = _obj({
     "say": _s("What the voice says while this scene is on screen (title: the hook, outro: the sign-off, each at most 14 words)"),
     "kicker": _s("title only: topic label, 1-2 words, under 18 characters, e.g. 'AI AGENTS'; else ''"),
     "headline": _s("title only: the story in one line, under 56 characters; else ''"),
-    "icon": _s("title and statement: a pictogram name from the icon list that stands for the subject; else ''"),
+    "icon": _s("title and statement: a pictogram from the icon list that stands for the subject, or '' when none fits; else ''"),
     "label": _s("statement: optional small label under 24 characters; stat: what the number is, under 36 characters, not repeating it; device: app or window name under 18 characters; else ''"),
     "text": _s("statement: one sentence under 72 characters; quote: the quotation under 110 characters, no quote marks; outro: the closing line under 56 characters; else ''"),
     "emphasis": _s("statement only: 1-3 words copied exactly from text; else ''"),

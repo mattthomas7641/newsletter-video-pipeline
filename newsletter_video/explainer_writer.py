@@ -20,7 +20,7 @@ import os
 import re
 from dataclasses import dataclass, field
 
-from .scene_plan import SCENE_SCHEMA, ScenePlan, ScenePlanError, plan_from_script, validate_plan
+from .scene_plan import ICON_MEANINGS, SCENE_SCHEMA, ScenePlan, ScenePlanError, plan_from_script, validate_plan
 from .scraper import Story
 from .script_writer import (
     DEFAULT_WRITER_EFFORT,
@@ -144,10 +144,11 @@ the spoken line, in order, so each appears as it is said.
 quotes someone.
 - outro: closes every video. `text` is the closing line the viewer reads; its `say` is the \
 spoken outro, at most 14 words: a reason to comment or follow, tied to the topic.
-Pictogram names (`icon`): chip, cloud, code, rocket, lock, dollar, trend-up, trend-down, \
-users, user, robot, brain, phone, laptop, globe, bolt, clock, warning, check, cross, box, \
-building, briefcase, gavel, eye, search, mail, play, shield, bug, scale, car, star, database, \
-key, gear, camera, mic, video, document, chart, layers, link, wallet, megaphone.
+Pictograms (`icon`): each stands for something; pick the one that means what the scene is \
+about, use '' when none fits, never a filler, and never the same icon in two scenes in a row. \
+Questions and calls to comment use "comment" or "question" (the outro always gets "comment"). \
+The set:
+{ICON_LIST}
 
 Writing each video
 - Structure: a title scene, then 3-7 scenes, then an outro. Prefer the graphic scenes: a \
@@ -155,7 +156,8 @@ number gets a stat or chart, a before/after a comparison, a sequence a timeline,
 structure a diagram, a product or launch a device. Rules the plan is checked against: at \
 least two graphic scenes (stat, chart, comparison, timeline, diagram, device) per video, \
 never two text-only scenes (statement, list, quote) in a row, and at most two of the same \
-type in a row. Vary the types across the video.
+type in a row. Vary the types across the video; every scene should give the viewer something \
+new to look at, not just new text.
 - Length: 100-110 spoken words in total across all `say` lines, never under 98 and never \
 over 115: the voice speaks about 2.5 words per second, so that is 40-44 seconds. Each scene's `say` is \
 one or two short sentences, 8-22 words, conversational, as if explaining to a smart friend. \
@@ -179,6 +181,10 @@ cents per million tokens", "1.8 billion dollars", "five times cheaper"); symbols
 "$0.10" belong only in on-screen fields. Spell made-up or blended words the way they should \
 sound in `say`, keeping the original spelling on screen.
 """
+
+EXPLAINER_WRITER_SYSTEM = EXPLAINER_WRITER_SYSTEM.replace(
+    "{ICON_LIST}", "\n".join(f"- {name}: {meaning}" for name, meaning in ICON_MEANINGS.items()) + "\n"
+)
 
 _EXPLAINER_SCHEMA = {
     "type": "object",
