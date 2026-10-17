@@ -24,6 +24,8 @@ from .scene_plan import ICON_MEANINGS, SCENE_SCHEMA, ScenePlan, ScenePlanError, 
 from .scraper import Story
 from .script_writer import (
     ANTHROPIC_TIMEOUT_SECONDS,
+    WriterNetworkError,
+    _stream_with_retries,
     DEFAULT_WRITER_EFFORT,
     LLM_SUMMARY_CHARS,
     WRITER_MODEL,
@@ -250,7 +252,8 @@ def _call_writer(user: str) -> dict | None:
         if effort:
             output_config["effort"] = effort
         client = anthropic.Anthropic(timeout=ANTHROPIC_TIMEOUT_SECONDS, max_retries=2)
-        with client.beta.messages.stream(
+        response = _stream_with_retries(
+            client, anthropic,
             model=WRITER_MODEL,
             max_tokens=64000,
             system=_system_prompt(),
@@ -258,9 +261,8 @@ def _call_writer(user: str) -> dict | None:
             output_config=output_config,
             betas=["server-side-fallback-2026-07-01"],
             extra_body={"fallbacks": "default"},
-        ) as stream:
-            response = stream.get_final_message()
-    except anthropic.APIError as exc:
+        )
+    except (anthropic.APIError, WriterNetworkError) as exc:
         log.warning("Claude explainer writer failed (%s: %s)", type(exc).__name__, getattr(exc, "message", exc))
         return None
     if response.stop_reason in ("refusal", "max_tokens"):
