@@ -82,8 +82,27 @@ def background_clips() -> list[Path]:
 def character_image() -> Path | None:
     """The static avatar cutout — just one image; the composition handles
     all its motion (a slight idle bob, see hf_template/index.html)."""
+    from .characters import active
+
+    character = active()
+    if character and character.avatar:
+        return character.avatar
     images = sorted(CHARACTER_DIR.glob("*.png")) + sorted(CHARACTER_DIR.glob("*.jpg"))
     return images[0] if images else None
+
+
+AVATAR_MAX_HEIGHT = 980  # px on the 1080x1920 canvas; the composition anchors it bottom-left
+AVATAR_MAX_WIDTH = 600  # keeps wide/square avatars from covering the cards and captions
+
+
+def _avatar_height(image: Path) -> int:
+    """Display height for an avatar: full height for tall cutouts, shrunk for
+    wide ones so their width never exceeds AVATAR_MAX_WIDTH."""
+    from PIL import Image
+
+    with Image.open(image) as img:
+        width, height = img.size
+    return round(min(AVATAR_MAX_HEIGHT, AVATAR_MAX_WIDTH * height / width))
 
 
 def _prepared_clip(source: Path) -> Path:
@@ -400,11 +419,11 @@ def build_short(script: Script, out_path: Path, audio_path: Path, work_dir: Path
     payload["background"] = _cut_background(
         background_clips(), assets / "bg.mp4", payload["duration"], background_seed
     )
-    variables_path.write_text(json.dumps({"story": json.dumps(payload)}))
-
     character = character_image()
     if character is not None:
+        payload["avatar"] = {"height": _avatar_height(character)}
         shutil.copy(character, assets / "character.png")
+    variables_path.write_text(json.dumps({"story": json.dumps(payload)}))
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     npx = npx_path()
