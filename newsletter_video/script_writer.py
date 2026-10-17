@@ -556,6 +556,45 @@ def _jev_rank_candidates(candidates: list[Story], n_videos: int) -> list[Story] 
     return ranked  # may legitimately be [] if nothing cleared the bar — not the same as Jev being unavailable
 
 
+class WriterNetworkError(Exception):
+    """The Claude call kept failing on network errors after every retry."""
+
+
+RETRY_DELAYS_SECONDS = (5, 20, 60)
+
+
+def _is_transient(exc: Exception, anthropic) -> bool:
+    """Network-level and server-side failures worth retrying. A dropped or
+    stale connection (e.g. after the Mac slept) can surface mid-stream as a
+    raw httpx error the SDK doesn't wrap or retry."""
+    status_cls = getattr(anthropic, "APIStatusError", ())
+    if status_cls and isinstance(exc, status_cls):
+        return exc.status_code in (408, 409, 429) or exc.status_code >= 500
+    transient = tuple(c for c in (getattr(anthropic, "APIConnectionError", None),
+                                   getattr(anthropic, "APITimeoutError", None)) if c)
+    return isinstance(exc, transient + (OSError, TimeoutError)) or type(exc).__module__.startswith("httpx")
+
+
+def _stream_with_retries(client, anthropic, **kwargs):
+    """One streamed Claude call, retried on transient network errors."""
+    import time
+
+    last: Exception | None = None
+    for attempt, delay in enumerate((0,) + RETRY_DELAYS_SECONDS, start=1):
+        if delay:
+            time.sleep(delay)
+        try:
+            with client.beta.messages.stream(**kwargs) as stream:
+                return stream.get_final_message()
+        except Exception as exc:  # noqa: BLE001 - classified below
+            if not _is_transient(exc, anthropic):
+                raise
+            last = exc
+            log.warning("Claude call failed (%s); attempt %d of %d", type(exc).__name__,
+                        attempt, 1 + len(RETRY_DELAYS_SECONDS))
+    raise WriterNetworkError(f"{type(last).__name__}: {last}") from last
+
+
 def _writer_system() -> str:
     """WRITER_SYSTEM plus the active character's persona, if it has one."""
     from .characters import active
@@ -595,7 +634,8 @@ def _llm_scripts(candidates: list[Story], n_videos: int) -> list[Script] | None:
         client = anthropic.Anthropic(timeout=ANTHROPIC_TIMEOUT_SECONDS, max_retries=2)
         # Streamed: several scripts can run past the non-streaming output limit
         # (~3k output tokens per video).
-        with client.beta.messages.stream(
+        response = _stream_with_retries(
+            client, anthropic,
             model=WRITER_MODEL,
             max_tokens=64000,
             system=_writer_system(),
@@ -604,9 +644,8 @@ def _llm_scripts(candidates: list[Story], n_videos: int) -> list[Script] | None:
             betas=["server-side-fallback-2026-07-01"],
             # On a safety-classifier decline, re-run on Anthropic's recommended model.
             extra_body={"fallbacks": "default"},
-        ) as stream:
-            response = stream.get_final_message()
-    except anthropic.APIError as e:
+        )
+    except (anthropic.APIError, WriterNetworkError) as e:
         log.warning("Claude script writer failed (%s); using rule-based scripts", type(e).__name__)
         return None
     if response.stop_reason in ("refusal", "max_tokens"):
