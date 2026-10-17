@@ -1,0 +1,2220 @@
+<!doctype html>
+<!--
+  ByteSize explainer (1080x1920), 35-45 s, one scene plan per render.
+  The "explainer" video style: no avatar, no footage — an editorial explainer
+  whose scenes are pictograms, charts, diagrams and device wireframes with
+  the text as their labels. Design system: DESIGN.md next to this file;
+  pictograms: icons.js.
+
+  Driven by newsletter_video/explainer_builder.py, which per video:
+    - writes assets/voice.wav (the narration)
+    - renders with --variables-file holding {"story": "<json>"}
+  The `story` default below is a real sample so Studio preview and
+  `npx hyperframes check` work without the pipeline (assets/voice.wav is
+  gitignored; drop any wav there for preview).
+
+  story JSON shape:
+    { "theme": "light"|"dark", "kicker": str, "duration": seconds,
+      "scenes": [ { "type": <scene type>, "start": s, "end": s, ...fields,
+                    cue fields: "emphasisAt" | "countAt" | "cues": [s, ...] } ],
+      "captions": [ { "words": [str], "at": [s], "start": s, "end": s } ] }
+  Scene fields per type are the validated fields of newsletter_video/scene_plan.py.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"story","type":"string","label":"Story JSON","default":"{\"theme\":\"light\",\"kicker\":\"TLDR · OCT 13\",\"duration\":52,\"scenes\":[{\"type\":\"title\",\"start\":0,\"end\":4.2,\"kicker\":\"AI AGENTS\",\"headline\":\"Agent teams cost 5x more. Do they win?\",\"icon\":\"robot\"},{\"type\":\"stat\",\"start\":4.2,\"end\":9.4,\"value\":\"5.1x\",\"label\":\"the cost of a team vs one agent\",\"context\":\"Vibe Code Bench, GPT-6 Sol and Claude Opus 5.5\",\"source\":\"Vals AI\",\"trend\":[1.8,2.4,3.2,4.1,5.1],\"countAt\":5.0},{\"type\":\"comparison\",\"start\":9.4,\"end\":14.6,\"title\":\"Same benchmark, two setups\",\"left\":{\"label\":\"Single agent\",\"value\":\"1x\",\"note\":\"baseline cost\",\"number\":1,\"icon\":\"user\"},\"right\":{\"label\":\"Agent team\",\"value\":\"5.1x\",\"note\":\"no significant score gain\",\"number\":5.1,\"icon\":\"users\"},\"cues\":[9.9,11.2]},{\"type\":\"chart\",\"start\":14.6,\"end\":20,\"kind\":\"columns\",\"title\":\"Cost multiplier by model\",\"unit\":\"x\",\"series\":[{\"label\":\"Sol low\",\"value\":1.8},{\"label\":\"Sol med\",\"value\":3.2},{\"label\":\"Opus 5.5\",\"value\":5.1}],\"highlight\":2,\"cues\":[15.1,16.2,17.3]},{\"type\":\"diagram\",\"start\":20,\"end\":25.5,\"kind\":\"flow\",\"title\":\"How a team runs a task\",\"nodes\":[{\"label\":\"Planner\",\"text\":\"splits the task\"},{\"label\":\"Workers\",\"text\":\"run in parallel threads\"},{\"label\":\"Reviewer\",\"text\":\"merges the result\"}],\"cues\":[20.5,21.8,23.1]},{\"type\":\"statement\",\"start\":25.5,\"end\":29.5,\"label\":\"The catch\",\"text\":\"Whether a team pays off depends on model, task and budget\",\"emphasis\":\"depends\",\"icon\":\"scale\",\"emphasisAt\":26.9},{\"type\":\"chart\",\"start\":29.5,\"end\":34.5,\"kind\":\"dots\",\"title\":\"Tasks where a team scored higher\",\"unit\":\"%\",\"series\":[{\"label\":\"Team won\",\"value\":12},{\"label\":\"No difference\",\"value\":88}],\"highlight\":0,\"cues\":[30,31.5]},{\"type\":\"device\",\"start\":34.5,\"end\":40,\"kind\":\"terminal\",\"title\":\"Claude Code Projects\",\"label\":\"claude\",\"lines\":[\"$ claude projects run deploy\",\"planner: 3 tasks queued\",\"workers: 3/3 running\",\"review: merged in 41s\"],\"cues\":[35,36.2,37.4,38.6]},{\"type\":\"timeline\",\"start\":40,\"end\":44.5,\"title\":\"Claude Code Projects\",\"steps\":[{\"label\":\"Sept\",\"text\":\"Waitlist opens\"},{\"label\":\"Oct\",\"text\":\"Pro and Max users let in\"},{\"label\":\"Now\",\"text\":\"Parallel threads for everyone\"}],\"cues\":[40.5,41.8,43.1]},{\"type\":\"list\",\"start\":44.5,\"end\":48.5,\"title\":\"What decides it\",\"items\":[\"Which model you run\",\"How hard the task is\",\"How much budget you have\"],\"icons\":[\"chip\",\"gear\",\"wallet\"],\"cues\":[45,46,47]},{\"type\":\"outro\",\"start\":48.5,\"end\":52,\"text\":\"Do you run multiple agents? Tell us below.\"}],\"captions\":[{\"words\":[\"Agent\",\"teams\",\"cost\"],\"at\":[0.2,0.5,0.8],\"start\":0.2,\"end\":1.3},{\"words\":[\"up\",\"to\",\"five\",\"times\"],\"at\":[1.3,1.45,1.7,2.0],\"start\":1.3,\"end\":2.5},{\"words\":[\"more.\",\"Do\",\"they\",\"win?\"],\"at\":[2.5,2.9,3.1,3.4],\"start\":2.5,\"end\":4.2}]}"}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="icons.js"></script>
+    <style>
+      /* ---- fonts (self-hosted, see fonts/FONTS.md) ------------------------ */
+      @font-face {
+        font-family: "Instrument Serif";
+        font-style: normal;
+        font-weight: 400;
+        src: url("fonts/InstrumentSerif-Regular-latin.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Instrument Serif";
+        font-style: italic;
+        font-weight: 400;
+        src: url("fonts/InstrumentSerif-Italic-latin.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Geist";
+        font-style: normal;
+        font-weight: 100 900;
+        src: url("fonts/Geist-latin.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Geist Mono";
+        font-style: normal;
+        font-weight: 100 900;
+        src: url("fonts/GeistMono-latin.woff2") format("woff2");
+      }
+
+      /* ---- tokens (DESIGN.md) --------------------------------------------- */
+      :root {
+        --bg: #f6f4ee;
+        --ink: #17191e;
+        --ink-2: #5b606b;
+        --hair: rgba(23, 25, 30, 0.16);
+        --dot: rgba(23, 25, 30, 0.11);
+        --accent: #1f49d6;
+        --accent-soft: rgba(31, 73, 214, 0.14);
+        --bar: #dcd9d0;
+        --panel: #ffffff;
+        --screen: #17191e;
+        --screen-ink: #f3f1ea;
+        --serif: "Instrument Serif", serif;
+        --sans: "Geist", sans-serif;
+        --mono: "Geist Mono", monospace;
+        --t-display: 140px;
+        --t-h1: 104px;
+        --t-h2: 72px;
+        --t-quote: 84px;
+        --t-stat: 320px;
+        --t-value: 96px;
+        --t-body: 48px;
+        --t-caption: 44px;
+        --t-label: 34px; /* floor for any secondary label on a phone */
+        --s-1: 8px;
+        --s-2: 16px;
+        --s-3: 24px;
+        --s-4: 32px;
+        --s-6: 48px;
+        --s-8: 64px;
+        --s-12: 96px;
+        --m: 80px;
+        --content-w: 820px;
+        --stroke: 1.5; /* pictogram stroke on the 24-unit grid */
+      }
+      :root[data-theme="dark"] {
+        --bg: #111318;
+        --ink: #f3f1ea;
+        --ink-2: #a3a8b3;
+        --hair: rgba(243, 241, 234, 0.18);
+        --dot: rgba(243, 241, 234, 0.1);
+        --accent: #7b96ff;
+        --accent-soft: rgba(123, 150, 255, 0.18);
+        --bar: #2a2f3a;
+        --panel: #181b22;
+        --screen: #050608;
+        --screen-ink: #f3f1ea;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: var(--bg);
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--sans);
+        -webkit-font-smoothing: antialiased;
+      }
+      #paper {
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(var(--dot) 1.6px, transparent 1.9px);
+        background-size: 48px 48px;
+        background-position: 16px 16px;
+      }
+
+      /* ---- chrome: kicker row + progress rule (y 176-230) ----------------- */
+      #chrome {
+        position: absolute;
+        top: 176px;
+        left: var(--m);
+        width: var(--content-w);
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        font-family: var(--mono);
+        font-size: var(--t-label);
+        font-weight: 500;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+        line-height: 1;
+      }
+      #counter {
+        font-variant-numeric: tabular-nums;
+      }
+      #rule {
+        position: absolute;
+        top: 228px;
+        left: var(--m);
+        width: var(--content-w);
+        height: 2px;
+        background: var(--hair);
+      }
+      #progress {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--accent);
+        transform: scaleX(0);
+        transform-origin: left center;
+      }
+
+      /* ---- stage: scenes live here (y 272-1336) ---------------------------- */
+      #stage {
+        position: absolute;
+        top: 272px;
+        left: var(--m);
+        width: var(--content-w);
+        height: 1064px;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .scene > .head {
+        flex: 0 0 auto;
+      }
+      .scene > .hero {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        transform-origin: 50% 50%;
+      }
+      .scene > .foot {
+        flex: 0 0 auto;
+      }
+      #wipe {
+        position: absolute;
+        left: 0;
+        width: 100%;
+        top: 0;
+        height: 4px;
+        background: var(--accent);
+        opacity: 0;
+        pointer-events: none;
+      }
+      .el {
+        display: block;
+        width: 100%;
+        will-change: transform, opacity;
+      }
+
+      /* type roles */
+      .label {
+        font-family: var(--mono);
+        font-size: var(--t-label);
+        font-weight: 500;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+        line-height: 1.2;
+      }
+      .label.accent {
+        color: var(--accent);
+      }
+      .display {
+        font-family: var(--serif);
+        font-size: var(--t-display);
+        line-height: 1.0;
+        letter-spacing: -0.015em;
+        overflow-wrap: anywhere;
+        text-wrap: balance;
+      }
+      .h1 {
+        font-family: var(--serif);
+        font-size: var(--t-h1);
+        line-height: 1.06;
+        letter-spacing: -0.01em;
+        overflow-wrap: anywhere;
+        text-wrap: balance;
+      }
+      .h2 {
+        font-family: var(--serif);
+        font-size: var(--t-h2);
+        line-height: 1.1;
+        letter-spacing: -0.01em;
+        overflow-wrap: anywhere;
+        text-wrap: balance;
+      }
+      .body {
+        font-family: var(--sans);
+        font-size: var(--t-body);
+        font-weight: 500;
+        line-height: 1.3;
+        letter-spacing: -0.005em;
+        overflow-wrap: anywhere;
+      }
+      .muted {
+        color: var(--ink-2);
+      }
+      .word {
+        display: inline-block;
+        margin-right: 0.22em;
+      }
+      .em {
+        color: var(--ink);
+      }
+      .num {
+        font-family: var(--sans);
+        font-weight: 700;
+        letter-spacing: -0.04em;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        line-height: 1;
+      }
+
+      /* pictograms */
+      .icon {
+        display: block;
+        overflow: visible;
+      }
+      .icon path {
+        fill: none;
+        stroke: var(--ink);
+        stroke-width: var(--stroke);
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .icon path.f {
+        fill: var(--ink);
+        stroke: none;
+      }
+      .icon.accent path {
+        stroke: var(--accent);
+      }
+      .icon.accent path.f {
+        fill: var(--accent);
+      }
+      .icon.muted path {
+        stroke: var(--ink-2);
+      }
+      .icon.muted path.f {
+        fill: var(--ink-2);
+      }
+
+      /* ---- scenes ------------------------------------------------------------ */
+      .head .h2 {
+        margin-top: var(--s-3);
+      }
+      .foot {
+        padding-top: var(--s-3);
+        border-top: 2px solid var(--hair);
+      }
+      .foot .body {
+        margin-bottom: var(--s-2);
+      }
+
+      /* title / outro */
+      .title .display,
+      .outro .h1 {
+        margin-top: var(--s-4);
+      }
+      .title .hero .icon,
+      .statement .hero .icon {
+        margin: 0 auto;
+      }
+      .title .hero {
+        justify-content: space-between;
+        padding: var(--s-8) 0 var(--s-6);
+      }
+      .statement .hero {
+        justify-content: center;
+        gap: var(--s-12);
+        padding: var(--s-6) 0;
+      }
+      .outro .hero {
+        justify-content: center;
+        gap: var(--s-4);
+        padding: var(--s-3) 0;
+      }
+      .outro .hero .icon {
+        margin: 0 0 var(--s-2);
+      }
+
+      /* stat */
+      .stat .value {
+        font-size: var(--t-stat);
+        transform-origin: left center;
+        margin: var(--s-2) 0;
+      }
+      .stat .stat-rule {
+        position: relative;
+        width: 100%;
+        height: 6px;
+        background: var(--bar);
+        overflow: hidden;
+      }
+      .stat .stat-fill {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--accent);
+        transform: scaleX(0);
+        transform-origin: left center;
+      }
+      .stat .trend {
+        display: flex;
+        align-items: flex-end;
+        gap: var(--s-2);
+        height: 380px;
+        margin-top: var(--s-6);
+      }
+      /* a lighter band that travels along the accent rule / lead bar while a stat holds */
+      .sweep {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 140px;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.45);
+        opacity: 0;
+        pointer-events: none;
+      }
+      :root[data-theme="dark"] .sweep {
+        background: rgba(17, 19, 24, 0.35);
+      }
+      .ping {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 4px solid var(--accent);
+        opacity: 0;
+        pointer-events: none;
+        transform-origin: center center;
+      }
+      .stat .trend .col {
+        flex: 1 1 0;
+        background: var(--bar);
+        transform: scaleY(0);
+        transform-origin: bottom center;
+      }
+      .stat .trend .col.lead {
+        background: var(--accent);
+      }
+      .stat .ring-wrap {
+        display: grid;
+        place-items: center;
+      }
+      .stat .ring-wrap .ring {
+        grid-area: 1 / 1;
+        width: 700px;
+        height: 700px;
+      }
+      .stat .ring-wrap .value {
+        grid-area: 1 / 1;
+        margin: 0;
+        text-align: center;
+        transform-origin: center center;
+      }
+      .ring circle {
+        fill: none;
+        stroke-width: 22;
+      }
+      .ring .track {
+        stroke: var(--bar);
+      }
+      .ring .fill {
+        stroke: var(--accent);
+        stroke-linecap: butt;
+        transform: rotate(-90deg);
+        transform-origin: 50% 50%;
+      }
+
+      /* comparison */
+      .comparison .hero {
+        justify-content: center;
+      }
+      .comparison .columns {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr); /* tracks never grow for nowrap figures */
+        align-items: start;
+        column-gap: var(--s-2);
+      }
+      .comparison .col {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+      .comparison .vs {
+        align-self: center;
+        text-align: center;
+        font-family: var(--mono);
+        font-size: var(--t-label);
+        color: var(--ink-2);
+        letter-spacing: 0.14em;
+      }
+      .comparison .object {
+        display: grid;
+        place-items: center;
+        width: 374px;
+        height: 374px;
+        position: relative;
+      }
+      .comparison .disc {
+        grid-area: 1 / 1;
+        border-radius: 50%;
+        background: var(--bar);
+        transform: scale(0);
+      }
+      .comparison .col.lead .disc {
+        background: var(--accent);
+      }
+      .comparison .tile {
+        width: 340px;
+        height: 340px;
+        border: 3px solid var(--hair);
+        display: grid;
+        place-items: center;
+      }
+      .comparison .col .label {
+        margin-top: var(--s-4);
+      }
+      .comparison .col .value {
+        font-size: var(--t-value);
+        margin-top: var(--s-2);
+        width: 100%;
+        text-align: center;
+      }
+      .comparison .col.lead .value {
+        color: var(--accent);
+      }
+      .comparison .col .note {
+        margin-top: var(--s-2);
+        font-size: 40px;
+        line-height: 1.25;
+        min-height: 100px;
+      }
+
+      /* list */
+      .list .rows {
+        margin-top: var(--s-4);
+      }
+      .list .row {
+        display: grid;
+        grid-template-columns: 110px 1fr;
+        column-gap: var(--s-3);
+        align-items: center;
+        padding: var(--s-3) 0;
+        border-top: 2px solid var(--hair);
+        min-height: 180px;
+      }
+      .list .row .index {
+        font-family: var(--mono);
+        font-size: var(--t-label);
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        color: var(--accent);
+        font-variant-numeric: tabular-nums;
+      }
+      .list .row .body {
+        font-size: 60px;
+      }
+      /* Short lists fill the stage instead of floating in it. */
+      .list.few .row {
+        grid-template-columns: 150px 1fr;
+        min-height: 250px;
+      }
+      .list.few .row .body {
+        font-size: 76px;
+      }
+      .list.two .row {
+        grid-template-columns: 170px 1fr;
+        min-height: 320px;
+      }
+      .list.two .row .body {
+        font-size: 84px;
+      }
+
+      /* timeline */
+      .timeline .steps {
+        position: relative;
+        margin-top: var(--s-4);
+        padding-left: 80px;
+      }
+      .timeline .rail {
+        position: absolute;
+        left: 22px;
+        top: 28px;
+        bottom: 28px;
+        width: 4px;
+        background: var(--hair);
+      }
+      .timeline .rail-fill {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--accent);
+        transform: scaleY(0);
+        transform-origin: top center;
+      }
+      .timeline .marker {
+        position: absolute;
+        left: 0;
+        top: 8px;
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        border: 4px solid var(--accent);
+        background: var(--accent-soft);
+        opacity: 0;
+      }
+      .timeline .step {
+        position: relative;
+        padding: var(--s-2) 0 var(--s-4);
+      }
+      .timeline .node {
+        position: absolute;
+        left: -68px;
+        top: calc(var(--s-2) + 10px);
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--bg);
+        border: 4px solid var(--ink-2);
+        transform-origin: center center;
+      }
+      .timeline .step .body {
+        margin-top: var(--s-1);
+        font-size: 54px;
+      }
+
+      /* quote */
+      .quote .mark {
+        font-family: var(--serif);
+        font-size: 220px;
+        line-height: 0.7;
+        color: var(--accent);
+        height: 150px;
+      }
+      .quote .text {
+        font-family: var(--serif);
+        font-style: italic;
+        font-size: var(--t-quote);
+        line-height: 1.15;
+        overflow-wrap: anywhere;
+        text-wrap: balance;
+      }
+      .quote .attribution {
+        margin-top: var(--s-6);
+        padding-top: var(--s-3);
+        border-top: 2px solid var(--hair);
+      }
+
+      /* chart: bars */
+      .chart .bars {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: var(--s-3);
+      }
+      .chart .bar-row {
+        display: grid;
+        grid-template-columns: 290px 1fr;
+        column-gap: var(--s-3);
+        align-items: center;
+      }
+      .chart .bar-label {
+        font-family: var(--mono);
+        font-size: var(--t-label);
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        color: var(--ink-2);
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      .chart .bar-track {
+        position: relative;
+        height: 96px;
+      }
+      .chart .bar {
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 100%;
+        width: calc(100% - 160px);
+        background: var(--bar);
+        transform: scaleX(0);
+        transform-origin: left center;
+      }
+      .chart .lead .bar,
+      .chart .lead .column {
+        background: var(--accent);
+      }
+      .chart .bar-value {
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        padding-left: var(--s-2);
+        font-size: 44px;
+      }
+      .chart .baseline {
+        margin-top: var(--s-4);
+        height: 2px;
+        background: var(--hair);
+      }
+      /* chart: columns */
+      .chart .columns {
+        display: flex;
+        align-items: flex-end;
+        gap: var(--s-4);
+        height: 640px;
+      }
+      .chart .column-cell {
+        flex: 1 1 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        height: 100%;
+      }
+      .chart .column-value {
+        text-align: center;
+        font-size: 48px;
+        margin-bottom: var(--s-2);
+      }
+      .chart .column {
+        width: 100%;
+        background: var(--bar);
+        transform: scaleY(0);
+        transform-origin: bottom center;
+      }
+      .chart .column-labels {
+        display: flex;
+        gap: var(--s-4);
+        margin-top: var(--s-3);
+      }
+      .chart .column-label {
+        flex: 1 1 0;
+        text-align: center;
+        font-family: var(--mono);
+        font-size: var(--t-label);
+        color: var(--ink-2);
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      /* chart: line */
+      .chart .line-wrap {
+        width: 100%;
+      }
+      .chart .line-svg {
+        display: block;
+        width: 100%;
+        height: 640px;
+        overflow: visible;
+      }
+      .chart .line-svg .area {
+        fill: var(--accent-soft);
+        opacity: 0;
+      }
+      .chart .line-svg .line {
+        fill: none;
+        stroke: var(--accent);
+        stroke-width: 8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .chart .line-svg .pt {
+        fill: var(--bg);
+        stroke: var(--accent);
+        stroke-width: 6;
+        transform-origin: center center;
+        transform-box: fill-box;
+      }
+      .chart .line-svg .pt.lead {
+        fill: var(--accent);
+      }
+      .chart .line-svg .grid {
+        stroke: var(--hair);
+        stroke-width: 2;
+      }
+      .chart .line-callout {
+        font-size: 56px;
+        text-align: right;
+        margin-top: var(--s-3);
+      }
+      /* chart: dots (waffle of 100) */
+      .chart .dots {
+        display: grid;
+        grid-template-columns: repeat(10, 1fr);
+        gap: 14px;
+        width: 700px;
+      }
+      .chart .dotc {
+        aspect-ratio: 1;
+        border-radius: 50%;
+        background: var(--bar);
+      }
+      .chart .legend {
+        margin-top: var(--s-6);
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-2);
+      }
+      .chart .legend-row {
+        display: flex;
+        align-items: center;
+        gap: var(--s-3);
+        font-size: 48px;
+      }
+      .chart .swatch {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--bar);
+        flex: 0 0 auto;
+      }
+      .chart .legend-value {
+        margin-left: auto;
+        font-size: 52px;
+      }
+
+      /* diagram */
+      .diagram .hero {
+        justify-content: center;
+      }
+      .diagram .node {
+        position: relative;
+        border: 3px solid var(--ink-2);
+        background: var(--panel);
+        padding: var(--s-4) var(--s-6);
+        will-change: transform, opacity;
+      }
+      .diagram .node.lit {
+        border-color: var(--accent);
+      }
+      .diagram .node .label {
+        color: var(--accent);
+      }
+      .diagram .node .body {
+        margin-top: var(--s-1);
+        font-size: 48px;
+      }
+      .diagram .flow {
+        display: flex;
+        flex-direction: column;
+      }
+      .diagram .flow .connector {
+        width: 100%;
+        height: 96px;
+        display: block;
+        overflow: visible;
+      }
+      .diagram .flow .connector path {
+        fill: none;
+        stroke: var(--accent);
+        stroke-width: 6;
+      }
+      .diagram .stack {
+        display: flex;
+        flex-direction: column-reverse;
+        gap: var(--s-2);
+      }
+      .diagram .stack .node {
+        transform-origin: bottom center;
+      }
+      .diagram .stack .node.top {
+        border-color: var(--accent);
+      }
+      .diagram .hub {
+        position: relative;
+        width: 100%;
+        height: 900px;
+      }
+      .diagram .hub svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+      .diagram .hub svg path {
+        fill: none;
+        stroke: var(--accent);
+        stroke-width: 6;
+      }
+      .diagram .hub .node {
+        position: absolute;
+        width: 280px;
+        padding: var(--s-3) var(--s-3);
+        text-align: center;
+        transform-origin: center center;
+      }
+      .diagram .hub .node .body {
+        font-size: 40px;
+      }
+      .diagram .hub .center {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 240px;
+        height: 240px;
+        margin: -120px 0 0 -120px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #fff;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        font-family: var(--serif);
+        font-size: 52px;
+        line-height: 1.05;
+        padding: var(--s-3);
+        transform-origin: center center;
+      }
+      :root[data-theme="dark"] .diagram .hub .center {
+        color: #111318;
+      }
+      .diagram .funnel {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--s-2);
+      }
+      .diagram .funnel .band {
+        position: relative;
+        height: 200px;
+        border: 4px solid transparent;
+        background: var(--bar);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: var(--s-1);
+        padding: 0 var(--s-4);
+        transform-origin: top center;
+        text-align: center;
+      }
+      .diagram .funnel .band.lead {
+        background: var(--accent);
+        color: #fff;
+      }
+      :root[data-theme="dark"] .diagram .funnel .band.lead {
+        color: #111318;
+      }
+      .diagram .funnel .band .label {
+        color: inherit;
+        opacity: 0.85;
+      }
+      .diagram .funnel .band .body {
+        font-size: 48px;
+        white-space: nowrap;
+      }
+      .diagram .funnel .band.lit {
+        outline: 4px solid var(--accent);
+        outline-offset: -4px;
+      }
+
+      /* device wireframes */
+      .device .hero {
+        justify-content: center;
+        align-items: center;
+      }
+      .device .frame {
+        border: 4px solid var(--ink);
+        background: var(--panel);
+        position: relative;
+        overflow: hidden;
+        transform-origin: center center;
+      }
+      .device .frame.phone {
+        width: 520px;
+        height: 940px;
+        border-radius: 56px;
+        padding: 96px 32px 40px;
+      }
+      .device .frame.phone::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 24px;
+        width: 150px;
+        height: 36px;
+        margin-left: -75px;
+        border-radius: 18px;
+        background: var(--ink);
+      }
+      .device .frame.laptop {
+        width: 820px;
+        height: 620px;
+        border-radius: 24px 24px 0 0;
+        padding: 0;
+      }
+      .device .lid {
+        width: 820px;
+        height: 22px;
+        background: var(--ink);
+        border-radius: 0 0 20px 20px;
+      }
+      .device .frame.laptop .screen,
+      .device .frame.terminal .screen {
+        height: 100%;
+      }
+      .device .frame.terminal,
+      .device .frame.chat {
+        width: 820px;
+        min-height: 520px;
+        border-radius: 24px;
+      }
+      .device .frame.terminal {
+        background: var(--screen);
+        color: var(--screen-ink);
+        border-color: var(--screen);
+      }
+      :root[data-theme="dark"] .device .frame.terminal {
+        border-color: var(--hair); /* the screen is as dark as the ground: keep an edge */
+      }
+      .device .titlebar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 72px;
+        padding: 0 var(--s-3);
+        border-bottom: 2px solid var(--hair);
+        font-family: var(--mono);
+        font-size: 30px;
+        color: var(--ink-2);
+        letter-spacing: 0.06em;
+      }
+      .device .frame.terminal .titlebar {
+        border-color: rgba(243, 241, 234, 0.18);
+        color: rgba(243, 241, 234, 0.6);
+      }
+      .device .titlebar .dotz {
+        display: flex;
+        gap: 8px;
+      }
+      .device .titlebar .dotz i {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--bar);
+        display: block;
+      }
+      .device .titlebar .name {
+        margin-left: var(--s-2);
+      }
+      .device .lines {
+        padding: var(--s-4);
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-3);
+      }
+      .device .line {
+        font-family: var(--sans);
+        font-size: 42px;
+        font-weight: 500;
+        line-height: 1.25;
+        will-change: transform, opacity;
+      }
+      .device .frame.phone .line {
+        border: 2px solid var(--hair);
+        border-radius: 20px;
+        padding: var(--s-3);
+        font-size: 38px;
+      }
+      .device .frame.phone .line::before {
+        content: "";
+        display: block;
+        width: 72px;
+        height: 10px;
+        border-radius: 5px;
+        background: var(--accent);
+        margin-bottom: 14px;
+      }
+      .device .frame.laptop .line {
+        display: grid;
+        grid-template-columns: 1fr 160px;
+        align-items: center;
+        gap: var(--s-3);
+        padding-bottom: var(--s-2);
+        border-bottom: 2px solid var(--hair);
+      }
+      .device .frame.laptop .line .meter {
+        height: 14px;
+        background: var(--bar);
+        position: relative;
+        overflow: hidden;
+      }
+      .device .frame.laptop .line .meter i {
+        position: absolute;
+        inset: 0;
+        display: block;
+        width: 100%;
+        background: var(--accent);
+        transform: scaleX(0);
+        transform-origin: left center;
+      }
+      .device .line.lit {
+        color: var(--accent);
+      }
+      .device .frame.terminal .line.lit {
+        color: var(--accent);
+      }
+      .chart .bar-row.lit .bar-label,
+      .chart .column-cell.lit .column-value {
+        color: var(--accent);
+      }
+      .device .frame.terminal .line {
+        font-family: var(--mono);
+        font-size: 42px;
+        white-space: pre;
+        overflow: hidden;
+        color: var(--screen-ink);
+      }
+      .device .frame.terminal .line .caret {
+        display: inline-block;
+        width: 24px;
+        height: 44px;
+        background: var(--accent);
+        vertical-align: -6px;
+        opacity: 0;
+      }
+      .device .frame.chat .line {
+        max-width: 78%;
+        padding: var(--s-3) var(--s-4);
+        border-radius: 28px;
+        background: var(--bar);
+      }
+      .device .frame.chat .line.me {
+        align-self: flex-end;
+        background: var(--accent);
+        color: #fff;
+      }
+      :root[data-theme="dark"] .device .frame.chat .line.me {
+        color: #111318;
+      }
+      .device .caption-label {
+        margin-top: var(--s-4);
+        text-align: center;
+      }
+
+      /* outro CTA */
+      .outro .cta {
+        display: flex;
+        align-items: center;
+        gap: var(--s-4);
+        margin-top: var(--s-3);
+      }
+      .outro .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--s-2);
+        padding: var(--s-2) var(--s-4);
+        border-radius: 999px;
+        border: 4px solid var(--accent);
+        color: var(--accent);
+        font-family: var(--sans);
+        font-size: 40px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        white-space: nowrap;
+        will-change: transform, opacity;
+      }
+      .outro .pill .arrow {
+        display: inline-block;
+        will-change: transform;
+      }
+      .outro .typing {
+        display: flex;
+        gap: 14px;
+        margin-top: var(--s-4);
+      }
+      .outro .typing i {
+        display: block;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: var(--accent);
+        opacity: 0.3;
+      }
+
+      /* ---- captions: lower third (y 1376-1500) ------------------------------ */
+      #captions {
+        position: absolute;
+        top: 1376px;
+        left: var(--m);
+        width: var(--content-w);
+        height: 124px;
+      }
+      .cap {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        font-family: var(--sans);
+        font-size: var(--t-caption);
+        font-weight: 500;
+        line-height: 1.3;
+        letter-spacing: -0.005em;
+        color: var(--ink-2);
+      }
+      .cap-word {
+        display: inline-block;
+        margin-right: 0.26em;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1080" data-height="1920">
+      <div id="paper"></div>
+
+      <div id="chrome">
+        <div id="kicker">TLDR</div>
+        <div id="counter">01 / 07</div>
+      </div>
+      <div id="rule"><div id="progress"></div></div>
+
+      <div id="stage"><div id="wipe"></div></div>
+
+      <div id="captions" data-layout-allow-caption-zone></div>
+
+      <audio id="voice" src="assets/voice.wav" data-start="0" data-track-index="1"></audio>
+    </div>
+
+    <script>
+      const story = JSON.parse(window.__hyperframes.getVariables().story);
+      const ICONS = window.EXPLAINER_ICONS || {};
+      const FPS = 30;
+      const ENTER = 0.6;
+      const EXIT = 0.3;
+      const TRANSITION = 0.5;
+      const EASE_OUT = "power3.out";
+      const EASE_IN = "power2.in";
+      const STAGE_W = 820;
+      const STAGE_H = 1064;
+
+      if (story.theme === "dark") document.documentElement.setAttribute("data-theme", "dark");
+      document.getElementById("kicker").textContent = story.kicker || "";
+
+      const stage = document.getElementById("stage");
+      const wipe = document.getElementById("wipe");
+      const pad2 = (n) => String(n).padStart(2, "0");
+      const SVG = "http://www.w3.org/2000/svg";
+
+      // ---- DOM helpers -------------------------------------------------------
+      function el(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined && text !== null) node.textContent = text;
+        return node;
+      }
+      function svgEl(tag, attrs) {
+        const node = document.createElementNS(SVG, tag);
+        for (const k in attrs) node.setAttribute(k, attrs[k]);
+        return node;
+      }
+      function icon(name, size, className) {
+        // A pictogram from icons.js at `size` px; returns null for unknown names.
+        const paths = ICONS[name];
+        if (!paths) return null;
+        const svg = svgEl("svg", { viewBox: "0 0 24 24", width: size, height: size });
+        svg.setAttribute("class", "icon " + (className || ""));
+        paths.forEach((d) => {
+          const fill = d.startsWith("f ");
+          const p = svgEl("path", { d: fill ? d.slice(2) : d });
+          if (fill) p.setAttribute("class", "f");
+          svg.append(p);
+        });
+        return svg;
+      }
+      function words(container, text, className) {
+        const spans = [];
+        text.split(/\s+/).filter(Boolean).forEach((w) => {
+          const span = el("span", className, w);
+          container.append(span);
+          spans.push(span);
+        });
+        return spans;
+      }
+      function emphasized(container, text, emphasis) {
+        const idx = emphasis ? text.indexOf(emphasis) : -1;
+        if (idx < 0) {
+          container.append(text);
+          return null;
+        }
+        container.append(text.slice(0, idx));
+        const span = el("span", "em", emphasis);
+        container.append(span, text.slice(idx + emphasis.length));
+        return span;
+      }
+      function parseNumber(value) {
+        const m = /^([^\d]*)(\d[\d,]*(?:\.\d+)?)(.*)$/.exec(value);
+        if (!m) return null;
+        if (/^\s?[-\u2013\u2014/:]\s?\d/.test(m[3])) return null; // a range or ratio ("22-25", "3/4") is shown, not counted
+        const digits = m[2];
+        const number = parseFloat(digits.replace(/,/g, ""));
+        if (!isFinite(number)) return null;
+        const decimals = digits.includes(".") ? digits.split(".")[1].length : 0;
+        return { prefix: m[1], number, decimals, grouped: digits.includes(","), suffix: m[3] };
+      }
+      function formatNumber(n, spec) {
+        const fixed = n.toFixed(spec.decimals);
+        if (!spec.grouped) return spec.prefix + fixed + spec.suffix;
+        const [whole, frac] = fixed.split(".");
+        return spec.prefix + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (frac ? "." + frac : "") + spec.suffix;
+      }
+      function shortNumber(n, unit) {
+        const spec = { prefix: "", number: n, decimals: Number.isInteger(n) ? 0 : 1, grouped: n >= 10000, suffix: unit || "" };
+        return formatNumber(n, spec);
+      }
+      // Pre-baked frame rows (deterministic under seek): one tl.set per frame.
+      function countUp(tl, node, spec, at, duration, ease) {
+        if (!spec) return;
+        const easeFn = gsap.parseEase(ease);
+        const frames = Math.max(1, Math.round(duration * FPS));
+        for (let f = 0; f <= frames; f++) {
+          tl.set(node, { textContent: formatNumber(spec.number * easeFn(f / frames), spec) }, at + (f / frames) * duration);
+        }
+      }
+      function drawable(pathEl) {
+        // Measure once at build time; dashoffset tweens to 0 to draw.
+        const len = pathEl.getTotalLength() * 1.02;
+        pathEl.style.strokeDasharray = len;
+        pathEl.style.strokeDashoffset = len;
+        return len;
+      }
+      function drawIcon(tl, svg, at, duration) {
+        if (!svg) return;
+        const paths = Array.from(svg.querySelectorAll("path"));
+        const strokes = paths.filter((p) => !p.classList.contains("f"));
+        const fills = paths.filter((p) => p.classList.contains("f"));
+        strokes.forEach((p, i) => {
+          drawable(p);
+          const t = at + Math.min(i * 0.09, 0.4);
+          tl.to(p, { strokeDashoffset: 0, duration, ease: "power2.out" }, t);
+        });
+        fills.forEach((p) => {
+          tl.set(p, { opacity: 0 }, 0);
+          tl.to(p, { opacity: 1, duration: 0.3, ease: "power1.out" }, at + duration * 0.7);
+        });
+      }
+      function head(title, label) {
+        const h = el("div", "head");
+        if (label) h.append(el("div", "el label", label));
+        if (title) h.append(el("div", "el h2", title));
+        return h;
+      }
+
+      // ---- scene builders --------------------------------------------------
+      // Each returns { root, hero, parts, ...handles }: parts is the ordered
+      // reveal list [{ node, at }] (seconds after scene start).
+      const builders = {
+        title(s) {
+          const root = el("div", "scene title");
+          const label = el("div", "el label accent", s.kicker);
+          const hero = el("div", "hero");
+          const ic = icon(s.icon, 400, "accent");
+          if (ic) hero.append(ic);
+          const display = el("div", "el display fit");
+          display.dataset.fitMax = ic ? "380" : "760";
+          display.dataset.fitMin = "80";
+          const wordEls = words(display, s.headline, "word");
+          hero.append(display);
+          const foot = el("div", "foot");
+          foot.append(el("div", "el label", "ByteSize News · daily tech, under a minute"));
+          root.append(el("div", "head"), hero, foot);
+          root.querySelector(".head").append(label);
+          return { root, hero, parts: [{ node: label, at: 0.1 }, { node: foot, at: 0.9 }], wordEls, ic };
+        },
+        statement(s) {
+          const root = el("div", "scene statement");
+          const parts = [];
+          const h = el("div", "head");
+          if (s.label) {
+            const label = el("div", "el label", s.label);
+            h.append(label);
+            parts.push({ node: label, at: 0.1 });
+          }
+          const hero = el("div", "hero");
+          const h1 = el("div", "el h1 fit");
+          h1.dataset.fitMax = s.icon ? "460" : "760";
+          h1.dataset.fitMin = "60";
+          const em = emphasized(h1, s.text, s.emphasis);
+          hero.append(h1);
+          parts.push({ node: h1, at: 0.2 });
+          const ic = icon(s.icon, 440, "accent");
+          if (ic) hero.append(ic);
+          else hero.style.justifyContent = "center";
+          root.append(h, hero);
+          return { root, hero, parts, em, ic };
+        },
+        stat(s) {
+          const root = el("div", "scene stat");
+          const label = el("div", "el label", s.label);
+          const h = el("div", "head");
+          h.append(label);
+          const hero = el("div", "hero");
+          const spec = parseNumber(s.value);
+          const value = el("div", "el value num fit-w");
+          value.dataset.fitMin = "120";
+          value.dataset.longest = s.value;
+          value.textContent = spec ? formatNumber(0, spec) : s.value;
+          const parts = [{ node: label, at: 0.1 }];
+          let ring = null, fill = null, cols = [];
+          const pct = spec && /^%$/.test(spec.suffix.trim()) && spec.number <= 100 ? spec.number : null;
+          if (pct !== null && !(s.trend && s.trend.length)) {
+            // Percentage: the number sits inside a progress ring.
+            const wrap = el("div", "el ring-wrap");
+            const svg = svgEl("svg", { viewBox: "0 0 200 200", class: "ring" });
+            svg.append(svgEl("circle", { class: "track", cx: 100, cy: 100, r: 88 }));
+            ring = svgEl("circle", { class: "fill", cx: 100, cy: 100, r: 88 });
+            svg.append(ring);
+            value.dataset.fitMin = "100";
+            value.style.fontSize = "190px";
+            wrap.append(svg, value);
+            hero.append(wrap);
+            parts.push({ node: wrap, at: 0.2 });
+          } else {
+            const rule = el("div", "el stat-rule");
+            fill = el("div", "stat-fill");
+            const sweep = el("div", "sweep");
+            rule.append(fill, sweep);
+            hero.append(value, rule);
+            parts.push({ node: value, at: 0.2 }, { node: rule, at: 0.3 });
+            if (s.trend && s.trend.length >= 2) {
+              const trend = el("div", "el trend");
+              const max = Math.max(...s.trend, 0) || 1;
+              const lead = s.trend.indexOf(max);
+              s.trend.forEach((v, i) => {
+                const col = el("div", "col" + (i === s.trend.length - 1 ? " lead" : ""));
+                col.style.height = Math.max(4, Math.round((v / max) * 300)) + "px";
+                trend.append(col);
+                cols.push(col);
+              });
+              hero.append(trend);
+              parts.push({ node: trend, at: 0.4 });
+            }
+          }
+          const foot = el("div", "foot");
+          if (s.context) {
+            const context = el("div", "el body fit");
+            context.dataset.fitMax = "180";
+            context.dataset.fitMin = "32";
+            context.textContent = s.context;
+            foot.append(context);
+          }
+          foot.append(el("div", "el label", s.source ? "Source · " + s.source : (story.kicker || "")));
+          parts.push({ node: foot, at: 0.6 });
+          root.append(h, hero, foot);
+          return { root, hero, parts, value, spec, fill, ring, pct, cols, finalText: s.value, sweep: root.querySelector(".sweep") };
+        },
+        comparison(s) {
+          const root = el("div", "scene comparison");
+          const parts = [];
+          const h = head(s.title);
+          if (s.title) parts.push({ node: h, at: 0.1 });
+          const hero = el("div", "hero");
+          const columns = el("div", "columns");
+          const left = s.left, right = s.right;
+          const hasNums = [left.number, right.number].every((v) => typeof v === "number" && isFinite(v) && v > 0);
+          const max = hasNums ? Math.max(left.number, right.number) : 1;
+          const cols = [left, right].map((side) => {
+            const col = el("div", "el col");
+            if (hasNums && side.number === max && left.number !== right.number) col.classList.add("lead");
+            const object = el("div", "object");
+            let disc = null, ic = null;
+            if (hasNums) {
+              // Area-proportional discs: diameter scales with the square root.
+              disc = el("div", "disc");
+              const d = Math.round(374 * Math.sqrt(Math.max(side.number, 0) / max));
+              disc.style.width = disc.style.height = Math.max(d, 56) + "px";
+              object.append(disc);
+              if (side.number === max && left.number !== right.number) {
+                const ping = el("div", "ping");
+                ping.style.width = ping.style.height = Math.max(d, 56) + "px";
+                ping.style.inset = "auto";
+                ping.style.gridArea = "1 / 1";
+                object.append(ping);
+              }
+            } else {
+              const tile = el("div", "tile");
+              ic = icon(side.icon || "box", 220, "accent");
+              tile.append(ic);
+              object.append(tile);
+            }
+            col.append(object, el("div", "label", side.label));
+            const value = el("div", "value num fit-w");
+            value.dataset.fitMin = "48";
+            value.textContent = side.value;
+            col.append(value);
+            if (side.note) col.append(el("div", "body note muted", side.note));
+            return { col, disc, ic, ping: object.querySelector(".ping") };
+          });
+          columns.append(cols[0].col, el("div", "vs", "vs"), cols[1].col);
+          hero.append(columns);
+          root.append(h, hero);
+          return { root, hero, parts, cols };
+        },
+        list(s) {
+          const few = s.items.length <= 3;
+          const root = el("div", "scene list" + (few ? " few" : "") + (s.items.length === 2 ? " two" : ""));
+          const parts = [];
+          const h = head(s.title);
+          if (s.title) parts.push({ node: h, at: 0.1 });
+          const hero = el("div", "hero");
+          const rows = el("div", "rows");
+          const iconSize = s.items.length === 2 ? 140 : few ? 120 : 88;
+          const rowEls = s.items.map((item, i) => {
+            const row = el("div", "el row");
+            const ic = s.icons && s.icons[i] ? icon(s.icons[i], iconSize, "accent") : null;
+            row.append(ic || el("div", "index", pad2(i + 1)), el("div", "body", item));
+            rows.append(row);
+            return { row, ic };
+          });
+          hero.append(rows);
+          root.append(h, hero);
+          return { root, hero, parts, rowEls };
+        },
+        timeline(s) {
+          const root = el("div", "scene timeline");
+          const parts = [];
+          const h = head(s.title);
+          if (s.title) parts.push({ node: h, at: 0.1 });
+          const hero = el("div", "hero");
+          const steps = el("div", "steps");
+          const rail = el("div", "rail");
+          const railFill = el("div", "rail-fill");
+          rail.append(railFill);
+          const marker = el("div", "marker");
+          steps.append(rail, marker);
+          const stepEls = s.steps.map((step) => {
+            const node = el("div", "el step");
+            const dot = el("div", "node");
+            node.append(dot, el("div", "label accent", step.label), el("div", "body", step.text));
+            steps.append(node);
+            return { node, dot };
+          });
+          hero.append(steps);
+          root.append(h, hero);
+          return { root, hero, parts, stepEls, railFill, marker, steps };
+        },
+        quote(s) {
+          const root = el("div", "scene quote");
+          const hero = el("div", "hero");
+          const mark = el("div", "el mark", "“");
+          const text = el("div", "el text fit");
+          text.dataset.fitMax = "640";
+          text.dataset.fitMin = "52";
+          const wordEls = words(text, s.text, "word");
+          const attribution = el("div", "el label attribution", s.attribution);
+          hero.append(mark, text, attribution);
+          root.append(el("div", "head"), hero);
+          return { root, hero, parts: [{ node: mark, at: 0.1 }, { node: attribution, at: 1.0 }], wordEls };
+        },
+        chart(s) {
+          const root = el("div", "scene chart");
+          const kind = s.kind || "bars";
+          const h = head(s.title);
+          const hero = el("div", "hero");
+          const parts = [{ node: h, at: 0.1 }];
+          const unit = s.unit || "";
+          const max = Math.max(...s.series.map((p) => p.value), 0) || 1;
+          const items = [];
+          if (kind === "columns") {
+            const columns = el("div", "columns");
+            const labels = el("div", "column-labels");
+            s.series.forEach((p, i) => {
+              const cell = el("div", "el column-cell" + (i === s.highlight ? " lead" : ""));
+              const value = el("div", "column-value num");
+              const spec = parseNumber(shortNumber(p.value, unit));
+              value.textContent = spec ? formatNumber(0, spec) : shortNumber(p.value, unit);
+              const column = el("div", "column");
+              column.style.height = Math.max(6, Math.round((p.value / max) * 460)) + "px";
+              cell.append(value, column);
+              columns.append(cell);
+              const lab = el("div", "column-label", p.label);
+              labels.append(lab);
+              items.push({ row: cell, bar: column, value, spec, ratio: p.value / max, axis: "y" });
+            });
+            hero.append(columns, el("div", "el baseline"), labels);
+            parts.push({ node: labels, at: 0.3 });
+          } else if (kind === "line") {
+            const wrap = el("div", "el line-wrap");
+            const W = 820, H = 560, PAD = 40;
+            const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "line-svg" });
+            const n = s.series.length;
+            const pts = s.series.map((p, i) => [PAD + (i * (W - 2 * PAD)) / Math.max(n - 1, 1), H - PAD - (p.value / max) * (H - 2 * PAD)]);
+            [0.25, 0.5, 0.75].forEach((f) => {
+              svg.append(svgEl("line", { class: "grid", x1: 0, x2: W, y1: PAD + (H - 2 * PAD) * f, y2: PAD + (H - 2 * PAD) * f }));
+            });
+            const area = svgEl("path", { class: "area", d: `M${pts[0][0]} ${H - PAD} ` + pts.map((p) => `L${p[0]} ${p[1]}`).join(" ") + ` L${pts[n - 1][0]} ${H - PAD} Z` });
+            const line = svgEl("path", { class: "line", d: pts.map((p, i) => (i ? "L" : "M") + p[0] + " " + p[1]).join(" ") });
+            svg.append(area, line);
+            const dots = pts.map((p, i) => {
+              const c = svgEl("circle", { class: "pt" + (i === s.highlight ? " lead" : ""), cx: p[0], cy: p[1], r: 14 });
+              svg.append(c);
+              return c;
+            });
+            wrap.append(svg);
+            const labels = el("div", "column-labels");
+            s.series.forEach((p) => labels.append(el("div", "column-label", p.label)));
+            const callout = el("div", "el line-callout num");
+            const hp = s.series[s.highlight] || s.series[n - 1];
+            const spec = parseNumber(shortNumber(hp.value, unit));
+            callout.textContent = spec ? formatNumber(0, spec) : shortNumber(hp.value, unit);
+            hero.append(wrap, labels, callout);
+            parts.push({ node: labels, at: 0.3 });
+            return { root, hero, parts, kind, line, area, dots, callout, spec, pts };
+          } else if (kind === "dots") {
+            // A waffle of 100: each series takes its share, in order.
+            const grid = el("div", "el dots");
+            const cells = [];
+            for (let i = 0; i < 100; i++) {
+              const c = el("div", "dotc");
+              grid.append(c);
+              cells.push(c);
+            }
+            const legend = el("div", "legend");
+            let cursor = 0;
+            const groups = s.series.map((p, i) => {
+              const count = Math.round(p.value);
+              const own = cells.slice(cursor, cursor + count);
+              cursor += count;
+              const row = el("div", "el legend-row");
+              const sw = el("div", "swatch");
+              if (i === s.highlight) sw.style.background = "var(--accent)";
+              else if (i % 2 === 0) sw.style.background = "var(--ink-2)";
+              else sw.style.background = "var(--bar)";
+              const value = el("div", "legend-value num", "0" + (unit || ""));
+              const spec = parseNumber(shortNumber(p.value, unit));
+              row.append(sw, el("div", "body", p.label), value);
+              legend.append(row);
+              return { cells: own, row, value, spec, color: sw.style.background, hl: i === s.highlight };
+            });
+            hero.append(grid, legend);
+            root.append(h, hero);
+            return { root, hero, parts, kind, groups };
+          } else {
+            const bars = el("div", "bars");
+            s.series.forEach((p, i) => {
+              const row = el("div", "el bar-row" + (i === s.highlight ? " lead" : ""));
+              const track = el("div", "bar-track");
+              const bar = el("div", "bar");
+              const value = el("div", "bar-value num");
+              const spec = parseNumber(shortNumber(p.value, unit));
+              value.textContent = spec ? formatNumber(0, spec) : shortNumber(p.value, unit);
+              track.append(bar, value);
+              row.append(el("div", "bar-label", p.label), track);
+              bars.append(row);
+              items.push({ row, bar, track, value, spec, ratio: p.value / max, axis: "x" });
+            });
+            hero.append(bars, el("div", "el baseline"));
+          }
+          root.append(h, hero);
+          return { root, hero, parts, kind, items };
+        },
+        diagram(s) {
+          const root = el("div", "scene diagram");
+          const kind = s.kind || "flow";
+          const h = head(s.title);
+          const hero = el("div", "hero");
+          const parts = [{ node: h, at: 0.1 }];
+          const nodes = [];
+          const connectors = [];
+          const heads = [];
+          const mkNode = (n, cls) => {
+            const node = el("div", "node " + (cls || ""));
+            node.append(el("div", "label", n.label));
+            if (n.text) node.append(el("div", "body", n.text));
+            return node;
+          };
+          if (kind === "stack") {
+            const stack = el("div", "stack");
+            s.nodes.forEach((n, i) => {
+              const node = mkNode(n, i === s.nodes.length - 1 ? "top" : "");
+              stack.append(node);
+              nodes.push(node);
+            });
+            hero.append(stack);
+          } else if (kind === "hub") {
+            const hub = el("div", "hub");
+            // viewBox matches the 820x900 box so spokes land on the nodes.
+            const svg = svgEl("svg", { viewBox: "0 0 820 900" });
+            hub.append(svg);
+            const center = el("div", "center", s.center || s.title || "");
+            const n = s.nodes.length;
+            s.nodes.forEach((nd, i) => {
+              const node = mkNode(nd);
+              const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+              const rx = 270, ry = 320;
+              const x = 410 + rx * Math.cos(a), y = 450 + ry * Math.sin(a);
+              // Anchor the node's near edge on the ellipse so lower nodes clear the centre disc.
+              node.style.left = x - 140 + "px";
+              node.style.top = y - 65 + 65 * Math.sin(a) + "px";
+              const path = svgEl("path", { d: `M410 450 L${x} ${y}` });
+              svg.append(path);
+              hub.append(node);
+              nodes.push(node);
+              connectors.push(path);
+            });
+            hub.append(center);
+            hero.append(hub);
+            root.append(h, hero);
+            return { root, hero, parts, kind, nodes, connectors, center };
+          } else if (kind === "funnel") {
+            const funnel = el("div", "funnel");
+            const n = s.nodes.length;
+            s.nodes.forEach((nd, i) => {
+              const band = el("div", "band" + (i === n - 1 ? " lead" : ""));
+              band.style.width = Math.round(820 - (360 * i) / Math.max(n - 1, 1)) + "px";
+              band.append(el("div", "label", nd.label));
+              if (nd.text) band.append(el("div", "body num", nd.text));
+              funnel.append(band);
+              nodes.push(band);
+            });
+            hero.append(funnel);
+          } else {
+            const flow = el("div", "flow");
+            s.nodes.forEach((n, i) => {
+              if (i) {
+                const svg = svgEl("svg", { viewBox: "0 0 820 96", class: "connector" });
+                const path = svgEl("path", { d: "M410 0 L410 74" });
+                const head = svgEl("path", { d: "M392 58 L410 78 L428 58", class: "head" });
+                svg.append(path, head);
+                flow.append(svg);
+                connectors.push(path);
+                heads.push(head);
+              }
+              const node = mkNode(n);
+              flow.append(node);
+              nodes.push(node);
+            });
+            hero.append(flow);
+          }
+          root.append(h, hero);
+          return { root, hero, parts, kind, nodes, connectors, heads };
+        },
+        device(s) {
+          const root = el("div", "scene device");
+          const kind = s.kind || "phone";
+          const h = head(s.title);
+          const hero = el("div", "hero");
+          const parts = [{ node: h, at: 0.1 }];
+          const frame = el("div", "el frame " + kind);
+          const lines = el("div", "lines");
+          const lineEls = [];
+          if (kind !== "phone") {
+            const bar = el("div", "titlebar");
+            const dotz = el("div", "dotz");
+            dotz.append(el("i"), el("i"), el("i"));
+            bar.append(dotz, el("div", "name", s.label || (kind === "terminal" ? "terminal" : kind)));
+            frame.append(bar);
+          }
+          s.lines.forEach((text, i) => {
+            const line = el("div", "line" + (kind === "chat" && i % 2 ? " me" : ""));
+            if (kind === "laptop") {
+              line.append(el("div", "", text));
+              const meter = el("div", "meter");
+              meter.append(el("i"));
+              line.append(meter);
+            } else if (kind === "terminal") {
+              line.append(el("span", "text", ""), el("span", "caret"));
+              line.dataset.full = text;
+            } else {
+              line.textContent = text;
+            }
+            lines.append(line);
+            lineEls.push(line);
+          });
+          frame.append(lines);
+          hero.append(frame);
+          if (kind === "laptop") hero.append(el("div", "lid"));
+          if (kind === "phone" && s.label) hero.append(el("div", "el label caption-label", s.label));
+          root.append(h, hero);
+          return { root, hero, parts, kind, frame, lineEls };
+        },
+        outro(s) {
+          // An animated call to action: the comment bubble draws, "typing"
+          // dots pulse inside the conversation, the closing line waves in,
+          // and a follow pill arrives; the kicker echoes the title so a
+          // replay reads as a loop.
+          const root = el("div", "scene outro");
+          const label = el("div", "el label accent", s.kicker || "Your turn");
+          const hd = el("div", "head");
+          hd.append(label);
+          const hero = el("div", "hero");
+          const ic = icon("comment", 260, "accent");
+          const h1 = el("div", "el h1 fit");
+          h1.dataset.fitMax = "330";
+          h1.dataset.fitMin = "60";
+          const wordEls = words(h1, s.text, "word");
+          const typing = el("div", "el typing");
+          const dots = [el("i"), el("i"), el("i")];
+          typing.append(...dots);
+          const cta = el("div", "el cta");
+          const pill = el("div", "pill");
+          const arrow = el("span", "arrow", "\u2192");
+          pill.append(el("span", "", "Follow for tomorrow's story"), arrow);
+          cta.append(pill);
+          hero.append(ic, h1, typing, cta);
+          const foot = el("div", "foot");
+          foot.append(el("div", "el label", "ByteSize News \u00B7 every morning"));
+          root.append(hd, hero, foot);
+          return { root, hero, parts: [{ node: label, at: 0.1 }, { node: typing, at: 0.9 }, { node: foot, at: 0.6 }], ic, wordEls, dots, cta, pill, arrow };
+        },
+      };
+
+      const titleKicker = (story.scenes.find((x) => x.type === "title") || {}).kicker || "";
+      const built = story.scenes.map((s) => {
+        if (s.type === "outro") s.kicker = s.kicker || titleKicker;
+        const b = builders[s.type](s);
+        stage.insertBefore(b.root, wipe);
+        return { scene: s, ...b };
+      });
+
+      const capRoot = document.getElementById("captions");
+      const caps = (story.captions || []).map((chunk) => {
+        const node = el("div", "cap");
+        const spans = chunk.words.map((w) => {
+          const span = el("span", "cap-word", w);
+          node.append(span);
+          return span;
+        });
+        capRoot.append(node);
+        return { node, spans };
+      });
+
+      // ---- text fit (build time only) ------------------------------------------
+      function fitAll() {
+        stage.querySelectorAll(".fit").forEach((node) => {
+          const max = parseFloat(node.dataset.fitMax);
+          const min = parseFloat(node.dataset.fitMin);
+          let size = parseFloat(getComputedStyle(node).fontSize);
+          while (node.offsetHeight > max && size > min) {
+            size -= 4;
+            node.style.fontSize = size + "px";
+          }
+        });
+        stage.querySelectorAll(".fit-w").forEach((node) => {
+          const min = parseFloat(node.dataset.fitMin);
+          const width = node.parentElement.clientWidth || STAGE_W;
+          let size = parseFloat(getComputedStyle(node).fontSize);
+          const probe = node.textContent;
+          node.textContent = node.dataset.longest || probe;
+          while (node.scrollWidth > width && size > min) {
+            size -= 8;
+            node.style.fontSize = size + "px";
+          }
+          node.textContent = probe;
+        });
+      }
+
+      // ---- timeline ----------------------------------------------------------
+      function build() {
+        fitAll();
+        const tl = gsap.timeline({ paused: true });
+        const total = story.duration;
+        const n = story.scenes.length;
+        const css = getComputedStyle(document.documentElement);
+        const ink = css.getPropertyValue("--ink").trim();
+        const ink2 = css.getPropertyValue("--ink-2").trim();
+        const accent = css.getPropertyValue("--accent").trim();
+        const bar = css.getPropertyValue("--bar").trim();
+
+        tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: total, ease: "none" }, 0);
+        tl.fromTo("#chrome", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.5, ease: EASE_OUT }, 0.05);
+
+        // Every revealed element is hidden from t=0 (a set, so seeking to any
+        // earlier time shows nothing) and arrives at its cue.
+        const enter = (node, from, at, dur, ease) => {
+          tl.set(node, { opacity: 0, ...from }, 0);
+          const to = { opacity: 1, duration: dur || ENTER, ease: ease || EASE_OUT };
+          for (const k in from) to[k] = k === "scale" || k === "scaleY" ? 1 : 0;
+          tl.to(node, to, at);
+        };
+        const reveal = (node, at, dy, dur) => enter(node, { y: dy == null ? 36 : dy }, at, dur);
+        const cueAt = (cues, k, start, fallback) => (cues[k] != null ? Math.max(cues[k], start + 0.3) : fallback);
+
+        built.forEach((b, i) => {
+          const s = b.scene;
+          const start = s.start;
+          const end = s.end;
+          const last = i === n - 1;
+          const len = end - start;
+          const cues = Array.isArray(s.cues) ? s.cues : [];
+          const transition = i === 0 ? "none" : i % 2 ? "wipe" : "push";
+
+          // --- entrance of the scene container --------------------------------
+          tl.set(b.root, { opacity: 1 }, start);
+          tl.set("#counter", { textContent: pad2(i + 1) + " / " + pad2(n) }, start);
+          if (transition === "push") {
+            tl.fromTo(b.root, { y: 72 }, { y: 0, duration: TRANSITION, ease: EASE_OUT, immediateRender: false }, start);
+          } else if (transition === "wipe") {
+            // Top-to-bottom reveal behind a travelling accent edge.
+            tl.fromTo(b.root, { clipPath: "inset(0px 0px " + STAGE_H + "px 0px)" }, { clipPath: "inset(0px 0px 0px 0px)", duration: TRANSITION, ease: "power3.inOut", immediateRender: false }, start);
+            tl.set(wipe, { opacity: 1, y: 0 }, start);
+            tl.to(wipe, { y: STAGE_H - 4, duration: TRANSITION, ease: "power3.inOut" }, start);
+            tl.set(wipe, { opacity: 0 }, start + TRANSITION);
+          }
+          // Slow push-in on the hero layer with the head drifting a touch less (parallax).
+          if (b.hero) tl.fromTo(b.hero, { scale: 1 }, { scale: 1.025, duration: Math.max(len, 0.1), ease: "none", immediateRender: false }, start); // ±10 px: stays inside the safe column
+          const headEl = b.root.querySelector(".head");
+          if (headEl) tl.fromTo(headEl, { y: 0 }, { y: -10, duration: Math.max(len, 0.1), ease: "none", immediateRender: false }, start);
+          // Nothing holds still: every scene gets a re-traced pictogram, a sweep,
+          // a flow or a pulse through its hold (see DESIGN.md, motion tokens).
+          const loopDraw = (svg, firstAt) => {
+            if (!svg) return;
+            drawIcon(tl, svg, firstAt, 0.8);
+            const strokes = Array.from(svg.querySelectorAll("path:not(.f)"));
+            for (let t = firstAt + 1.6; t < end - 0.5; t += 1.6) {
+              strokes.forEach((p, k) => {
+                const len = parseFloat(p.style.strokeDasharray);
+                tl.set(p, { strokeDashoffset: len }, t + Math.min(k * 0.06, 0.3));
+                tl.to(p, { strokeDashoffset: 0, duration: 0.9, ease: "power2.out" }, t + Math.min(k * 0.06, 0.3));
+              });
+            }
+          };
+          const sweepAlong = (node, width, firstAt) => {
+            // A light band travelling along a bar: the "live" highlight.
+            if (!node) return;
+            for (let t = firstAt; t < end - 1.0; t += 1.6) {
+              tl.set(node, { opacity: 1, x: -140 }, t);
+              tl.to(node, { x: width, duration: 1.2, ease: "power1.inOut" }, t);
+              tl.set(node, { opacity: 0 }, t + 1.2);
+            }
+          };
+          const pingRing = (node, firstAt) => {
+            if (!node) return;
+            for (let t = firstAt; t < end - 1.0; t += 1.5) {
+              tl.set(node, { opacity: 0.6, scale: 1 }, t);
+              tl.to(node, { opacity: 0, scale: 1.22, duration: 1.1, ease: "power2.out" }, t);
+            }
+          };
+          const dashFlow = (path, firstAt) => {
+            // After a connector has drawn, its dashes keep travelling: data moving.
+            const len = parseFloat(path.style.strokeDasharray);
+            tl.set(path, { strokeDasharray: "22 14", strokeDashoffset: 0 }, firstAt);
+            tl.to(path, { strokeDashoffset: -Math.max(len, 200) * 3, duration: Math.max(end - firstAt, 0.1), ease: "none" }, firstAt);
+          };
+          const waitPulse = (node, from, to) => {
+            // While the voice is still on its way to the next cue, the latest
+            // element breathes (a 3 % scale swell every 0.9 s) so nothing holds still.
+            if (!node || to - from < 1.0) return;
+            for (let t = from; t + 0.9 <= to + 0.1; t += 0.9) {
+              tl.to(node, { scale: 1.03, duration: 0.45, ease: "sine.inOut" }, t);
+              tl.to(node, { scale: 1, duration: 0.45, ease: "sine.inOut" }, t + 0.45);
+            }
+          };
+          const cycleLit = (nodes, firstAt, period, prop) => {
+            // The accent walks through the elements in order, over and over:
+            // a border (panels, bands) or the text colour (lines, rows).
+            if (!nodes.length) return;
+            const key = prop || "borderColor";
+            const onScreen = nodes[0] && nodes[0].closest(".frame.terminal");
+            const rest = key === "color" ? (onScreen ? css.getPropertyValue("--screen-ink").trim() : ink) : ink2;
+            let k = 0;
+            for (let t = firstAt; t < end - 0.4; t += period) {
+              nodes.forEach((n, j) => {
+                const target = key === "color" ? (n.querySelector(".bar-label, .column-value") || n) : n;
+                tl.to(target, { [key]: j === k % nodes.length ? accent : rest, duration: 0.25, ease: "power1.out" }, t);
+              });
+              k += 1;
+            }
+          };
+
+          b.parts.forEach((p) => reveal(p.node, start + (transition === "wipe" ? p.at * 0.4 : p.at)));
+
+          if (b.wordEls && s.type !== "outro") {
+            const step = Math.min(0.055, 0.45 / Math.max(1, b.wordEls.length));
+            b.wordEls.forEach((w, k) => {
+              const t = start + 0.25 + k * step;
+              tl.set(w, { opacity: 0, y: 44 }, 0);
+              tl.set(w, { opacity: 1 }, t);
+              tl.to(w, { y: 0, duration: 0.5, ease: "power4.out" }, t);
+            });
+          }
+          if (b.ic && s.type !== "outro") loopDraw(b.ic, start + 0.35);
+
+          if (s.type === "statement" && b.em) {
+            const at = s.emphasisAt != null ? Math.max(s.emphasisAt, start + 0.5) : start + 0.9;
+            tl.fromTo(b.em, { color: ink }, { color: accent, duration: 0.35, ease: "power2.out", immediateRender: false }, at);
+          }
+
+          if (s.type === "stat") {
+            const at = s.countAt != null ? Math.max(s.countAt, start + 0.35) : start + 0.5;
+            const COUNT = Math.min(2.2, Math.max(1.3, (end - at) * 0.45));
+            countUp(tl, b.value, b.spec, at, COUNT, "power2.out");
+            sweepAlong(b.sweep, 820, at + COUNT + 0.2);
+            if (!b.spec) tl.set(b.value, { textContent: b.finalText }, at);
+            tl.fromTo(b.value, { scale: 0.94 }, { scale: 1, duration: COUNT, ease: "power2.out", immediateRender: false }, at);
+            if (b.fill) tl.fromTo(b.fill, { scaleX: 0 }, { scaleX: 1, duration: COUNT, ease: "power2.out", immediateRender: false }, at);
+            if (b.ring) {
+              const len = drawable(b.ring) / 1.02;
+              b.ring.style.strokeDasharray = len;
+              tl.fromTo(b.ring, { strokeDashoffset: len }, { strokeDashoffset: len * (1 - b.pct / 100), duration: COUNT, ease: "power2.out", immediateRender: false }, at);
+            }
+            const colGap = Math.min(0.35, Math.max(0.1, ((end - at) * 0.55) / Math.max(b.cols.length, 1)));
+            b.cols.forEach((col, k) => {
+              tl.fromTo(col, { scaleY: 0 }, { scaleY: 1, duration: 0.7, ease: "power3.out", immediateRender: false }, at + 0.2 + k * colGap);
+            });
+          }
+
+          if (s.type === "comparison") {
+            // Both columns land together (left from the left, right from the right)
+            // so their baselines are always identical.
+            const at = cueAt(cues, 0, start, start + 0.35);
+            const at2 = cueAt(cues, 1, start, at + 0.45);
+            b.cols.forEach((c, k) => {
+              enter(c.col, { x: k ? 40 : -40 }, at);
+              const t = k ? at2 : at;
+              if (c.disc) tl.fromTo(c.disc, { scale: 0 }, { scale: 1, duration: 0.9, ease: "power3.out", immediateRender: false }, t + 0.1);
+              if (c.ping) pingRing(c.ping, t + 1.1);
+              if (c.ic) loopDraw(c.ic, t + 0.1);
+            });
+            enter(b.root.querySelector(".vs"), {}, at + 0.3, 0.4, "power1.out");
+          }
+
+          if (s.type === "list") {
+            const ats = b.rowEls.map((_, k) => cueAt(cues, k, start, start + 0.4 + k * 0.45));
+            b.rowEls.forEach((r, k) => {
+              const at = ats[k];
+              reveal(r.row, at, 28, 0.5);
+              if (r.ic) loopDraw(r.ic, at + 0.05);
+              if (k + 1 < ats.length) waitPulse(r.row, at + 0.55, ats[k + 1]);
+            });
+            // Once every item is up, the accent walks the list.
+            cycleLit(b.rowEls.map((r) => r.row), ats[ats.length - 1] + 0.8, 0.8, "color");
+          }
+
+          if (s.type === "timeline") {
+            const ats = b.stepEls.map((_, k) => cueAt(cues, k, start, start + 0.4 + k * 0.6));
+            const lastAt = ats[ats.length - 1];
+            tl.fromTo(b.railFill, { scaleY: 0 }, { scaleY: 1, duration: Math.max(0.6, lastAt - ats[0] + 0.4), ease: "power1.inOut", immediateRender: false }, ats[0]);
+            // The marker rides the rail to each step as it is spoken.
+            const railTop = b.steps.querySelector(".rail").offsetTop;
+            b.stepEls.forEach((step, k) => {
+              const at = ats[k];
+              reveal(step.node, at, 24, 0.5);
+              const y = step.node.offsetTop + parseFloat(getComputedStyle(step.dot).top) - 20;
+              if (k === 0) tl.set(b.marker, { opacity: 1, y }, at);
+              else tl.to(b.marker, { y, duration: Math.min(0.6, Math.max(0.3, at - ats[k - 1] - 0.1)), ease: "power3.inOut" }, at - 0.3);
+              tl.fromTo(step.dot, { scale: 0.4, borderColor: ink2 }, { scale: 1, borderColor: accent, duration: 0.45, ease: EASE_OUT, immediateRender: false }, at);
+            });
+            // The marker breathes a ring while it waits at a step.
+            const ring = el("div", "ping");
+            b.marker.append(ring);
+            pingRing(ring, ats[0] + 0.5);
+          }
+
+          if (s.type === "chart") {
+            if (b.kind === "line") {
+              const len = drawable(b.line);
+              const at = cueAt(cues, 0, start, start + 0.4);
+              const lastCue = cueAt(cues, b.dots.length - 1, start, at + 1.2);
+              const dur = Math.max(0.9, lastCue - at);
+              tl.to(b.line, { strokeDashoffset: 0, duration: dur, ease: "power2.inOut" }, at);
+              tl.to(b.area, { opacity: 1, duration: 0.6, ease: "power1.out" }, at + dur * 0.5);
+              b.dots.forEach((d, k) => {
+                enter(d, { scale: 0 }, at + (dur * k) / Math.max(b.dots.length - 1, 1), 0.35);
+              });
+              reveal(b.callout, at + dur - 0.2, 20, 0.5);
+              countUp(tl, b.callout, b.spec, at + dur - 0.2, 0.8, "power2.out");
+            } else if (b.kind === "dots") {
+              let t0 = start + 0.3;
+              b.groups.forEach((g, k) => {
+                const at = cueAt(cues, k, start, t0);
+                reveal(g.row, at, 20, 0.5);
+                const dur = Math.min(1.1, 0.25 + g.cells.length * 0.012);
+                g.cells.forEach((c, j) => {
+                  tl.fromTo(c, { backgroundColor: bar, scale: 0.6 }, { backgroundColor: g.color.startsWith("var") ? css.getPropertyValue(g.color.slice(4, -1)).trim() : g.color, scale: 1, duration: 0.3, ease: EASE_OUT, immediateRender: false }, at + (dur * j) / Math.max(g.cells.length, 1));
+                });
+                countUp(tl, g.value, g.spec, at, dur, "power2.out");
+                t0 = at + dur + 0.2;
+              });
+            } else {
+              b.items.forEach((it, k) => {
+                const at = cueAt(cues, k, start, start + 0.45 + k * 0.3);
+                reveal(it.row, at, 20, 0.45);
+                if (k + 1 < b.items.length) waitPulse(it.row, at + 1.1, cueAt(cues, k + 1, start, start + 0.45 + (k + 1) * 0.3));
+                if (it.axis === "x") {
+                  tl.fromTo(it.bar, { scaleX: 0 }, { scaleX: Math.max(0.02, it.ratio), duration: 0.9, ease: "power3.out", immediateRender: false }, at + 0.1);
+                  const barWidth = it.track.clientWidth - 160;
+                  tl.fromTo(it.value, { x: 0 }, { x: Math.max(0.02, it.ratio) * barWidth, duration: 0.9, ease: "power3.out", immediateRender: false }, at + 0.1);
+                } else {
+                  tl.fromTo(it.bar, { scaleY: 0 }, { scaleY: 1, duration: 0.9, ease: "power3.out", immediateRender: false }, at + 0.1);
+                }
+                countUp(tl, it.value, it.spec, at + 0.1, 0.9, "power3.out");
+              });
+              const lead = b.items.find((it) => it.row.classList.contains("lead")) || b.items[b.items.length - 1];
+              if (lead && lead.axis === "x") {
+                const sweep = el("div", "sweep");
+                lead.bar.append(sweep);
+                const lastAt = cueAt(cues, b.items.length - 1, start, start + 0.45 + (b.items.length - 1) * 0.3);
+                sweepAlong(sweep, lead.track.clientWidth, lastAt + 1.2);
+              } else if (lead) {
+                const lastAt = cueAt(cues, b.items.length - 1, start, start + 0.45 + (b.items.length - 1) * 0.3);
+                cycleLit(b.items.map((it) => it.row), lastAt + 1.2, 0.7, "color");
+              }
+            }
+          }
+
+          if (s.type === "diagram") {
+            if (b.kind === "hub") {
+              enter(b.center, { scale: 0.6 }, start + 0.3, 0.6);
+              b.nodes.forEach((node, k) => {
+                const at = cueAt(cues, k, start, start + 0.7 + k * 0.35);
+                drawable(b.connectors[k]);
+                tl.to(b.connectors[k], { strokeDashoffset: 0, duration: 0.45, ease: "power2.out" }, at - 0.2);
+                enter(node, { scale: 0.8 }, at, 0.5);
+                dashFlow(b.connectors[k], at + 0.3);
+                if (k + 1 < b.nodes.length) waitPulse(node, at + 0.55, cueAt(cues, k + 1, start, start + 0.7 + (k + 1) * 0.35) - 0.2);
+              });
+            } else if (b.kind === "flow") {
+              b.nodes.forEach((node, k) => {
+                const at = cueAt(cues, k, start, start + 0.4 + k * 0.6);
+                reveal(node, at, 28, 0.5);
+                if (k + 1 < b.nodes.length) waitPulse(node, at + 0.55, cueAt(cues, k + 1, start, start + 0.4 + (k + 1) * 0.6) - 0.25);
+                if (k) {
+                  drawable(b.connectors[k - 1]);
+                  tl.to(b.connectors[k - 1], { strokeDashoffset: 0, duration: 0.4, ease: "power2.out" }, at - 0.25);
+                  drawable(b.heads[k - 1]);
+                  tl.to(b.heads[k - 1], { strokeDashoffset: 0, duration: 0.25, ease: "power2.out" }, at - 0.05);
+                  dashFlow(b.connectors[k - 1], at + 0.2);
+                }
+              });
+              const lastFlow = cueAt(cues, b.nodes.length - 1, start, start + 0.4 + (b.nodes.length - 1) * 0.6);
+              cycleLit(b.nodes, lastFlow + 0.8, 0.8);
+            } else if (b.kind === "stack") {
+              b.nodes.forEach((node, k) => {
+                const at = cueAt(cues, k, start, start + 0.4 + k * 0.45);
+                enter(node, { y: 40, scaleY: 0.9 }, at, 0.55);
+                if (k + 1 < b.nodes.length) waitPulse(node, at + 0.6, cueAt(cues, k + 1, start, start + 0.4 + (k + 1) * 0.45));
+              });
+              cycleLit(b.nodes, cueAt(cues, b.nodes.length - 1, start, start + 0.4 + (b.nodes.length - 1) * 0.45) + 0.8, 0.8);
+            } else {
+              b.nodes.forEach((band, k) => {
+                const at = cueAt(cues, k, start, start + 0.4 + k * 0.45);
+                enter(band, { scaleY: 0.6 }, at, 0.55);
+                if (k + 1 < b.nodes.length) waitPulse(band, at + 0.6, cueAt(cues, k + 1, start, start + 0.4 + (k + 1) * 0.45));
+              });
+              cycleLit(b.nodes, cueAt(cues, b.nodes.length - 1, start, start + 0.4 + (b.nodes.length - 1) * 0.45) + 0.8, 0.8);
+            }
+          }
+
+          if (s.type === "device") {
+            enter(b.frame, { y: 48, scale: 0.97 }, start + 0.2, 0.7);
+            b.lineEls.forEach((line, k) => {
+              const at = cueAt(cues, k, start, start + 0.8 + k * 0.55);
+              if (b.kind === "terminal") {
+                // Types on character by character (discrete states, seek-safe).
+                const full = line.dataset.full;
+                const textEl = line.querySelector(".text");
+                const caret = line.querySelector(".caret");
+                const perChar = Math.min(0.045, 0.9 / Math.max(full.length, 1));
+                tl.set(line, { opacity: 1 }, at);
+                tl.set(caret, { opacity: 1 }, at);
+                for (let c = 1; c <= full.length; c++) tl.set(textEl, { textContent: full.slice(0, c) }, at + c * perChar);
+                const done = at + full.length * perChar;
+                // Caret blinks until the next line starts.
+                const next = k + 1 < b.lineEls.length ? cueAt(cues, k + 1, start, start + 0.8 + (k + 1) * 0.55) : end;
+                for (let t = done; t < next - 0.05; t += 0.5) {
+                  tl.set(caret, { opacity: 0 }, t + 0.25);
+                  tl.set(caret, { opacity: 1 }, Math.min(t + 0.5, next - 0.05));
+                }
+                tl.set(caret, { opacity: 0 }, next - 0.05);
+              } else {
+                const fromX = b.kind === "chat" ? (k % 2 ? 40 : -40) : 0;
+                enter(line, fromX ? { x: fromX } : { y: 28 }, at, 0.5);
+                if (k + 1 < b.lineEls.length) waitPulse(line, at + 0.55, cueAt(cues, k + 1, start, start + 0.8 + (k + 1) * 0.55));
+                const meter = line.querySelector(".meter i");
+                if (meter) {
+                  // Live metrics: each meter settles, then re-levels every couple of seconds.
+                  let level = 0.35 + ((k * 37) % 60) / 100;
+                  tl.fromTo(meter, { scaleX: 0 }, { scaleX: level, duration: 0.8, ease: "power2.out", immediateRender: false }, at + 0.2);
+                  for (let t = at + 2.2, j = 1; t < end - 0.8; t += 1.8, j++) {
+                    level = 0.3 + (((k + j) * 41) % 65) / 100;
+                    tl.to(meter, { scaleX: level, duration: 0.9, ease: "power2.inOut" }, t);
+                  }
+                }
+                if (b.kind !== "laptop") {
+                  const lastAt = cueAt(cues, b.lineEls.length - 1, start, start + 0.8 + (b.lineEls.length - 1) * 0.55);
+                  if (k === b.lineEls.length - 1) cycleLit(b.lineEls, lastAt + 0.9, 0.8, "color");
+                }
+              }
+            });
+            if (b.kind === "terminal") {
+              b.lineEls.forEach((line) => tl.set(line, { opacity: 0 }, 0));
+              // Once everything has typed, the accent walks the lines like a selection.
+              const lastAt = cueAt(cues, b.lineEls.length - 1, start, start + 0.8 + (b.lineEls.length - 1) * 0.55);
+              const typed = lastAt + Math.min(0.045, 0.9 / Math.max(b.lineEls[b.lineEls.length - 1].dataset.full.length, 1)) * b.lineEls[b.lineEls.length - 1].dataset.full.length;
+              cycleLit(b.lineEls, typed + 0.4, 0.8, "color");
+            }
+          }
+
+          if (s.type === "outro") {
+            drawIcon(tl, b.ic, start + 0.2, 0.9);
+            const step = Math.min(0.06, 0.45 / Math.max(1, b.wordEls.length));
+            b.wordEls.forEach((w, k) => {
+              const t = start + 0.9 + k * step;
+              tl.set(w, { opacity: 0, y: 44 }, 0);
+              tl.set(w, { opacity: 1 }, t);
+              tl.to(w, { y: 0, duration: 0.5, ease: "power4.out" }, t);
+            });
+            // Typing dots: a conversation starting, until the end of the video.
+            for (let t = start + 1.1, j = 0; t < end - 0.2; t += 0.36, j++) {
+              b.dots.forEach((d, m) => tl.set(d, { opacity: m === j % 3 ? 1 : 0.3, y: m === j % 3 ? -6 : 0 }, t));
+            }
+            const ctaAt = Math.min(start + 2.6, start + len * 0.55);
+            enter(b.cta, { y: 36 }, ctaAt, 0.6);
+            for (let t = ctaAt + 0.9; t < end - 0.5; t += 1.4) {
+              tl.fromTo(b.arrow, { x: 0 }, { x: 14, duration: 0.45, ease: "power2.out", immediateRender: false }, t);
+              tl.to(b.arrow, { x: 0, duration: 0.45, ease: "power2.inOut" }, t + 0.45);
+            }
+          }
+
+          // --- exit ----------------------------------------------------------------
+          if (!last) {
+            const nextTransition = (i + 1) % 2 ? "wipe" : "push";
+            if (nextTransition === "push") {
+              tl.to(b.root, { opacity: 0, y: -56, duration: EXIT, ease: EASE_IN }, Math.max(start + 0.6, end - EXIT));
+            } else {
+              tl.fromTo(b.root, { clipPath: "inset(0px 0px 0px 0px)" }, { clipPath: "inset(" + STAGE_H + "px 0px 0px 0px)", duration: TRANSITION, ease: "power3.inOut", immediateRender: false }, end);
+            }
+            tl.set(b.root, { opacity: 0, y: 0, clipPath: "inset(0px 0px 0px 0px)" }, end + TRANSITION);
+          }
+        });
+
+        (story.captions || []).forEach((chunk, c) => {
+          const { node, spans } = caps[c];
+          tl.set(node, { opacity: 1 }, chunk.start);
+          tl.fromTo(node, { y: 10 }, { y: 0, duration: 0.2, ease: EASE_OUT, immediateRender: false }, chunk.start);
+          tl.set(node, { opacity: 0 }, chunk.end);
+          chunk.at.forEach((at, w) => tl.set(spans[w], { color: ink }, at));
+          tl.set(spans, { color: ink2 }, 0);
+        });
+
+        window.__timelines["main"] = tl;
+      }
+
+      document.fonts.ready.then(build);
+    </script>
+  </body>
+</html>

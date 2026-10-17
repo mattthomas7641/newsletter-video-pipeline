@@ -18,7 +18,6 @@ pipeline writes next to it. Uploaded video IDs are recorded in
 from __future__ import annotations
 
 import html
-import json
 import logging
 import os
 import sys
@@ -26,6 +25,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from .runstate import now_iso, read_json, record_video, write_json_atomic
 from .script_writer import Script
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -42,8 +42,21 @@ SCOPES = [
 CATEGORY_SCIENCE_TECH = "28"
 MAX_TITLE = 100
 DEFAULT_TAGS = ["tech news", "ai", "technology", "tldr", "shorts"]
+# Uploads go up in resumable chunks (so a dropped connection costs one chunk,
+# not the whole 30 MB file) with the client library's own exponential-backoff
+# retries on 5xx/429/socket errors, and an HTTP timeout of their own —
+# independent of any process-wide socket default.
+UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024
+UPLOAD_RETRIES = 5
+UPLOAD_HTTP_TIMEOUT_SECONDS = 120
 
 log = logging.getLogger("newsletter_video")
+
+
+class YouTubeAuthError(RuntimeError):
+    """The saved sign-in is missing, expired or revoked: nothing can be
+    uploaded until the owner reruns `--auth`. Raised (not just logged) so the
+    daily run can notify instead of silently skipping every upload."""
 
 
 # --- metadata ------------------------------------------------------------
@@ -56,9 +69,11 @@ def _clean_url(url: str) -> str:
     return urlunsplit(parts._replace(query=urlencode(query)))
 
 
-def write_metadata(script: Script, video_path: Path) -> Path:
+def write_metadata(script: Script, video_path: Path, privacy: str | None = None) -> Path:
     """Writes the post's title/description/tags next to the video, so the
-    upload (or a manual post to TikTok) can reuse them later."""
+    upload (or a manual post to TikTok) can reuse them later. `privacy`
+    pins this one video's visibility regardless of YOUTUBE_PRIVACY (used to
+    keep rule-based fallback scripts private)."""
     title = script.title.strip()
     if len(title) + len(" #shorts") <= MAX_TITLE:
         title += " #shorts"
@@ -78,13 +93,20 @@ def write_metadata(script: Script, video_path: Path) -> Path:
         "description": description[:4900],
         "tags": list(dict.fromkeys(badge_tags + script.hashtags + DEFAULT_TAGS)),
         "stories": [s.title for s in script.stories],  # lets later runs skip covered stories
+        "writer": getattr(script, "writer", ""),
         "script": {  # lets the video be re-rendered exactly
             "title": script.title, "badge": script.badge, "hook": script.hook,
             "beats": [vars(b) for b in script.beats], "outro": script.outro,
         },
     }
+    if privacy:
+        metadata["privacy"] = privacy
+    if getattr(script, "plan", None) is not None:  # explainer style: the scene plan is what was rendered
+        from .explainer_writer import plan_dict
+
+        metadata["scene_plan"] = plan_dict(script.plan)
     path = video_path.with_suffix(".json")
-    path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False))
+    write_json_atomic(path, metadata)
     return path
 
 
@@ -144,48 +166,107 @@ def _publish_times(day: date, count: int) -> list[str | None]:
     return times
 
 
+def _youtube_client(creds):
+    """A client whose HTTP timeout is its own, not whatever
+    socket.setdefaulttimeout() happens to be in this process."""
+    import httplib2
+    from google_auth_httplib2 import AuthorizedHttp
+    from googleapiclient.discovery import build
+
+    http = AuthorizedHttp(creds, http=httplib2.Http(timeout=UPLOAD_HTTP_TIMEOUT_SECONDS))
+    return build("youtube", "v3", http=http, cache_discovery=False)
+
+
+def _normalize_title(title: str) -> str:
+    return " ".join(title.split()).casefold()
+
+
+def _recent_upload_ids(youtube) -> dict[str, str] | None:
+    """{normalized title: video id} for the channel's 50 most recent
+    uploads (2 quota units), or None if the sign-in lacks the read scope.
+    Used to settle an upload whose result was never recorded."""
+    from googleapiclient.errors import HttpError
+
+    try:
+        channels = youtube.channels().list(part="contentDetails", mine=True).execute().get("items", [])
+        if not channels:
+            return {}
+        playlist = channels[0]["contentDetails"]["relatedPlaylists"]["uploads"]
+        items = youtube.playlistItems().list(part="snippet", playlistId=playlist, maxResults=50).execute()
+    except HttpError as exc:
+        log.warning("YouTube: cannot list recent uploads to verify an unrecorded upload (%s)", exc.reason)
+        return None
+    return {_normalize_title(item["snippet"]["title"]): item["snippet"]["resourceId"]["videoId"]
+            for item in items.get("items", [])}
+
+
+def pending_videos(folder: Path) -> list[Path]:
+    """Videos in `folder` with no completed upload record: never attempted,
+    or attempted without a recorded result (the process died between the
+    insert and writing uploads.json) — those must be verified, not re-posted."""
+    record = read_json(folder / "uploads.json", default={}) or {}
+    return [v for v in sorted(folder.glob("*.mp4")) if not (record.get(v.name) or {}).get("id")]
+
+
 def upload_day(day: date, dry_run: bool = False) -> list[str]:
     """Uploads every rendered video for `day` not already uploaded. Returns
-    the new YouTube video IDs. Never raises for YouTube problems — the
-    videos stay on disk and the next run (or a manual run) retries."""
+    the new YouTube video IDs. YouTube-side problems (quota, a network drop
+    mid-file) are logged and recorded, not raised — the videos stay on disk
+    and the next run (or a manual run) retries. Raises YouTubeAuthError when
+    the sign-in itself is unusable, since nothing can upload until it is fixed."""
     folder = OUTPUT_DIR / day.isoformat()
-    videos = sorted(folder.glob("*.mp4"))
     record_path = folder / "uploads.json"
-    record = json.loads(record_path.read_text()) if record_path.exists() else {}
-    pending = [v for v in videos if v.name not in record]
+    record = read_json(record_path, default={}) or {}
+    pending = pending_videos(folder)
     if not pending:
         log.info("YouTube: nothing new to upload for %s", day)
         return []
 
-    privacy = os.environ.get("YOUTUBE_PRIVACY", "private")
+    default_privacy = os.environ.get("YOUTUBE_PRIVACY", "private")
     publish_at = _publish_times(day, len(pending))
     if dry_run:
         for video, at in zip(pending, publish_at):
-            if not video.with_suffix(".json").exists():
+            meta = read_json(video.with_suffix(".json"))
+            if not meta:
                 print(f"\n{video.name}: no metadata (rendered before uploads existed) — would skip")
                 continue
-            meta = json.loads(video.with_suffix(".json").read_text())
+            privacy = meta.get("privacy") or default_privacy
             print(f"\n{video.name}  [{privacy}{', publish ' + at if at else ''}]\n"
                   f"TITLE: {meta['title']}\nTAGS: {meta['tags']}\n{meta['description']}")
         return []
 
     creds = _credentials(interactive=False)
     if creds is None:
-        log.error("YouTube: not authorized — run `python -m newsletter_video.youtube_upload --auth`")
-        return []
+        raise YouTubeAuthError("YouTube sign-in missing or expired — run `python -m newsletter_video.youtube_upload --auth`")
 
-    from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
     from googleapiclient.http import MediaFileUpload
 
-    youtube = build("youtube", "v3", credentials=creds, cache_discovery=False)
+    youtube = _youtube_client(creds)
+    recent: dict[str, str] | None | bool = False  # fetched lazily, once
     uploaded = []
     for video, at in zip(pending, publish_at):
-        meta_path = video.with_suffix(".json")
-        if not meta_path.exists():
+        meta = read_json(video.with_suffix(".json"))
+        if not meta:
             log.warning("YouTube: no metadata for %s, skipping", video.name)
             continue
-        meta = json.loads(meta_path.read_text())
+        privacy = meta.get("privacy") or default_privacy
+        if video.name in record:  # an earlier attempt's outcome is unknown: look before posting again
+            if recent is False:
+                recent = _recent_upload_ids(youtube)
+            if recent is None:
+                log.error("YouTube: %s may already be uploaded (no recorded result) and this sign-in can't "
+                          "list the channel to check — rerun --auth with the read permission, or fix "
+                          "uploads.json by hand", video.name)
+                continue
+            found = recent.get(_normalize_title(meta["title"]))
+            if found:
+                record[video.name] = {"id": found, "privacy": record[video.name].get("privacy", privacy),
+                                      "publishAt": at, "verified": now_iso()}
+                write_json_atomic(record_path, record)
+                record_video(folder, video.stem, "uploaded", youtube_id=found)
+                log.info("YouTube: %s was already uploaded as %s; recorded, not re-posted", video.name, found)
+                continue
         status = {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}
         if at and privacy == "private":
             status["publishAt"] = at
@@ -198,17 +279,28 @@ def upload_day(day: date, dry_run: bool = False) -> list[str]:
             },
             "status": status,
         }
+        # Mark the attempt before it starts: if the process dies after YouTube
+        # accepted the file but before the id is written, the next run sees
+        # an unfinished attempt and verifies instead of posting a duplicate.
+        record[video.name] = {"id": None, "privacy": privacy, "publishAt": at, "started": now_iso()}
+        write_json_atomic(record_path, record)
         try:
             request = youtube.videos().insert(
                 part="snippet,status",
                 body=body,
-                media_body=MediaFileUpload(str(video), mimetype="video/mp4", chunksize=-1, resumable=True),
+                media_body=MediaFileUpload(str(video), mimetype="video/mp4",
+                                           chunksize=UPLOAD_CHUNK_BYTES, resumable=True),
             )
             response = None
             while response is None:
-                _, response = request.next_chunk()
-        except HttpError as exc:
+                _, response = request.next_chunk(num_retries=UPLOAD_RETRIES)
+        except HttpError as exc:  # YouTube answered with an error: definitely not uploaded
             log.error("YouTube upload of %s failed: %s", video.name, exc)
+            record.pop(video.name, None)
+            write_json_atomic(record_path, record)
+            record_video(folder, video.stem, "upload_failed", error=f"HTTP {exc.resp.status}: {exc.reason}"[:300])
+            if exc.resp.status == 401:
+                raise YouTubeAuthError("YouTube rejected the sign-in (401) — rerun --auth") from exc
             # Daily API quota, or the channel's own rolling upload limit: further
             # uploads would fail too; leftovers are retried by the next run.
             if exc.resp.status in (403, 429) or "uploadLimitExceeded" in str(exc.content):
@@ -216,23 +308,41 @@ def upload_day(day: date, dry_run: bool = False) -> list[str]:
             continue
         except Exception as exc:  # network timeout mid-upload: retry on the next run
             log.error("YouTube upload of %s failed: %s", video.name, exc)
+            record_video(folder, video.stem, "upload_failed", error=f"{type(exc).__name__}: {exc}"[:300])
             continue
         video_id = response["id"]
         record[video.name] = {"id": video_id, "privacy": privacy, "publishAt": at}
-        record_path.write_text(json.dumps(record, indent=2))
+        write_json_atomic(record_path, record)
+        record_video(folder, video.stem, "uploaded", youtube_id=video_id, privacy=privacy)
         uploaded.append(video_id)
         log.info("YouTube: uploaded %s → https://youtube.com/shorts/%s (%s)", video.name, video_id, privacy)
     return uploaded
 
 
-def upload_recent(today: date, days_back: int = 3) -> list[str]:
-    """Uploads anything still pending from the last few days (oldest first),
-    then today's videos — so a video blocked by a limit goes up on the next run."""
+def days_with_pending_uploads(today: date) -> list[date]:
+    """Every dated output folder (up to and including `today`) that still
+    holds a video without a completed upload — however old, so a video
+    blocked by a limit for a week is still picked up, not forgotten."""
+    days = []
+    for folder in OUTPUT_DIR.iterdir() if OUTPUT_DIR.is_dir() else []:
+        try:
+            day = date.fromisoformat(folder.name)
+        except ValueError:
+            continue
+        if folder.is_dir() and day <= today and pending_videos(folder):
+            days.append(day)
+    return sorted(days)
+
+
+def upload_recent(today: date, days_back: int | None = None) -> list[str]:
+    """Uploads anything still pending from earlier days (oldest first), then
+    today's videos — so a video blocked by a limit goes up on a later run.
+    `days_back` limits how far back to look (default: no limit)."""
     uploaded = []
-    for offset in range(days_back, -1, -1):
-        day = today - timedelta(days=offset)
-        if (OUTPUT_DIR / day.isoformat()).exists():
-            uploaded += upload_day(day)
+    for day in days_with_pending_uploads(today):
+        if days_back is not None and (today - day).days > days_back:
+            continue
+        uploaded += upload_day(day)
     return uploaded
 
 
@@ -242,18 +352,18 @@ def publish_day(day: date, privacy: str = "public") -> list[str]:
     if not record_path.exists():
         log.info("YouTube: no uploads recorded for %s", day)
         return []
-    record = json.loads(record_path.read_text())
+    record = read_json(record_path, default={}) or {}
     creds = _credentials(interactive=False)
     if creds is None or SCOPES[2] not in set(creds.scopes or []):
-        log.error("YouTube: not authorized to change visibility — rerun --auth")
-        return []
+        raise YouTubeAuthError("YouTube: not authorized to change visibility — rerun --auth")
 
-    from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
 
-    youtube = build("youtube", "v3", credentials=creds, cache_discovery=False)
+    youtube = _youtube_client(creds)
     changed = []
     for name, info in record.items():
+        if not info.get("id"):
+            continue  # an attempt with no recorded result; nothing to publish
         try:
             youtube.videos().update(part="status", body={
                 "id": info["id"],
@@ -265,7 +375,7 @@ def publish_day(day: date, privacy: str = "public") -> list[str]:
         info["privacy"] = privacy
         changed.append(info["id"])
         log.info("YouTube: %s is now %s", name, privacy)
-    record_path.write_text(json.dumps(record, indent=2))
+    write_json_atomic(record_path, record)
     return changed
 
 
@@ -293,8 +403,13 @@ if __name__ == "__main__":
             print(f"Authorized: uploads will go to the channel \"{items[0]['snippet']['title']}\"")
         else:
             print("Authorized, but this Google account has no YouTube channel yet — create one, then rerun --auth.")
-    elif "--publish" in sys.argv:
-        publish_day(date.fromisoformat(args[0]) if args else date.today())
     else:
-        target = date.fromisoformat(args[0]) if args else date.today()
-        upload_day(target, dry_run="--dry-run" in sys.argv)
+        try:
+            if "--publish" in sys.argv:
+                publish_day(date.fromisoformat(args[0]) if args else date.today())
+            else:
+                target = date.fromisoformat(args[0]) if args else date.today()
+                upload_day(target, dry_run="--dry-run" in sys.argv)
+        except YouTubeAuthError as exc:
+            print(exc)
+            sys.exit(1)
