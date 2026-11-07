@@ -103,17 +103,47 @@ def test_app_never_comes_up_is_fatal(monkeypatch):
         tts._ensure_voicebox_running()
 
 
-def test_restart_quits_relaunches_and_waits(monkeypatch):
+def test_restart_stops_the_server_process_not_just_the_app(monkeypatch):
+    """Quitting the app leaves voicebox-server running (the cause of weeks-long
+    wedges); the restart must kill the server itself before relaunching."""
     calls = []
-    # up before quit; down after it (twice checked); still down when relaunching; then back up
-    health = iter([True, False, False, False])
+    state = {"up": True}
 
-    monkeypatch.setattr(tts.subprocess, "run", lambda cmd, **kw: calls.append(cmd) or subprocess.CompletedProcess(cmd, 0))
-    monkeypatch.setattr(tts, "_voicebox_is_up", lambda: next(health, True))
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        if cmd[0] == "pkill" and cmd[1] == "-TERM":
+            state["up"] = False  # only killing the server takes it down
+        if cmd[:2] == ["open", "-a"]:
+            state["up"] = True
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(tts.subprocess, "run", fake_run)
+    monkeypatch.setattr(tts, "_voicebox_is_up", lambda: state["up"])
     monkeypatch.setattr(time, "sleep", lambda s: None)
     tts._restart_voicebox()
     assert calls[0][:2] == ["osascript", "-e"] and "quit" in calls[0][2]
-    assert ["open", "-a", "Voicebox"] in calls
+    assert ["pkill", "-TERM", "-f", tts.VOICEBOX_SERVER_PATH] in calls
+    assert calls.index(["pkill", "-TERM", "-f", tts.VOICEBOX_SERVER_PATH]) < calls.index(["open", "-a", "Voicebox"])
+    assert state["up"]
+
+
+def test_restart_escalates_to_kill_when_term_is_ignored(monkeypatch):
+    calls = []
+    state = {"up": True}
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        if cmd[0] == "pkill" and cmd[1] == "-KILL":
+            state["up"] = False
+        if cmd[:2] == ["open", "-a"]:
+            state["up"] = True
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(tts.subprocess, "run", fake_run)
+    monkeypatch.setattr(tts, "_voicebox_is_up", lambda: state["up"])
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+    tts._restart_voicebox()
+    assert ["pkill", "-KILL", "-f", tts.VOICEBOX_SERVER_PATH] in calls
 
 
 def test_check_audio_rejects_truncated_clip(tmp_path):

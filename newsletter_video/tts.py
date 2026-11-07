@@ -198,20 +198,35 @@ def _ensure_voicebox_running() -> None:
     )
 
 
-def _restart_voicebox() -> None:
-    """Quit the app (its /health keeps answering even when generation is
-    wedged, so a health check can't tell), then relaunch and wait for it."""
+VOICEBOX_SERVER_PATH = "/Applications/Voicebox.app/Contents/MacOS/voicebox-server"
+
+
+def _kill_voicebox_server() -> None:
+    """Quitting the Voicebox app does NOT stop its voicebox-server process:
+    the server keeps running (for weeks, in practice) with whatever stuck
+    generations it has queued, so a plain quit-and-reopen "restart" silently
+    restarts nothing. Stop the server itself."""
     import subprocess
     import time
 
+    for sig in ("-TERM", "-KILL"):
+        subprocess.run(["pkill", sig, "-f", VOICEBOX_SERVER_PATH], check=False, timeout=15)
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline and _voicebox_is_up():
+            time.sleep(1)
+        if not _voicebox_is_up():
+            return
+
+
+def _restart_voicebox() -> None:
+    """Quit the app and stop its server (its /health keeps answering even
+    when generation is wedged, so a health check can't tell), then relaunch
+    and wait for it."""
+    import subprocess
+
     subprocess.run(["osascript", "-e", 'tell application "Voicebox" to quit'], check=False, timeout=30,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    deadline = time.monotonic() + 20
-    while time.monotonic() < deadline and _voicebox_is_up():
-        time.sleep(1)
-    if _voicebox_is_up():  # the polite quit didn't take; force it
-        subprocess.run(["pkill", "-x", "Voicebox"], check=False, timeout=15)
-        time.sleep(3)
+    _kill_voicebox_server()
     _ensure_voicebox_running()
 
 
