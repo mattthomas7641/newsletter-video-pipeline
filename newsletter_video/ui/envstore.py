@@ -50,6 +50,25 @@ def _slug_or_blank(value: str) -> str | None:
     return None if value == "" or _SLUG.match(value) else "must be a character folder name or blank"
 
 
+_LIBRARY_PATH = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./-]{0,119}$")
+
+
+def _library(value: str) -> str | None:
+    """STYLE_LIBRARY: "off", or a folder path inside the project (no "..",
+    nothing absolute). The panel only ever writes "off" or "style_library"."""
+    if value.lower() in ("off", "0", "false", "no", "none"):
+        return None
+    if _LIBRARY_PATH.match(value) and ".." not in value:
+        return None
+    return "must be 'off' or a folder name inside the project"
+
+
+def _recipe_policy(value: str) -> str | None:
+    if value in ("auto", "none") or re.fullmatch(r"[a-z0-9][a-z0-9-]{1,63}", value):
+        return None
+    return "must be auto, none or a recipe id"
+
+
 SCHEMA: dict[str, Field] = {f.key: f for f in [
     Field("VIDEO_STYLE", "avatar", _one_of("avatar", "explainer"), ("avatar", "explainer")),
     Field("VIDEO_THEME", "light", _one_of("light", "dark"), ("light", "dark")),
@@ -60,6 +79,10 @@ SCHEMA: dict[str, Field] = {f.key: f for f in [
     Field("YOUTUBE_PRIVACY", "private", _one_of("private", "unlisted", "public"),
           ("private", "unlisted", "public")),
     Field("FALLBACK_UPLOAD", "0", _one_of("0", "1"), ("0", "1")),
+    # The style library (docs/style-library.md): its folder or "off", and the
+    # default recipe policy for new videos (auto = the planner, none, or one recipe).
+    Field("STYLE_LIBRARY", "style_library", _library),
+    Field("STYLE_RECIPE", "auto", _recipe_policy),
 ]}
 
 # Keys the panel may only ever report as present/missing.
