@@ -170,7 +170,7 @@ def analyze_video(path: Path, out_dir: Path, name: str | None = None, use_vision
     track = segment.build_track(thumbs, segment.TRACK_FPS)
     scenes = segment.detect_scenes(track, duration=info.duration)
     activity = segment.activity_curve(track.gray)
-    global_palette = fr.palette(thumbs[:: max(1, len(thumbs) // 120)])
+    global_palette = fr.palette(thumbs[:: max(1, len(thumbs) // 120)])  # refined from the keyframes below
     scene_dicts: list[dict] = []
     sheet_frames: list[np.ndarray] = []
     sheet_labels: list[str] = []
@@ -180,28 +180,33 @@ def analyze_video(path: Path, out_dir: Path, name: str | None = None, use_vision
         mf = media.read_frames(path, 12.0, segment.MOTION_W, start=s.start, duration=max(0.2, s.duration))
         d["motion"] = segment.motion_profile(mf, 12.0, s.start)
         d["motion"].pop("activity", None)  # the global curve is kept; per-scene stats are enough
-        lo, hi = int(s.start * segment.TRACK_FPS), max(int(s.start * segment.TRACK_FPS) + 1, int(s.end * segment.TRACK_FPS))
-        d["palette"] = {k: v for k, v in fr.palette(thumbs[lo:hi:max(1, (hi - lo) // 12)]).items()
-                        if k in ("colours", "background", "accent", "theme", "contrast")} if hi > lo else global_palette
         times = {"first": s.start + min(0.25, s.duration * 0.15), "mid": (s.start + s.end) / 2, "last": max(s.start, s.end - 0.2)}
         d["keyframes"] = []
         mid_frame = None
+        scene_frames = []
         for label, t in times.items():
             frame = media.frame_at(path, t, KEYFRAME_SIDE if info.width >= info.height else int(KEYFRAME_SIDE * info.width / info.height))
             if frame is None:
                 continue
+            scene_frames.append(frame)
             if label == "mid":
                 mid_frame = frame
             if keyframes:
                 rel = f"keyframes/s{s.index:02d}_{label}.jpg"
                 media.save_jpeg(frame, out_dir / rel)
                 d["keyframes"].append(rel)
+        # colours from the full-size keyframes (thumbnails blend thin strokes into the ground)
+        lo, hi = int(s.start * segment.TRACK_FPS), max(int(s.start * segment.TRACK_FPS) + 1, int(s.end * segment.TRACK_FPS))
+        colour_src = np.stack(scene_frames) if scene_frames else thumbs[lo:hi:max(1, (hi - lo) // 12)]
+        d["palette"] = {k: v for k, v in fr.palette(colour_src).items() if k in ("colours", "background", "accent", "theme", "contrast")}
         if mid_frame is not None:
             lay = fr.layout(mid_frame, d["palette"].get("background"))
             d["layout"] = lay
             sheet_frames.append(mid_frame)
             sheet_labels.append(f"{s.index + 1} {s.start:.1f}s {s.transition_in}")
         scene_dicts.append(d)
+    if sheet_frames:
+        global_palette = fr.palette(np.stack(sheet_frames))
     cadence = segment.cadence_stats(scenes, info.duration)
     samples = media.extract_audio(path) if info.has_audio else None
     event_times = [e["t0"] for d in scene_dicts for e in d["motion"].get("events", [])]

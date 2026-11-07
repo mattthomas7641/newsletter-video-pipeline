@@ -175,7 +175,7 @@ def classify_transition(track: Track, i: int, span: int) -> tuple[str, float]:
         dx, dy, peak = phase_shift(track.gray[k - 1], track.gray[k])
         if peak > 0.08 and max(abs(dx), abs(dy)) >= 1:
             shifts.append((dx, dy))
-    if len(shifts) >= 3:
+    if len(shifts) >= 2:
         sx = np.array([s[0] for s in shifts])
         sy = np.array([s[1] for s in shifts])
         if np.abs(sy).sum() >= np.abs(sx).sum() and abs(np.sign(sy).sum()) == len(sy) and np.abs(sy).sum() >= 3:
@@ -281,7 +281,7 @@ def detect_scenes(track: Track, min_scene_s: float = MIN_SCENE_S, duration: floa
     for i in range(K, n - K):
         window = track.changed[i - K + 1:i + K + 1]
         peak = float(window.max())
-        if peak < 0.035 or peak < base[i] * 3 + 0.02:
+        if peak < 0.02 or peak < base[i] * 3 + 0.015:
             continue
         if ink_share[i - K] < 0.004:  # an entrance onto an empty ground, not a scene change
             continue
