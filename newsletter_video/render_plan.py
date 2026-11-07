@@ -92,7 +92,8 @@ def render(folder: Path, only: list[str] | None = None, is_test: bool = False, f
         return []
     uploading = os.environ.get("YOUTUBE_UPLOAD") == "1" and not is_test
     validate_config(PROJECT_ROOT, OUTPUT_DIR, TOKEN)
-    update_run(folder, started=now_iso(), finished=None, error=None)
+    # mode="render" replaces an approval-mode run's "plan", so the summary counts videos again
+    update_run(folder, started=now_iso(), finished=None, error=None, mode="render")
 
     scripts = []
     for entry in wanted:

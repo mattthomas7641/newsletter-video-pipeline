@@ -41,6 +41,15 @@ export function mountSettings(root, ctx) {
     setDraft("VIDEOS_PER_DAY", next);
   }
 
+  // ---- daily mode (approval mode) ----
+  const modeName = nextId("mode");
+  const modeSeg = h("div", { class: "seg", role: "radiogroup", "aria-labelledby": `${modeName}-l` },
+    [["full", "Make everything"], ["plan", "Plan, then ask me"]].map(([v, label]) => h("label", {},
+      h("input", { type: "radio", name: modeName, value: v, onChange: () => setDraft("DAILY_MODE", v) }),
+      h("span", { class: "opt", text: label }))));
+  const modeHelp = h("p", { class: "help" });
+  const modeNote = h("div");
+
   // ---- upload ----
   const uploadId = nextId("upload");
   const uploadBox = h("input", { id: uploadId, type: "checkbox", role: "switch", "aria-describedby": `${uploadId}-help`,
@@ -75,7 +84,8 @@ export function mountSettings(root, ctx) {
       h("div", { class: "row" },
         h("div", {}, h("label", { class: "label", for: perDayId, text: "Videos per day" }), perDayHelp),
         h("div", { class: "control" }, h("div", { class: "stepper" }, minus, perDay, plus), perDayError)),
-      row("Runs at", "sched-l", h("p", { class: "help", id: "sched-help" }), h("span", { class: "chip", id: "sched-chip" }))));
+      row("Runs at", "sched-l", h("p", { class: "help", id: "sched-help" }), h("span", { class: "chip", id: "sched-chip" })),
+      row("What the scheduled run does", `${modeName}-l`, modeHelp, modeSeg, modeNote)));
 
   const youtube = h("section", { class: "section", "aria-labelledby": "yt-h" },
     h("div", { class: "section-head" }, h("h2", { id: "yt-h", text: "YouTube" })),
@@ -136,6 +146,12 @@ export function mountSettings(root, ctx) {
     plus.disabled = Number(perDayValue) >= 20;
     const n = Number(perDayValue);
     perDayHelp.textContent = `Each video takes roughly 8 minutes to make, so ${n === 1 ? "one video" : `${n} videos`} ${n === 1 ? "takes" : "take"} about ${approxTime(n)}.`;
+
+    for (const input of modeSeg.querySelectorAll("input")) input.checked = input.value === value("DAILY_MODE");
+    modeHelp.textContent = value("DAILY_MODE") === "plan"
+      ? "Approval mode: it only picks the stories and writes the scripts, then notifies you. Nothing is voiced, rendered or uploaded until you press Render on the Studio page."
+      : "Writes, voices, renders and uploads every video in one go, with no review step.";
+    modeNote.replaceChildren(notYetNote(state.settings?.supported?.DAILY_MODE) || "");
 
     const uploading = value("YOUTUBE_UPLOAD") === "1";
     uploadBox.checked = uploading;

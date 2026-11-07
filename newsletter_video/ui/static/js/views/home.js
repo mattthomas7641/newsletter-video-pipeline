@@ -202,6 +202,14 @@ export function mountHome(root, ctx) {
       startErrorHost.append(h("div", { class: "notice warn" }, icon("info"),
         h("div", { class: "notice-body" }, h("p", { text: `${outside.label}.` }), h("p", { text: "Starting another is paused until it finishes." }))));
     }
+    // Approval mode's hand-off: today's plan exists and some of it is still unrendered.
+    const todayCard = (state.plans?.plans || []).find((p) => p.ref === todayIso() && p.kind !== "test");
+    const waiting = todayCard ? todayCard.count - (todayCard.rendered || 0) : 0;
+    if (waiting > 0 && !isRunning()) {
+      startErrorHost.append(h("div", { class: "notice good", role: "status" }, icon("check"),
+        h("div", { class: "notice-body" }, h("p", {}, h("strong", { text: "Plan ready — review and render" })),
+          h("p", { text: `${plural(waiting, "video")} planned for today, not rendered yet. Check each one below, then press Render all or Render selected.` }))));
+    }
     const sched = state.runs.schedule;
     lede.textContent = sched?.time
       ? `Plan, preview and render today's videos one step at a time. The daily job still runs by itself at ${formatClock(sched.time)} with your defaults.`
