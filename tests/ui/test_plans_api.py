@@ -175,6 +175,51 @@ def test_stale_previews_are_not_reported(client, paths):
     assert plan["videos"][0]["preview"] == {}  # the look changed: the old storyboard is hidden
 
 
+def test_studio_starts_one_local_server_per_panel(client, spawner, paths, app, sleeper):
+    """POST .../studio needs no confirmation, starts the preview module with
+    --studio on a free 127.0.0.1 port, reports the URL, and starting it for
+    another video stops the previous server. Never --final, never --voice."""
+    seed_plan(paths)
+    app.plans.studio_wait = 0.1
+    ref = DAY.isoformat()
+    _, plan = client.get_json(f"/api/plans/{ref}")
+    assert plan["studio"] is None
+    first = sleeper()
+    spawner.pid = first.pid
+    status, data = client.send_json("POST", f"/api/plans/{ref}/videos/v01/studio", {"overrides": {"theme": "dark"}})
+    assert status == 201 and data["job"]["kind"] == "studio" and data["ready"] is False
+    port = data["job"]["meta"]["port"]
+    assert data["url"] == f"http://127.0.0.1:{port}/#project/_studio" and 1024 < port < 65536
+    from newsletter_video import preview
+    from newsletter_video.ui import plans as plans_mod
+
+    assert plans_mod.STUDIO_DIRNAME == preview.STUDIO_DIRNAME
+    argv = spawner.calls[-1]["argv"]
+    assert argv[1:3] == ["-m", "newsletter_video.preview"] and "--studio" in argv
+    assert argv[argv.index("--port") + 1] == str(port) and argv[argv.index("--theme") + 1] == "dark"
+    assert "--final" not in argv and "--voice" not in argv and "--preview" not in argv
+    _, plan = client.get_json(f"/api/plans/{ref}")
+    assert plan["studio"]["video"] == "v01" and plan["studio"]["url"] == data["url"] and plan["studio"]["id"] == data["job"]["id"]
+    # Studio is not a heavy run: a preview may start beside it
+    assert client.send_json("POST", f"/api/plans/{ref}/videos/v01/preview", {})[0] == 201
+    (app.jobs.jobs_dir / spawner.calls[-1]["job_dir"].name / "result.json").write_text(json.dumps({"exit_code": 0, "finished_at": 1}))
+    # a second Studio replaces the first
+    second = sleeper()
+    spawner.pid = second.pid
+    status, again = client.send_json("POST", f"/api/plans/{ref}/videos/v02/studio", {})
+    assert status == 201 and again["job"]["id"] != data["job"]["id"]
+    assert first.wait(timeout=5) != 0  # the first server's process group was signalled
+    _, plan = client.get_json(f"/api/plans/{ref}")
+    assert plan["studio"]["video"] == "v02"
+    # stop it explicitly (the panel does the same on exit)
+    assert app.plans.stop_studio() is True
+    second.wait(timeout=5)
+    _, plan = client.get_json(f"/api/plans/{ref}")
+    assert plan["studio"] is None and app.plans.stop_studio() is False
+    assert client.send_json("POST", f"/api/plans/{ref}/videos/v09/studio", {})[0] == 404
+    assert client.send_json("POST", f"/api/plans/{ref}/videos/v01/studio", {"overrides": {"style": "cartoon"}})[0] == 400
+
+
 def test_no_plan_endpoint_leaks_secrets(client, paths):
     from tests.ui.conftest import SECRETS
 

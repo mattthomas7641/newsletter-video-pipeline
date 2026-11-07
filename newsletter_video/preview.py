@@ -13,6 +13,12 @@ calls the writer (no model cost) and none calls the voice unless asked.
     python -m newsletter_video.preview output/2026-11-07 --video v02 --preview draft --voice
     python -m newsletter_video.preview output/2026-11-07/10_x.json --final --out /tmp/x.mp4
     python -m newsletter_video.preview ... --style avatar --theme dark --recipe none   # try a look
+    python -m newsletter_video.preview output/2026-11-07 --video v02 --studio --port 3102   # live Studio
+
+`--studio` prepares the same work copy as the stills (resolved look, cached
+or estimated timing, no voice) and serves it with HyperFrames Studio on
+127.0.0.1 until the process is stopped; nothing is rendered or written
+outside `_preview/<video>/_studio`.
 
 The source is a rendered video's sidecar (<video>.json) or a planned video
 in a plan.json (plan_manifest.py). Timing comes from cached word alignment
@@ -33,6 +39,7 @@ import logging
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -57,6 +64,8 @@ DRAFT_FPS = 12
 DRAFT_QUALITY = "draft"
 PREVIEW_DIRNAME = "_preview"
 AUDIO_CACHE_DIRNAME = "_preview_audio"
+STUDIO_DIRNAME = "_studio"  # the live work copy, under _preview/<video>/
+STUDIO_HOST = "127.0.0.1"
 SNAPSHOT_TIMEOUT = 240
 DRAFT_TIMEOUT = 900
 FRAME_W = 270  # storyboard tile width (a 1080x1920 frame at 1/4)
@@ -500,6 +509,58 @@ def preview_draft(source: Source, voice: bool = False, fps: int = DRAFT_FPS, qua
     return result
 
 
+def prepare_studio(source: Source) -> tuple[Path, str, dict]:
+    """The work copy HyperFrames Studio serves: the same template copy the
+    stills use, with the video's resolved look and cached (never
+    synthesised) timing. Returns (work_dir, timing, payload)."""
+    apply_look_to_plan(source)
+    audio, per_line, speech, timing = _timing(source, voice=False)
+    payload = build_payload(source, per_line, speech)
+    work = source.out_dir / STUDIO_DIRNAME
+    prepare_workdir(source, payload, audio, work)
+    return work, timing, payload
+
+
+def studio_command(work_dir: Path, port: int, npx: str) -> list[str]:
+    """What `hyperframes preview --background` itself spawns (attached, no
+    browser, a fresh server on exactly this port), so the panel's job
+    supervisor owns the process and can stop it."""
+    return [npx, "--yes", f"hyperframes@{HYPERFRAMES_VERSION}", "preview", str(work_dir), "--port", str(port),
+            "--foreground", "--no-open", "--force-new", "--no-proxy"]
+
+
+def run_studio(source: Source, port: int) -> int:
+    """Prepares the work copy and serves it with Studio until stopped
+    (SIGTERM/SIGINT stop the server's whole process tree). Blocks; returns
+    the server's exit code. Never renders, voices or uploads."""
+    from .supervisor import kill_process_tree
+
+    work, timing, payload = prepare_studio(source)
+    npx = npx_path()
+    url = f"http://{STUDIO_HOST}:{port}/#project/{STUDIO_DIRNAME}"
+    log.info("Studio: %s (%s, %.1fs) <- %s", url, timing, payload["duration"], work)
+    env = {**hyperframes_env(npx), "HYPERFRAMES_PREVIEW_HOST": STUDIO_HOST}
+    proc = subprocess.Popen(studio_command(work, port, npx), env=env, stdin=subprocess.DEVNULL)
+
+    def stop(signum, frame):  # noqa: ARG001
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                kill_process_tree(proc.pid)
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, stop)
+    try:
+        code = proc.wait()
+    finally:
+        if proc.poll() is None:
+            kill_process_tree(proc.pid)
+    log.info("Studio stopped (exit %s)", code)
+    return 0 if code in (0, -signal.SIGTERM, -signal.SIGINT) else int(code)
+
+
 def render_final(source: Source, out_path: Path) -> Path:
     """The full-quality, voiced render of one source, through the same
     builder the pipeline uses (so the result is exactly a pipeline video).
@@ -542,6 +603,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--voice", action="store_true", help="draft/stills: voice the lines first (TTS, may use Voicebox)")
     parser.add_argument("--fps", type=int, default=DRAFT_FPS, help=f"draft frame rate (default {DRAFT_FPS})")
     parser.add_argument("--resolution", help="draft: a HyperFrames resolution preset, if you want one")
+    parser.add_argument("--studio", action="store_true",
+                        help="serve the prepared composition with HyperFrames Studio (127.0.0.1) until stopped")
+    parser.add_argument("--port", type=int, default=3002, help="--studio only: the port to serve on (default 3002)")
     from .plan_day import _overrides_from_args, add_look_arguments
 
     add_look_arguments(parser)
@@ -560,10 +624,16 @@ def main(argv: list[str] | None = None) -> int:
                 ids = [e["id"] for e in (data or {}).get("videos", [])]
                 sys.exit(f"Pick a planned video with --video: {', '.join(ids) or 'none planned'}")
             source = source_from_plan(folder, args.video, overrides)
+        if args.final and args.studio:
+            sys.exit("--studio and --final are different things: pick one")
         if args.final:
             out = args.out or (source.out_dir / "final.mp4")
             print(f"Wrote {render_final(source, out)}")
             return 0
+        if args.studio:
+            if not 1 <= args.port <= 65535:
+                sys.exit("--port must be between 1 and 65535")
+            return run_studio(source, args.port)
         if args.preview == "draft":
             result = preview_draft(source, voice=args.voice, fps=args.fps, resolution=args.resolution)
         else:

@@ -341,6 +341,12 @@ class App:
             job = self.plans.start_preview(m.group(1), unquote(m.group(2)), str(data.get("tier") or "stills"),
                                            voice=data.get("voice") is True, overrides=overrides)
             return json_response({"job": self.runs.describe(job)}, 201)
+        m = re.fullmatch(r"/api/plans/([A-Za-z0-9-]+)/videos/([^/]+)/studio", path)
+        if m and req.method == "POST":  # free and local: no confirmation, just the usual token guard
+            overrides = self._read_json(req).get("overrides") or {}
+            if not isinstance(overrides, dict):
+                return error(400, "overrides must be an object.")
+            return json_response(self.plans.start_studio(m.group(1), unquote(m.group(2)), overrides), 201)
         m = re.fullmatch(r"/api/plans/([A-Za-z0-9-]+)/videos/([^/]+)/rewrite", path)
         if m and req.method == "POST":
             if self._read_json(req).get("confirm") is not True:
