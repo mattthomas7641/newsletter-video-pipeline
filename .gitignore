@@ -24,3 +24,15 @@ newsletter_video/hf_template_explainer/assets/
 newsletter_video/hf_template_explainer/.hyperframes/
 
 .pipeline.lock
+venv
+
+# Style library: the owner's reference clips and the recreation renders stay local;
+# analyses, keyframes, recipes and READMEs are committed.
+style_library/inbox/*
+!style_library/inbox/.gitkeep
+style_library/*/reference.*
+style_library/*/recreation/*.mp4
+style_library/*/recreation/round*_analysis/
+style_library/*/recreation/_hf_work_recreate/
+style_library/*/recreation/.partial/
+output/_style_eval/

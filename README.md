@@ -136,6 +136,7 @@ Copy `.env.example` to `.env`. Everything is optional:
 | `FALLBACK_UPLOAD` | What to do with rule-based fallback scripts when uploads are on: `skip` (default: make none, notify), `private` or `public` |
 | `NOTIFY_WEBHOOK_URL`, `NOTIFY_WEBHOOK_FORMAT`, `NOTIFY_MACOS` | Where run notifications go (see [When things fail](#when-things-fail)) |
 | `RUN_DEADLINE_MINUTES`, `RENDER_TIMEOUT_SECONDS`, `VOICEBOX_GENERATION_TIMEOUT` | Wall-clock limits: whole run (default 240), one render attempt (1200), one Voicebox clip (420) |
+| `STYLE_LIBRARY`, `STYLE_VISION*`, `STYLE_RECREATE_ROUNDS`, `STYLE_PLANNER_*` | The style library folder (`off` to disable) and the model/budget settings for analysing references and planning styles (see [Style library](#style-library-teach-the-look-by-example)) |
 
 Videos land between 40 and 45 seconds: Claude aims for 100–110 words, and if the voiceover
 still runs long or short it's re-voiced slightly faster or slower. Prices and units are
@@ -201,6 +202,29 @@ The composition is `newsletter_video/hf_template_explainer/index.html`; its desi
 `newsletter_video/hf_template_explainer/DESIGN.md`. Validate it after changes with
 `npx hyperframes check` in that folder (lint, layout, motion and WCAG contrast), and run the
 validator tests with `./venv/bin/python -m pytest tests/` (`pytest` is the only extra dependency).
+
+### Style library: teach the look by example
+
+Drop videos you like into `style_library/inbox/` and add them; the system splits
+each into scenes, measures its motion (transitions, entrances, easing, stagger,
+holds, pacing), palette, layout and audio, has Claude describe each scene in the
+explainer's own vocabulary, recreates it with placeholder content using the
+explainer composition, scores the fidelity, and keeps the result as reusable
+**recipes**. From then on the writer makes one extra call per video that picks
+recipes per scene from the library (the planner), and the composition renders
+them through a small set of validated style knobs. Empty library or
+`STYLE_LIBRARY=off`: nothing changes.
+
+```bash
+./venv/bin/python -m newsletter_video.styles add style_library/inbox/clip.mp4 --name punchy-type --notes "big words, hard cuts"
+./venv/bin/python -m newsletter_video.styles search "kinetic type with wipe transitions"
+./venv/bin/python -m newsletter_video.styles plan --story output/2026-10-13/07_x.json --out /tmp/style.json
+./venv/bin/python -m newsletter_video.explainer_builder output/2026-10-13/07_x.json --out /tmp/07.mp4 --style-plan /tmp/style.json
+```
+
+Costs about $0.15 per reference and $0.02 per planned video; `docs/style-library.md`
+has the design, the eval and the limits. Study only material you have the right
+to use; clips never leave your machine and are never committed.
 
 ## Customizing
 
