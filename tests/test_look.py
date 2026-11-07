@@ -17,8 +17,9 @@ def test_default_look_comes_from_the_environment(monkeypatch):
     monkeypatch.setenv("VIDEO_THEME", "dark")
     monkeypatch.delenv("BACKGROUND_STYLE", raising=False)
     monkeypatch.delenv("STYLE_RECIPE", raising=False)
+    monkeypatch.delenv("LOOK_PRESET", raising=False)
     assert looks.look_from_env() == {"style": "avatar", "character": "gizmo", "theme": "dark",
-                                     "background": "gameplay", "recipe": "auto"}
+                                     "background": "gameplay", "recipe": "auto", "preset": ""}
 
 
 def test_layers_fill_only_unset_fields(monkeypatch):
@@ -26,7 +27,8 @@ def test_layers_fill_only_unset_fields(monkeypatch):
     run = {"theme": "dark"}
     video = {"style": "avatar", "character": "gizmo"}
     resolved = looks.resolve_look(run, video, environ=env)
-    assert resolved == {"style": "avatar", "character": "gizmo", "theme": "dark", "background": "gameplay", "recipe": "auto"}
+    assert resolved == {"style": "avatar", "character": "gizmo", "theme": "dark", "background": "gameplay", "recipe": "auto",
+                        "preset": ""}
     # a later layer wins over an earlier one; an unset later field keeps the earlier value
     assert looks.resolve_look({"theme": "dark"}, {"theme": "light"}, environ=env)["theme"] == "light"
     assert looks.resolve_look({"theme": "dark"}, {"theme": None}, environ=env)["theme"] == "dark"
@@ -35,7 +37,7 @@ def test_layers_fill_only_unset_fields(monkeypatch):
 
 @pytest.mark.parametrize("bad", [
     {"style": "cartoon"}, {"theme": "sepia"}, {"background": "beach"}, {"character": "../x"},
-    {"recipe": "not a slug!"}, {"voice": "deep"}, {"version": 99}, {"style": 3}, "avatar",
+    {"recipe": "not a slug!"}, {"voice": "deep"}, {"version": 99}, {"style": 3}, "avatar", {"preset": "no-such-preset"},
 ])
 def test_invalid_looks_are_rejected_with_every_problem_listed(bad):
     with pytest.raises(looks.LookError) as info:
@@ -68,14 +70,14 @@ def test_build_short_without_a_look_leaves_the_environment_exactly_as_the_daily_
     seen = {}
 
     def fake_inner(script, out_path, audio_path, work_dir, kicker, seed):
-        seen["env"] = {k: os.environ.get(k) for k in ("VIDEO_STYLE", "CHARACTER", "VIDEO_THEME", "BACKGROUND_STYLE", "STYLE_RECIPE")}
+        seen["env"] = {k: os.environ.get(k) for k in ("VIDEO_STYLE", "CHARACTER", "VIDEO_THEME", "BACKGROUND_STYLE", "STYLE_RECIPE", "LOOK_PRESET")}
         return out_path
 
     monkeypatch.setattr(video_builder, "_build_short", fake_inner)
     monkeypatch.setenv("VIDEO_STYLE", "avatar")
     monkeypatch.setenv("CHARACTER", "")
     monkeypatch.delenv("VIDEO_THEME", raising=False)
-    before = {k: os.environ.get(k) for k in ("VIDEO_STYLE", "CHARACTER", "VIDEO_THEME", "BACKGROUND_STYLE", "STYLE_RECIPE")}
+    before = {k: os.environ.get(k) for k in ("VIDEO_STYLE", "CHARACTER", "VIDEO_THEME", "BACKGROUND_STYLE", "STYLE_RECIPE", "LOOK_PRESET")}
     script = make_script("Plain")
     assert script.look is None
     video_builder.build_short(script, tmp_path / "x.mp4", tmp_path / "x.wav", tmp_path / "w", "K", "seed")

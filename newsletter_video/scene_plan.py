@@ -26,15 +26,22 @@ from dataclasses import dataclass, field
 from typing import Any
 
 SCENE_TYPES = ("title", "statement", "stat", "comparison", "list", "timeline", "quote", "chart",
-               "diagram", "device", "outro")
+               "diagram", "device", "object3d", "depth", "kinetic", "glass", "outro")
+# The rich scene types of the cinematic look (hf_template_explainer/DESIGN.md,
+# "Cinematic look"): a Three.js object, a depth/parallax push through layered
+# planes, glowing kinetic type, a glassy HUD panel. They validate in any look
+# and render in the light theme too, but the writer only offers them when the
+# resolved look is cinematic (explainer_writer, look.cinematic_requested).
+RICH_TYPES = ("object3d", "depth", "kinetic", "glass")
 # Scenes whose hero is a graphic (a number, chart, diagram or wireframe) vs
 # scenes the viewer mostly reads. The strict rules below keep a video from
 # turning into a slideshow of text.
-VISUAL_TYPES = frozenset({"stat", "comparison", "chart", "timeline", "diagram", "device"})
+VISUAL_TYPES = frozenset({"stat", "comparison", "chart", "timeline", "diagram", "device", "object3d", "depth", "glass"})
 TEXT_TYPES = frozenset({"statement", "quote", "list"})
 CHART_KINDS = ("bars", "columns", "line", "dots")
 DIAGRAM_KINDS = ("flow", "stack", "hub", "funnel")
 DEVICE_KINDS = ("phone", "laptop", "terminal", "chat")
+OBJECT3D_KINDS = ("stack", "bars", "orbit", "cards")
 # The curated pictogram set (hf_template_explainer/icons.js, one stroke style)
 # with what each one stands for. The writer sees this list; an icon that
 # doesn't fit a scene is better left out ("") than used as filler.
@@ -108,6 +115,10 @@ CAPS: dict[str, dict[str, int]] = {
     "chart": {"title": 40, "series_label": 11, "unit": 8},
     "diagram": {"title": 40, "node_label": 16, "node_text": 30, "center": 16},
     "device": {"title": 40, "label": 18, "line": 32},
+    "object3d": {"title": 40, "node_label": 16, "node_text": 30, "series_label": 11, "unit": 8, "center": 16},
+    "depth": {"title": 40, "label": 24, "node_label": 16, "node_text": 30},
+    "kinetic": {"label": 24, "line": 24, "value": 4},
+    "glass": {"title": 40, "label": 18, "node_label": 16, "node_text": 22},
     "outro": {"text": 56},
 }
 LIST_ITEMS = (2, 4)
@@ -116,6 +127,11 @@ CHART_SERIES = (2, 5)
 TREND_POINTS = (2, 8)
 DIAGRAM_NODES = {"flow": (2, 4), "stack": (2, 4), "hub": (3, 5), "funnel": (3, 4)}
 DEVICE_LINES = (2, 4)
+OBJECT3D_NODES = {"stack": (2, 5), "orbit": (3, 5), "cards": (2, 4)}  # "bars" takes `series` like a chart
+DEPTH_LAYERS = (2, 4)
+KINETIC_LINES = (1, 3)
+GLASS_ROWS = (2, 4)
+MAX_OBJECT3D = 2  # Three.js scenes per video: each is a WebGL context and the slowest thing to render
 SAY_WORDS = (4, 28)  # per scene: a longer line leaves one graphic on screen too long
 PLAN_WORDS = (60, 120)  # whole video; the writer aims for 100-110 (40-45 s), pace absorbs the rest
 STRICT_MIN_WORDS = 95  # strict (writer) plans: the pacing logic can't stretch a short script to 40 s
@@ -313,27 +329,49 @@ def _validate_scene(index: int, raw: Any) -> tuple[Scene | None, list[str], list
         f["title"] = c.text(raw, "title", caps["title"])
         f["unit"] = c.text(raw, "unit", caps["unit"], required=False)
         f["kind"] = c.choice(raw, "kind", CHART_KINDS, "bars")
-        series = []
-        for i, point in enumerate(c.items(raw, "series", CHART_SERIES)):
-            if not isinstance(point, dict):
-                c.errors.append(f"{c.where}: series {i + 1} must be an object")
-                continue
-            number = _number(point.get("value"))
-            if number is None or number < 0:
-                c.errors.append(f"{c.where}: series {i + 1} needs a non-negative numeric value")
-                number = 0.0
-            series.append({"label": c.text(point, "label", caps["series_label"], label=f"series {i + 1}.label"),
-                           "value": number})
-        f["series"] = series
-        if f["kind"] == "dots" and sum(p["value"] for p in series) > 100.5:
+        f["series"], f["highlight"] = _series(c, raw, caps)
+        if f["kind"] == "dots" and sum(p["value"] for p in f["series"]) > 100.5:
             c.errors.append(f"{c.where}: a dots chart shows shares of 100; the values sum to "
-                            f"{sum(p['value'] for p in series):g}")
-        highlight = raw.get("highlight")
-        if isinstance(highlight, bool) or not isinstance(highlight, int) or not 0 <= highlight < len(series):
-            if highlight not in (None, -1):
-                c.repairs.append(f"{c.where}: highlight {highlight!r} out of range; using the largest value")
-            highlight = max(range(len(series)), key=lambda i: series[i]["value"]) if series else 0
-        f["highlight"] = highlight
+                            f"{sum(p['value'] for p in f['series']):g}")
+    elif kind == "object3d":
+        # A Three.js hero: a stack of glowing layers, 3D bars from data, nodes
+        # orbiting a core, or floating cards; labels are HTML, so they are
+        # capped like diagram nodes and never overflow the stage.
+        f["title"] = c.text(raw, "title", caps["title"], required=False)
+        f["kind"] = c.choice(raw, "kind", OBJECT3D_KINDS, "stack")
+        f["center"] = c.text(raw, "center", caps["center"], required=f["kind"] == "orbit")
+        if f["kind"] == "bars":
+            f["unit"] = c.text(raw, "unit", caps["unit"], required=False)
+            f["series"], f["highlight"] = _series(c, raw, caps)
+            f["nodes"] = []
+        else:
+            f["unit"], f["series"], f["highlight"] = "", [], 0
+            f["nodes"] = _nodes(c, raw, OBJECT3D_NODES[f["kind"]], caps)
+    elif kind == "depth":
+        # Layered planes the camera pushes through: each layer is a floating
+        # panel with a label and a line; the deepest is the point.
+        f["title"] = c.text(raw, "title", caps["title"], required=False)
+        f["label"] = c.text(raw, "label", caps["label"], required=False)
+        f["nodes"] = _nodes(c, raw, DEPTH_LAYERS, caps)
+    elif kind == "kinetic":
+        # Glowing kinetic type: an optional big numeral or short word (`value`),
+        # 1-3 short lines that land one by one, an optional small label.
+        f["label"] = c.text(raw, "label", caps["label"], required=False)
+        f["value"] = c.text(raw, "value", caps["value"], required=False)
+        lines = [_clean(i) for i in c.items(raw, "lines", KINETIC_LINES)]
+        for i, line in enumerate(lines):
+            if not line:
+                c.errors.append(f"{c.where}: line {i + 1} is empty")
+            elif len(line) > caps["line"]:
+                c.errors.append(f"{c.where}: line {i + 1} is {len(line)} chars, cap is {caps['line']}: {line!r}")
+        f["lines"] = lines
+    elif kind == "glass":
+        # A glassy HUD panel: a header label and 2-4 key/value rows (nodes:
+        # label is the key, text the value, both required).
+        f["title"] = c.text(raw, "title", caps["title"], required=False)
+        f["label"] = c.text(raw, "label", caps["label"], required=False)
+        f["icon"] = c.icon(raw)
+        f["nodes"] = _nodes(c, raw, GLASS_ROWS, caps, text_required=True)
     elif kind == "diagram":
         f["title"] = c.text(raw, "title", caps["title"], required=False)
         f["kind"] = c.choice(raw, "kind", DIAGRAM_KINDS, "flow")
@@ -391,6 +429,43 @@ def _number(value: Any) -> float | None:
         return None
 
 
+def _series(c: _Check, raw: dict, caps: dict) -> tuple[list[dict], int]:
+    """2-5 labelled non-negative points and the highlighted index (repaired
+    to the largest value when out of range). Shared by chart and object3d bars."""
+    series = []
+    for i, point in enumerate(c.items(raw, "series", CHART_SERIES)):
+        if not isinstance(point, dict):
+            c.errors.append(f"{c.where}: series {i + 1} must be an object")
+            continue
+        number = _number(point.get("value"))
+        if number is None or number < 0:
+            c.errors.append(f"{c.where}: series {i + 1} needs a non-negative numeric value")
+            number = 0.0
+        series.append({"label": c.text(point, "label", caps["series_label"], label=f"series {i + 1}.label"),
+                       "value": number})
+    highlight = raw.get("highlight")
+    if isinstance(highlight, bool) or not isinstance(highlight, int) or not 0 <= highlight < len(series):
+        if highlight not in (None, -1):
+            c.repairs.append(f"{c.where}: highlight {highlight!r} out of range; using the largest value")
+        highlight = max(range(len(series)), key=lambda i: series[i]["value"]) if series else 0
+    return series, highlight
+
+
+def _nodes(c: _Check, raw: dict, bounds: tuple[int, int], caps: dict, text_required: bool = False) -> list[dict]:
+    """Labelled nodes (label + optional text) within `bounds`; shared by the
+    rich scene types."""
+    nodes = []
+    for i, node in enumerate(c.items(raw, "nodes", bounds)):
+        if not isinstance(node, dict):
+            c.errors.append(f"{c.where}: node {i + 1} must be an object")
+            continue
+        nodes.append({
+            "label": c.text(node, "label", caps["node_label"], label=f"node {i + 1}.label"),
+            "text": c.text(node, "text", caps["node_text"], required=text_required, label=f"node {i + 1}.text"),
+        })
+    return nodes
+
+
 def validate_plan(raw_scenes: Any, strict: bool = False) -> ScenePlan:
     """Returns a normalized ScenePlan or raises ScenePlanError listing every
     problem (so the writer's output can be fixed in one pass).
@@ -433,6 +508,9 @@ def validate_plan(raw_scenes: Any, strict: bool = False) -> ScenePlan:
             if run > MAX_SAME_TYPE_RUN and cur.type != "statement":
                 errors.append(f"more than {MAX_SAME_TYPE_RUN} '{cur.type}' scenes in a row")
                 break
+        three_d = sum(s.type == "object3d" for s in scenes)
+        if three_d > MAX_OBJECT3D:
+            errors.append(f"{three_d} 'object3d' scenes; at most {MAX_OBJECT3D} per video (each is a WebGL render)")
         total = sum(len(s.say.split()) for s in scenes)
         low = STRICT_MIN_WORDS if strict else PLAN_WORDS[0]
         if not low <= total <= PLAN_WORDS[1]:
@@ -440,8 +518,8 @@ def validate_plan(raw_scenes: Any, strict: bool = False) -> ScenePlan:
         if strict:
             visual = sum(s.type in VISUAL_TYPES for s in scenes)
             if visual < STRICT_MIN_VISUAL:
-                errors.append(f"only {visual} graphic scene(s) (stat, chart, comparison, timeline, diagram, device); "
-                              f"at least {STRICT_MIN_VISUAL} required")
+                errors.append(f"only {visual} graphic scene(s) (stat, chart, comparison, timeline, diagram, device, "
+                              f"object3d, depth, glass); at least {STRICT_MIN_VISUAL} required")
             for i, (prev, cur) in enumerate(zip(scenes, scenes[1:]), start=2):
                 if prev.type in TEXT_TYPES and cur.type in TEXT_TYPES:
                     errors.append(f"scenes {i - 1} and {i} are both text-only ({prev.type}, {cur.type}); "
@@ -523,32 +601,32 @@ SCENE_SCHEMA: dict[str, Any] = _obj({
     "say": _s("What the voice says while this scene is on screen (title: the hook, outro: the sign-off, each at most 14 words)"),
     "kicker": _s("title only: topic label, 1-2 words, under 18 characters, e.g. 'AI AGENTS'; else ''"),
     "headline": _s("title only: the story in one line, under 56 characters; else ''"),
-    "icon": _s("title and statement: a pictogram from the icon list that stands for the subject, or '' when none fits; else ''"),
-    "label": _s("statement: optional small label under 24 characters; stat: what the number is, under 32 characters, not repeating it; device: app or window name under 18 characters; else ''"),
+    "icon": _s("title, statement and glass: a pictogram from the icon list that stands for the subject, or '' when none fits; else ''"),
+    "label": _s("statement: optional small label under 24 characters; stat: what the number is, under 32 characters, not repeating it; device: app or window name under 18 characters; depth and kinetic: optional small label under 24 characters; glass: the panel header under 18 characters; else ''"),
     "text": _s("statement: one sentence under 72 characters; quote: the quotation under 110 characters, no quote marks; outro: the closing line under 56 characters; else ''"),
     "emphasis": _s("statement only: 1-3 words copied exactly from text; else ''"),
-    "value": _s("stat only: the number written short, under 9 characters: '5.1x', '$7B', '22%'; else ''"),
+    "value": _s("stat: the number written short, under 9 characters: '5.1x', '$7B', '22%'; kinetic: an optional big numeral or short word under 4 characters ('5', '3x', 'OSI'); else ''"),
     "context": _s("stat only: optional one-line context under 64 characters; else ''"),
     "source": _s("stat only: optional short source name under 22 characters; else ''"),
     "trend": {"type": "array", "items": {"type": "number"},
               "description": "stat only: 2-8 numbers from the story drawn as a mini column chart under the number, oldest first; else []"},
     "attribution": _s("quote only: who said it, under 40 characters; else ''"),
-    "title": _s("comparison, list, timeline, diagram, device (optional) and chart (required): under 40 characters; else ''"),
-    "kind": _s("chart: bars | columns | line | dots; diagram: flow | stack | hub | funnel; device: phone | laptop | terminal | chat; else ''"),
+    "title": _s("comparison, list, timeline, diagram, device, object3d, depth, glass (optional) and chart (required): under 40 characters; else ''"),
+    "kind": _s("chart: bars | columns | line | dots; diagram: flow | stack | hub | funnel; device: phone | laptop | terminal | chat; object3d: stack | bars | orbit | cards; else ''"),
     "items": {"type": "array", "items": _s("under 38 characters"), "description": "list only: 2-4 items; else []"},
     "icons": {"type": "array", "items": _s("pictogram name"), "description": "list only: one icon per item, or []"},
     "steps": {"type": "array", "description": "timeline only: 2-4 steps in order; else []",
               "items": _obj({"label": _s("when: under 12 characters, e.g. '2024', 'Now', 'Next'"),
                              "text": _s("what happened, under 40 characters")})},
-    "series": {"type": "array", "description": "chart only: 2-5 points; else []",
+    "series": {"type": "array", "description": "chart and object3d bars only: 2-5 points; else []",
                "items": _obj({"label": _s("under 11 characters"), "value": {"type": "number"}})},
-    "unit": _s("chart only: unit after each value, under 8 characters, e.g. '%', '$B'; else ''"),
-    "highlight": {"type": "integer", "description": "chart only: index of the point that matters; else 0"},
-    "nodes": {"type": "array", "description": "diagram only: flow/stack 2-4, hub 3-5, funnel 3-4 nodes; else []",
+    "unit": _s("chart and object3d bars only: unit after each value, under 8 characters, e.g. '%', '$B'; else ''"),
+    "highlight": {"type": "integer", "description": "chart and object3d bars only: index of the point that matters; else 0"},
+    "nodes": {"type": "array", "description": "diagram: flow/stack 2-4, hub 3-5, funnel 3-4 nodes; object3d: stack 2-5 layers bottom to top, orbit 3-5, cards 2-4; depth: 2-4 layers front to back; glass: 2-4 rows (label = key, text = value under 22 characters, required); else []",
               "items": _obj({"label": _s("under 16 characters"), "text": _s("under 30 characters, or ''")})},
-    "center": _s("diagram hub only: the thing in the middle, under 16 characters; else ''"),
+    "center": _s("diagram hub and object3d orbit only: the thing in the middle, under 16 characters; else ''"),
     "lines": {"type": "array", "items": _s("under 36 characters"),
-              "description": "device only: 2-4 lines shown on the screen (terminal: commands and output; chat: alternating messages; phone: notifications; laptop: rows); else []"},
+              "description": "device: 2-4 lines shown on the screen (terminal: commands and output; chat: alternating messages; phone: notifications; laptop: rows); kinetic: 1-3 short lines under 24 characters that land one by one; else []"},
     "left": _SIDE,
     "right": _SIDE,
 })

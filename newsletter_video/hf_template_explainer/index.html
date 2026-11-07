@@ -107,6 +107,163 @@
         --screen: #050608;
         --screen-ink: #f3f1ea;
       }
+      /* ---- cinematic look (DESIGN.md "Cinematic look") ----------------------
+         A near-black ground with a perspective grid floor, glow accents from
+         the recipe's palette (--accent is the text-safe tone, --glow-* the raw
+         colours), vignette and static grain. --glow-1..4 are set from
+         story.palette at build time; the defaults are a neon set. */
+      :root[data-theme="cinematic"] {
+        --bg: #050509;
+        --ink: #f4f3ff;
+        --ink-2: #9aa0b8;
+        --hair: rgba(190, 196, 230, 0.22);
+        --dot: rgba(190, 196, 230, 0.08);
+        --accent: #ff8a2a;
+        --accent-soft: rgba(255, 138, 42, 0.2);
+        --bar: #1b1f33;
+        --panel: rgba(18, 21, 40, 0.72);
+        --screen: #03040c;
+        --screen-ink: #f4f3ff;
+        --glow-1: #ff7a1a;
+        --glow-2: #ff3d8a;
+        --glow-3: #8b5cff;
+        --glow-4: #22d3ee;
+        --glow-rgb: 255, 122, 26;
+        --glass: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.025));
+        --glass-edge: rgba(220, 226, 255, 0.26);
+      }
+      :root[data-theme="cinematic"] #paper {
+        /* the dot grid becomes a faint line grid on the upper ground */
+        background-image:
+          linear-gradient(var(--dot) 1px, transparent 1px),
+          linear-gradient(90deg, var(--dot) 1px, transparent 1px);
+        background-size: 108px 108px;
+        background-position: 54px 54px;
+        -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0) 70%);
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0) 70%);
+      }
+      #floor,
+      #haze,
+      #vignette,
+      #grain {
+        display: none;
+        position: absolute;
+        pointer-events: none;
+      }
+      :root[data-theme="cinematic"] #floor,
+      :root[data-theme="cinematic"] #haze,
+      :root[data-theme="cinematic"] #vignette,
+      :root[data-theme="cinematic"] #grain {
+        display: block;
+      }
+      #floor {
+        /* a perspective grid floor under the stage, receding to the horizon at y~1150 */
+        left: -400px;
+        right: -400px;
+        top: 1080px;
+        height: 1100px;
+        background-image:
+          linear-gradient(rgba(var(--glow-rgb), 0.28) 2px, transparent 2px),
+          linear-gradient(90deg, rgba(var(--glow-rgb), 0.28) 2px, transparent 2px);
+        background-size: 140px 140px;
+        transform-origin: 50% 0%;
+        transform: perspective(900px) rotateX(64deg);
+        -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 1) 22%, rgba(0, 0, 0, 0.5) 80%, rgba(0, 0, 0, 0) 100%);
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 1) 22%, rgba(0, 0, 0, 0.5) 80%, rgba(0, 0, 0, 0) 100%);
+      }
+      #haze {
+        /* the accent's light pooling on the floor, and a cool counter-glow above */
+        inset: 0;
+        background:
+          radial-gradient(60% 24% at 50% 66%, rgba(var(--glow-rgb), 0.3), rgba(var(--glow-rgb), 0) 100%),
+          radial-gradient(70% 30% at 50% 8%, rgba(60, 70, 140, 0.35), rgba(60, 70, 140, 0) 100%);
+      }
+      #vignette {
+        inset: 0;
+        background: radial-gradient(75% 60% at 50% 45%, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.55) 100%);
+      }
+      #grain {
+        /* static film grain: a fixed-seed turbulence tile (deterministic) */
+        inset: 0;
+        opacity: 0.16;
+        mix-blend-mode: overlay;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='7' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='220' height='220' filter='url(%23g)'/></svg>");
+        background-size: 220px 220px;
+      }
+      /* type: the cinematic look sets headings in the heavy sans, like a motion-graphics title */
+      :root[data-theme="cinematic"] .display,
+      :root[data-theme="cinematic"] .h1,
+      :root[data-theme="cinematic"] .h2 {
+        font-family: var(--sans);
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        text-shadow: 0 0 36px rgba(var(--glow-rgb), 0.28);
+      }
+      :root[data-theme="cinematic"] .display {
+        line-height: 0.98;
+      }
+      :root[data-theme="cinematic"] .label.accent,
+      :root[data-theme="cinematic"] .em {
+        text-shadow: 0 0 22px rgba(var(--glow-rgb), 0.55);
+      }
+      :root[data-theme="cinematic"] .icon.accent {
+        filter: drop-shadow(0 0 14px rgba(var(--glow-rgb), 0.7));
+      }
+      :root[data-theme="cinematic"] .stat .value {
+        text-shadow: 0 0 48px rgba(var(--glow-rgb), 0.45);
+      }
+      :root[data-theme="cinematic"] .stat .stat-fill,
+      :root[data-theme="cinematic"] .chart .lead .bar,
+      :root[data-theme="cinematic"] .chart .lead .column,
+      :root[data-theme="cinematic"] .stat .trend .col.lead,
+      :root[data-theme="cinematic"] .timeline .rail-fill,
+      :root[data-theme="cinematic"] .diagram .funnel .band.lead,
+      :root[data-theme="cinematic"] .device .frame.laptop .line .meter i {
+        box-shadow: 0 0 26px rgba(var(--glow-rgb), 0.75);
+      }
+      :root[data-theme="cinematic"] .comparison .col.lead .disc,
+      :root[data-theme="cinematic"] .diagram .hub .center,
+      :root[data-theme="cinematic"] .timeline .marker {
+        box-shadow: 0 0 44px rgba(var(--glow-rgb), 0.7);
+      }
+      :root[data-theme="cinematic"] .diagram .node,
+      :root[data-theme="cinematic"] .device .frame.phone,
+      :root[data-theme="cinematic"] .device .frame.laptop,
+      :root[data-theme="cinematic"] .device .frame.chat,
+      :root[data-theme="cinematic"] .comparison .tile {
+        background: var(--glass);
+        border-color: var(--glass-edge);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+      }
+      :root[data-theme="cinematic"] .diagram .node.lit,
+      :root[data-theme="cinematic"] .diagram .stack .node.top {
+        border-color: var(--accent);
+        box-shadow: 0 0 30px rgba(var(--glow-rgb), 0.45);
+      }
+      :root[data-theme="cinematic"] .diagram .flow .connector path,
+      :root[data-theme="cinematic"] .diagram .hub svg path,
+      :root[data-theme="cinematic"] .chart .line-svg .line {
+        filter: drop-shadow(0 0 8px rgba(var(--glow-rgb), 0.8));
+      }
+      :root[data-theme="cinematic"] .device .frame.phone::before {
+        background: var(--glass-edge);
+      }
+      :root[data-theme="cinematic"] .device .frame.terminal {
+        border-color: var(--glass-edge);
+        box-shadow: 0 0 40px rgba(var(--glow-rgb), 0.18);
+      }
+      :root[data-theme="cinematic"] .diagram .hub .center,
+      :root[data-theme="cinematic"] .diagram .funnel .band.lead,
+      :root[data-theme="cinematic"] .device .frame.chat .line.me {
+        color: #06060c;
+      }
+      :root[data-theme="cinematic"] .outro .pill {
+        box-shadow: 0 0 30px rgba(var(--glow-rgb), 0.4), inset 0 0 20px rgba(var(--glow-rgb), 0.15);
+      }
+      :root[data-theme="cinematic"] .sweep {
+        background: rgba(255, 255, 255, 0.5);
+      }
 
       * {
         margin: 0;
@@ -1248,6 +1405,280 @@
         opacity: 0.3;
       }
 
+      /* ---- rich scenes (cinematic look; they render in every theme) ------------ */
+      /* object3d: a Three.js canvas in the hero with an HTML legend under it */
+      .object3d .hero {
+        justify-content: flex-start;
+        padding-top: var(--s-3); /* the hold's push never lets the canvas touch the title */
+      }
+      .object3d .three-slot {
+        position: relative;
+        width: 820px;
+        height: 560px;
+        flex: 0 0 auto;
+      }
+      .object3d .three-slot canvas {
+        display: block;
+        width: 820px;
+        height: 560px;
+      }
+      .object3d .legend {
+        margin-top: var(--s-2);
+        display: flex;
+        flex-direction: column;
+      }
+      .object3d .legend .row {
+        display: grid;
+        grid-template-columns: 44px 1fr;
+        column-gap: var(--s-3);
+        align-items: center;
+        min-height: 64px;
+        padding: var(--s-1) 0;
+        border-top: 2px solid var(--hair);
+        will-change: transform, opacity;
+      }
+      .object3d .legend .row .swatch {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 16px var(--accent);
+      }
+      .object3d .legend .row .body {
+        font-size: 40px;
+        line-height: 1.4;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      .object3d .legend .row .body b {
+        font-weight: 700;
+        margin-right: 0.4em;
+      }
+      .object3d .legend.many .row {
+        min-height: 56px;
+      }
+      .object3d .legend.many .row .body {
+        font-size: 36px;
+      }
+      .object3d .bar-labels {
+        display: flex;
+        gap: var(--s-3);
+        margin-top: var(--s-2);
+      }
+      .object3d .bar-labels .cell {
+        flex: 1 1 0;
+        text-align: center;
+        will-change: transform, opacity;
+      }
+      .object3d .bar-labels .cell .num {
+        font-size: 48px;
+        margin-bottom: var(--s-1);
+      }
+      .object3d .bar-labels .cell.lead .num {
+        color: var(--accent);
+      }
+      .object3d .bar-labels .cell .column-label {
+        font-family: var(--mono);
+        font-size: var(--t-label);
+        color: var(--ink-2);
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+
+      /* depth: layered planes the camera pushes through */
+      .depth .hero {
+        justify-content: center;
+      }
+      .depth .world {
+        position: relative;
+        width: 820px;
+        height: 860px;
+        perspective: 1100px;
+        perspective-origin: 50% 42%;
+        overflow: hidden;
+      }
+      .depth .plane {
+        position: absolute;
+        left: 50%;
+        top: 340px;
+        width: 640px;
+        margin-left: -320px;
+        padding: var(--s-4) var(--s-6);
+        border: 3px solid var(--hair);
+        background: var(--panel);
+        border-radius: 28px;
+        transform-style: preserve-3d;
+        will-change: transform, opacity;
+      }
+      :root[data-theme="cinematic"] .depth .plane {
+        background: var(--glass);
+        border-color: var(--glass-edge);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+      .depth .plane .label {
+        color: var(--accent);
+      }
+      .depth .plane .body {
+        margin-top: var(--s-1);
+        font-size: 52px;
+        line-height: 1.2;
+      }
+      .depth .plane.lit {
+        border-color: var(--accent);
+      }
+      :root[data-theme="cinematic"] .depth .plane.lit {
+        box-shadow: 0 0 44px rgba(var(--glow-rgb), 0.5);
+      }
+      .depth .plane .idx {
+        position: absolute;
+        right: var(--s-4);
+        top: var(--s-3);
+        font-family: var(--mono);
+        font-size: var(--t-label);
+        color: var(--ink-2);
+      }
+
+      /* kinetic: glowing type */
+      .kinetic .hero {
+        justify-content: center;
+        gap: var(--s-3);
+      }
+      .kinetic .value {
+        font-size: 420px;
+        color: var(--accent);
+        transform-origin: left center;
+        margin: -0.06em 0 0 -0.03em;
+      }
+      :root[data-theme="cinematic"] .kinetic .value {
+        text-shadow: 0 0 60px rgba(var(--glow-rgb), 0.75), 0 0 140px rgba(var(--glow-rgb), 0.35);
+      }
+      .kinetic .line {
+        font-family: var(--sans);
+        font-weight: 800;
+        font-size: 112px;
+        line-height: 1.02;
+        letter-spacing: -0.02em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        will-change: transform, opacity;
+      }
+      .kinetic .line .word {
+        margin-right: 0.26em;
+      }
+      :root[data-theme="cinematic"] .kinetic .line {
+        text-shadow: 0 0 30px rgba(244, 243, 255, 0.35);
+      }
+      :root[data-theme="cinematic"] .kinetic .line.lit {
+        color: var(--accent);
+        text-shadow: 0 0 36px rgba(var(--glow-rgb), 0.8);
+      }
+      .kinetic .line.lit {
+        color: var(--accent);
+      }
+      .kinetic .underline {
+        width: 100%;
+        height: 6px;
+        background: var(--accent);
+        transform: scaleX(0);
+        transform-origin: left center;
+        box-shadow: 0 0 24px var(--accent);
+      }
+
+      /* glass: a HUD panel of key/value rows */
+      .glass .hero {
+        justify-content: center;
+      }
+      .glass .panel {
+        width: 820px;
+        border: 2px solid var(--hair);
+        background: var(--panel);
+        border-radius: 28px;
+        overflow: hidden;
+        position: relative;
+        will-change: transform, opacity;
+      }
+      :root[data-theme="cinematic"] .glass .panel {
+        background: var(--glass);
+        border-color: var(--glass-edge);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        box-shadow: 0 0 60px rgba(var(--glow-rgb), 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+      }
+      .glass .panel .bar {
+        display: flex;
+        align-items: center;
+        gap: var(--s-3);
+        height: 92px;
+        padding: 0 var(--s-4);
+        border-bottom: 2px solid var(--hair);
+        font-family: var(--mono);
+        font-size: var(--t-label);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+      }
+      .glass .panel .bar .dot {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 16px var(--accent);
+        flex: 0 0 auto;
+      }
+      .glass .panel .bar .icon {
+        margin-left: auto;
+      }
+      .glass .panel .row {
+        display: grid;
+        grid-template-columns: 300px 1fr;
+        column-gap: var(--s-3);
+        align-items: center;
+        min-height: 112px;
+        padding: var(--s-2) var(--s-4);
+        border-top: 2px solid var(--hair);
+        will-change: transform, opacity;
+      }
+      .glass .panel .row:first-of-type {
+        border-top: 0;
+      }
+      .glass .panel .row .key {
+        font-family: var(--mono);
+        font-size: var(--t-label);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      .glass .panel .row .val {
+        font-family: var(--sans);
+        font-weight: 600;
+        font-size: 48px;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.01em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-align: right;
+      }
+      .glass .panel .row.lit .val {
+        color: var(--accent);
+      }
+      :root[data-theme="cinematic"] .glass .panel .row.lit .val {
+        text-shadow: 0 0 22px rgba(var(--glow-rgb), 0.6);
+      }
+      .glass .panel .scan {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 120px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0));
+        opacity: 0;
+        pointer-events: none;
+      }
+
       /* ---- captions: lower third (y 1376-1500) ------------------------------ */
       #captions {
         position: absolute;
@@ -1276,6 +1707,8 @@
   <body>
     <div id="root" data-composition-id="main" data-start="0" data-width="1080" data-height="1920">
       <div id="paper"></div>
+      <div id="floor"></div>
+      <div id="haze"></div>
 
       <div id="chrome">
         <div id="kicker">TLDR</div>
@@ -1287,6 +1720,8 @@
       <div id="stage"><div id="wipe"></div><div id="wipe-v"></div></div>
 
       <div id="captions" data-layout-allow-caption-zone></div>
+      <div id="vignette"></div>
+      <div id="grain"></div>
       <div id="flash"></div>
 
       <audio id="voice" src="assets/voice.wav" data-start="0" data-track-index="1"></audio>
@@ -1324,6 +1759,41 @@
         if (!m) return null;
         return "rgba(" + parseInt(m[1], 16) + ", " + parseInt(m[2], 16) + ", " + parseInt(m[3], 16) + ", " + alpha + ")";
       }
+      // ---- cinematic look ------------------------------------------------------
+      // story.theme === "cinematic" switches the ground (CSS above); the
+      // recipe's glow palette fills --glow-1..4. Text in the accent must stay
+      // readable on near-black, so --accent is the palette's first colour
+      // lifted to a safe luminance (inkSafe) while --glow-rgb keeps it raw for
+      // the halos. In the other themes the palette is ignored.
+      const CINEMATIC = story.theme === "cinematic";
+      function hexToRgb(hex) {
+        const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || "");
+        return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
+      }
+      function luminance(rgb) {
+        const f = (c) => (c /= 255) <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+        return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]);
+      }
+      function inkSafe(hex, minLum) {
+        // Mix towards white until the colour clears `minLum` (0.3 ~ 7:1 on #050509).
+        const rgb = hexToRgb(hex);
+        if (!rgb) return hex;
+        let out = rgb.slice();
+        for (let i = 0; i < 24 && luminance(out) < (minLum || 0.3); i++) out = out.map((c) => Math.round(c + (255 - c) * 0.12));
+        return "#" + out.map((c) => c.toString(16).padStart(2, "0")).join("");
+      }
+      const PALETTE = (Array.isArray(story.palette) ? story.palette : []).filter((c) => hexToRgb(c));
+      const GLOW = ["#ff7a1a", "#ff3d8a", "#8b5cff", "#22d3ee"].map((c, i) => PALETTE[i] || PALETTE[i % Math.max(PALETTE.length, 1)] || c);
+      if (CINEMATIC) {
+        const rootStyle = document.documentElement.style;
+        GLOW.forEach((c, i) => rootStyle.setProperty("--glow-" + (i + 1), c));
+        rootStyle.setProperty("--glow-rgb", hexToRgb(GLOW[0]).join(", "));
+        rootStyle.setProperty("--accent", inkSafe(GLOW[0]));
+        rootStyle.setProperty("--accent-soft", hexToRgba(GLOW[0], 0.2));
+      }
+      function sceneAccent(hex) {
+        return CINEMATIC ? inkSafe(hex) : hex;
+      }
       function applyStyleClasses(root, st) {
         // Build-time (before the fit pass): type treatments, backgrounds and
         // a per-scene accent are CSS, so the text measures with them on.
@@ -1338,13 +1808,14 @@
         if (bg === "accent-field") root.classList.add("st-field");
         else if (bg === "dark-panel") root.classList.add("st-panel");
         if (st.accent) {
-          root.style.setProperty("--accent", st.accent);
+          root.style.setProperty("--accent", sceneAccent(st.accent));
           const soft = hexToRgba(st.accent, 0.14);
           if (soft) root.style.setProperty("--accent-soft", soft);
+          if (CINEMATIC) root.style.setProperty("--glow-rgb", hexToRgb(st.accent).join(", "));
         }
       }
 
-      if (story.theme === "dark") document.documentElement.setAttribute("data-theme", "dark");
+      if (story.theme === "dark" || CINEMATIC) document.documentElement.setAttribute("data-theme", story.theme);
       document.getElementById("kicker").textContent = story.kicker || "";
 
       const stage = document.getElementById("stage");
@@ -1884,6 +2355,140 @@
           root.append(h, hero);
           return { root, hero, parts, kind, frame, lineEls };
         },
+        object3d(s) {
+          // A Three.js hero (stack / bars / orbit / cards) in a fixed 820x560
+          // slot, drawn from time by the hf-seek listener below, with an HTML
+          // legend (labels are text, so the caps keep them inside the stage).
+          const root = el("div", "scene object3d");
+          const kind = s.kind || "stack";
+          const h = head(s.title || (kind === "orbit" ? s.center : ""));
+          const hero = el("div", "hero");
+          const parts = h.childElementCount ? [{ node: h, at: 0.1 }] : [];
+          const slot = el("div", "three-slot");
+          const canvas = document.createElement("canvas");
+          canvas.width = 820;
+          canvas.height = 560;
+          slot.append(canvas);
+          hero.append(slot);
+          const rowEls = [];
+          const items = [];
+          if (kind === "bars") {
+            const labels = el("div", "bar-labels");
+            const unit = s.unit || "";
+            s.series.forEach((p, i) => {
+              const cell = el("div", "el cell" + (i === s.highlight ? " lead" : ""));
+              const value = el("div", "num");
+              const spec = parseNumber(shortNumber(p.value, unit));
+              value.textContent = spec ? formatNumber(0, spec) : shortNumber(p.value, unit);
+              cell.append(value, el("div", "column-label", p.label));
+              labels.append(cell);
+              rowEls.push(cell);
+              items.push({ value, spec });
+            });
+            hero.append(labels);
+          } else {
+            const legend = el("div", "legend" + (s.nodes.length > 3 ? " many" : ""));
+            s.nodes.forEach((n, i) => {
+              const row = el("div", "el row");
+              const sw = el("div", "swatch");
+              sw.style.background = GLOW[i % GLOW.length];
+              sw.style.boxShadow = "0 0 16px " + GLOW[i % GLOW.length];
+              const body = el("div", "body");
+              body.append(el("b", "", n.label));
+              if (n.text) body.append(el("span", "muted", n.text));
+              row.append(sw, body);
+              legend.append(row);
+              rowEls.push(row);
+            });
+            hero.append(legend);
+          }
+          root.append(h, hero);
+          return { root, hero, parts, kind, canvas, rowEls, items };
+        },
+        depth(s) {
+          // Layered planes in CSS 3D; the camera dollies from one to the next
+          // as each is spoken (the tweens are in build()).
+          const root = el("div", "scene depth");
+          const parts = [];
+          const h = el("div", "head");
+          if (s.label) {
+            const label = el("div", "el label", s.label);
+            h.append(label);
+            parts.push({ node: label, at: 0.1 });
+          }
+          if (s.title) {
+            const t = el("div", "el h2", s.title);
+            h.append(t);
+            parts.push({ node: t, at: 0.15 });
+          }
+          const hero = el("div", "hero");
+          const world = el("div", "world");
+          const planes = s.nodes.map((n, i) => {
+            const plane = el("div", "plane");
+            plane.style.zIndex = String(s.nodes.length - i); // the nearest plane paints on top
+            plane.append(el("div", "idx", pad2(i + 1) + " / " + pad2(s.nodes.length)), el("div", "label", n.label));
+            if (n.text) plane.append(el("div", "body", n.text));
+            world.append(plane);
+            return plane;
+          });
+          hero.append(world);
+          root.append(h, hero);
+          return { root, hero, parts, planes };
+        },
+        kinetic(s) {
+          const root = el("div", "scene kinetic");
+          const parts = [];
+          const h = el("div", "head");
+          if (s.label) {
+            const label = el("div", "el label accent", s.label);
+            h.append(label);
+            parts.push({ node: label, at: 0.1 });
+          }
+          const hero = el("div", "hero");
+          let value = null;
+          if (s.value) {
+            value = el("div", "el value num fit-w");
+            value.dataset.fitMin = "160";
+            value.textContent = s.value;
+            hero.append(value);
+          }
+          const lineEls = s.lines.map((text) => {
+            const line = el("div", "el line fit-w");
+            line.dataset.fitMin = "44";
+            line.dataset.longest = text;
+            const wordEls = words(line, text, "word");
+            hero.append(line);
+            return { line, wordEls };
+          });
+          const underline = el("div", "el underline");
+          hero.append(underline);
+          root.append(h, hero);
+          return { root, hero, parts, value, lineEls, underline };
+        },
+        glass(s) {
+          const root = el("div", "scene glass");
+          const h = head(s.title);
+          const hero = el("div", "hero");
+          const parts = s.title ? [{ node: h, at: 0.1 }] : [];
+          const panel = el("div", "el panel");
+          const bar = el("div", "bar");
+          const dot = el("div", "dot");
+          bar.append(dot, el("div", "name", s.label || s.title || "status"));
+          const ic = s.icon ? icon(s.icon, 56, "accent") : null;
+          if (ic) bar.append(ic);
+          panel.append(bar);
+          const rowEls = s.nodes.map((n) => {
+            const row = el("div", "row");
+            row.append(el("div", "key", n.label), el("div", "val", n.text));
+            panel.append(row);
+            return row;
+          });
+          const scan = el("div", "scan");
+          panel.append(scan);
+          hero.append(panel);
+          root.append(h, hero);
+          return { root, hero, parts, panel, rowEls, dot, scan, ic };
+        },
         outro(s) {
           // An animated call to action: the comment bubble draws, "typing"
           // dots pulse inside the conversation, the closing line waves in,
@@ -1951,13 +2556,16 @@
           const min = parseFloat(node.dataset.fitMin);
           const width = node.parentElement.clientWidth || STAGE_W;
           let size = parseFloat(getComputedStyle(node).fontSize);
+          // A node made of word spans is measured as it is (replacing its text
+          // would flatten the spans); a plain node measures its longest value.
+          const plain = node.children.length === 0;
           const probe = node.textContent;
-          node.textContent = node.dataset.longest || probe;
+          if (plain) node.textContent = node.dataset.longest || probe;
           while (node.scrollWidth > width && size > min) {
             size -= 8;
             node.style.fontSize = size + "px";
           }
-          node.textContent = probe;
+          if (plain) node.textContent = probe;
         });
       }
 
@@ -2451,6 +3059,115 @@
             }
           }
 
+          if (s.type === "object3d") {
+            // The 3D object itself is drawn from time (hf-seek); here only the
+            // legend rows / bar figures follow the same cues.
+            const ats = b.rowEls.map((_, k) => cueAt(cues, k, start, start + 0.5 + k * 0.5));
+            b.cueTimes = ats; // read by the Three renderer
+            b.rowEls.forEach((r, k) => {
+              enterS(r, rowFrom(24), ats[k], 0.5);
+              if (k + 1 < ats.length) waitPulse(r, ats[k] + 0.55, ats[k + 1]);
+              const it = b.items[k];
+              if (it) countUp(tl, it.value, it.spec, ats[k] + 0.1, 0.9, "power3.out");
+            });
+            cycleLit(b.rowEls, ats[ats.length - 1] + 0.9, 0.8, "color");
+          }
+
+          if (s.type === "depth") {
+            // Planes sit at z = -k*STEP; the "camera" is a dolly value shared by
+            // every plane (tweened on each cue), so the plane being spoken
+            // arrives at a readable depth while the ones in front pass by.
+            const STEP = 380, FRONT = -100;
+            const n = b.planes.length;
+            const ats = b.planes.map((_, k) => cueAt(cues, k, start, start + 0.4 + k * 0.9));
+            b.planes.forEach((plane, k) => {
+              // Every plane is in the world from the start, deeper ones dim and
+              // peeking out above the one in front (a receding stack); each
+              // comes to full opacity and an accent edge when it is spoken.
+              tl.set(plane, { autoAlpha: 0, y: -190 * k - 40, z: FRONT - k * STEP, rotationX: 12 }, 0);
+              tl.to(plane, { autoAlpha: k ? 0.5 : 1, duration: 0.6 / speed, ease: sceneEase || EASE_OUT }, start + 0.2 + k * 0.12);
+              if (k) tl.to(plane, { autoAlpha: 1, duration: 0.4, ease: "power2.out" }, ats[k] - 0.3);
+              tl.to(plane, { borderColor: accentS, duration: 0.3 }, ats[k]);
+              if (k) tl.to(b.planes[k - 1], { borderColor: css.getPropertyValue("--hair").trim(), duration: 0.3 }, ats[k]);
+            });
+            // The dolly: every plane moves forward together by STEP at each
+            // cue. One property, one sequence of tweens that never overlap
+            // (an overlapping whole-scene tween on z would win every frame),
+            // and the hold's push comes from the hero scale as in every scene.
+            let lastEnd = start;
+            for (let k = 1; k < n; k++) {
+              const dur = Math.min(1.0, Math.max(0.5, ats[k] - ats[k - 1] - 0.1));
+              const at = Math.max(lastEnd, ats[k] - dur * 0.7);
+              lastEnd = at + dur;
+              b.planes.forEach((plane, j) => {
+                tl.to(plane, { z: FRONT - j * STEP + k * STEP, duration: dur, ease: "power2.inOut" }, at);
+                // a plane the camera has passed fades out before it reaches the lens
+                if (j < k) tl.to(plane, { autoAlpha: 0, duration: dur * 0.5, ease: "power1.in" }, at);
+              });
+            }
+          }
+
+          if (s.type === "kinetic") {
+            if (b.value) {
+              tl.set(b.value, { opacity: 0, scale: 0.7 }, 0);
+              tl.to(b.value, { opacity: 1, scale: 1, duration: 0.6 / speed, ease: sceneEase || "power3.out" }, start + 0.2);
+              for (let t = start + 1.2; t + 1.6 <= end + 0.1; t += 1.6) {
+                tl.to(b.value, { scale: 1.03, duration: 0.8, ease: "sine.inOut" }, t);
+                tl.to(b.value, { scale: 1, duration: 0.8, ease: "sine.inOut" }, t + 0.8);
+              }
+            }
+            const ats = b.lineEls.map((_, k) => cueAt(cues, k, start, start + (b.value ? 0.7 : 0.3) + k * 0.6));
+            b.lineEls.forEach((l, k) => {
+              tl.set(l.line, { opacity: 1 }, 0);
+              const step = Math.min(0.06, 0.4 / Math.max(1, l.wordEls.length)) / speed;
+              l.wordEls.forEach((w, j) => {
+                const t = ats[k] + j * step;
+                tl.set(w, { opacity: 0, y: 60, scale: 1.25 }, 0);
+                tl.set(w, { opacity: 1 }, t);
+                tl.to(w, { y: 0, scale: 1, duration: 0.45 / speed, ease: sceneEase || "power4.out" }, t);
+              });
+              // the spoken line glows, the earlier ones settle back
+              tl.set(l.line, { className: "el line fit-w lit" }, ats[k]);
+              if (k) tl.set(b.lineEls[k - 1].line, { className: "el line fit-w" }, ats[k]);
+            });
+            tl.fromTo(b.underline, { scaleX: 0 }, { scaleX: 1, duration: 0.9, ease: "power3.out", immediateRender: false }, ats[ats.length - 1] + 0.4);
+            const sweep = el("div", "sweep");
+            b.underline.style.position = "relative";
+            b.underline.style.overflow = "hidden";
+            b.underline.append(sweep);
+            sweepAlong(sweep, 820, ats[ats.length - 1] + 1.6);
+          }
+
+          if (s.type === "glass") {
+            enterS(b.panel, { y: 40, scale: 0.97 }, start + 0.2, 0.7);
+            if (b.ic) loopDraw(b.ic, start + 0.4);
+            const ats = b.rowEls.map((_, k) => cueAt(cues, k, start, start + 0.8 + k * 0.5));
+            b.rowEls.forEach((row, k) => {
+              enterS(row, rowFrom(20), ats[k], 0.45);
+              if (k + 1 < ats.length) waitPulse(row, ats[k] + 0.5, ats[k + 1]);
+            });
+            // status dot blinks (a readout that is live), the scan sweeps once the rows are up
+            for (let t = start + 0.6; t < end - 0.3; t += 1.0) {
+              tl.to(b.dot, { opacity: 0.25, duration: 0.5, ease: "sine.inOut" }, t);
+              tl.to(b.dot, { opacity: 1, duration: 0.5, ease: "sine.inOut" }, t + 0.5);
+            }
+            const panelH = b.panel.offsetHeight || 600;
+            for (let t = ats[ats.length - 1] + 1.0; t < end - 1.2; t += 2.2) {
+              tl.set(b.scan, { opacity: 1, y: -120 }, t);
+              tl.to(b.scan, { y: panelH, duration: 1.4, ease: "power1.inOut" }, t);
+              tl.set(b.scan, { opacity: 0 }, t + 1.4);
+            }
+            cycleLit(b.rowEls, ats[ats.length - 1] + 1.0, 0.8, "borderColor");
+            b.rowEls.forEach((row, k) => {
+              // the accent walks the values too
+              const rest = ink;
+              let kk = 0;
+              for (let t = ats[ats.length - 1] + 1.0; t < end - 0.4; t += 0.8, kk++) {
+                tl.to(row.querySelector(".val"), { color: k === kk % b.rowEls.length ? accent : rest, duration: 0.25 }, t);
+              }
+            });
+          }
+
           // --- exit ----------------------------------------------------------------
           if (!last) {
             const nextTransition = sceneTransition(i + 1);
@@ -2487,6 +3204,225 @@
         });
 
         window.__timelines["main"] = tl;
+      }
+
+      // ---- Three.js: object3d scenes drawn from HyperFrames time ------------
+      // The runtime dispatches `hf-seek` with the time of every frame it
+      // captures; each object3d scene renders its own small WebGL canvas from
+      // that time alone (no clocks, no animation loop), so a frame is a pure
+      // function of t like the GSAP timeline. Three is loaded once from the
+      // CDN (like gsap); the hold registered on window.__hf.buildReady keeps
+      // the first capture until the scenes exist. If the import fails the
+      // legend still shows and the canvas stays empty.
+      const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.181.2/+esm";
+      const threeScenes = story.scenes.filter((s) => s.type === "object3d");
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      const threeReady = threeScenes.length
+        ? import(THREE_URL).then((THREE) => setupThree(THREE)).catch((err) => console.warn("three.js unavailable: " + err))
+        : Promise.resolve();
+      window.__hf.buildReady["explainer-three"] = threeReady;
+
+      function setupThree(THREE) {
+        const glow = GLOW.map((c) => new THREE.Color(c));
+        const cinematic = CINEMATIC;
+        const plateColor = new THREE.Color(cinematic ? "#0b0e1e" : "#ffffff");
+        const inkColor = new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue("--ink").trim() || "#17191e");
+        const W = 820, H = 560;
+        const ease = gsap.parseEase("power3.out");
+        const prog = (t, at, dur) => ease(Math.min(1, Math.max(0, (t - at) / (dur || 0.7))));
+        // A rounded-rect ring (a neon frame) and its plate, as flat meshes.
+        function roundedRect(w, h, r) {
+          const s = new THREE.Shape();
+          s.moveTo(-w / 2 + r, -h / 2);
+          s.lineTo(w / 2 - r, -h / 2); s.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + r);
+          s.lineTo(w / 2, h / 2 - r); s.quadraticCurveTo(w / 2, h / 2, w / 2 - r, h / 2);
+          s.lineTo(-w / 2 + r, h / 2); s.quadraticCurveTo(-w / 2, h / 2, -w / 2, h / 2 - r);
+          s.lineTo(-w / 2, -h / 2 + r); s.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + r, -h / 2);
+          return s;
+        }
+        function neonFrame(w, h, color, thick) {
+          const group = new THREE.Group();
+          const outer = roundedRect(w, h, 0.22);
+          outer.holes.push(new THREE.Path().setFromPoints(roundedRect(w - thick * 2, h - thick * 2, 0.16).getPoints(12)));
+          const ring = new THREE.Mesh(new THREE.ShapeGeometry(outer, 12), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 }));
+          group.add(ring);
+          // halos: wider, fainter copies behind the ring (a cheap bloom)
+          [[1.6, 0.35], [2.6, 0.14]].forEach(([k, o]) => {
+            const halo = roundedRect(w + thick * (k - 1) * 2, h + thick * (k - 1) * 2, 0.26);
+            halo.holes.push(new THREE.Path().setFromPoints(roundedRect(w - thick * (k + 1), h - thick * (k + 1), 0.14).getPoints(12)));
+            const m = new THREE.Mesh(new THREE.ShapeGeometry(halo, 12), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false }));
+            m.position.z = -0.002;
+            group.add(m);
+          });
+          const plate = new THREE.Mesh(new THREE.ShapeGeometry(roundedRect(w - thick, h - thick, 0.2), 12),
+            new THREE.MeshBasicMaterial({ color: plateColor, transparent: true, opacity: cinematic ? 0.55 : 0.9, depthWrite: false }));
+          plate.position.z = -0.004;
+          group.add(plate);
+          group.userData.materials = group.children.map((c) => c.material);
+          group.userData.baseOpacity = group.children.map((c) => c.material.opacity);
+          return group;
+        }
+        function setOpacity(group, f) {
+          group.userData.materials.forEach((m, i) => { m.opacity = group.userData.baseOpacity[i] * f; });
+        }
+        function glowSprite(color, size) {
+          const c = document.createElement("canvas");
+          c.width = c.height = 128;
+          const g = c.getContext("2d");
+          const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+          grad.addColorStop(0, "rgba(255,255,255,0.9)");
+          grad.addColorStop(0.25, "#" + color.getHexString());
+          grad.addColorStop(1, "rgba(0,0,0,0)");
+          g.fillStyle = grad;
+          g.fillRect(0, 0, 128, 128);
+          const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+          sprite.scale.set(size, size, 1);
+          return sprite;
+        }
+        const fog = new THREE.Color(cinematic ? "#050509" : "#f6f4ee");
+
+        built.filter((b) => b.scene.type === "object3d").forEach((b) => {
+          const s = b.scene;
+          const renderer = new THREE.WebGLRenderer({ canvas: b.canvas, alpha: true, antialias: true });
+          renderer.setSize(W, H, false);
+          renderer.setPixelRatio(1);
+          renderer.setClearColor(0x000000, 0);
+          const scene = new THREE.Scene();
+          const camera = new THREE.PerspectiveCamera(32, W / H, 0.1, 100);
+          const rig = new THREE.Group();
+          scene.add(rig);
+          const cues = () => b.cueTimes || (s.cues || []).map((c) => c);
+          const n = s.kind === "bars" ? s.series.length : s.nodes.length;
+          const objects = [];
+          let draw;
+          if (s.kind === "stack") {
+            // Glowing layers seen from above-front, each a neon frame; they
+            // rise in from below on their cues (bottom to top) and the whole
+            // stack turns slowly.
+            const gap = 0.62;
+            for (let k = 0; k < n; k++) {
+              const frame = neonFrame(3.6, 2.4, glow[k % glow.length], 0.07);
+              frame.rotation.x = -Math.PI / 2;
+              frame.position.y = (k - (n - 1) / 2) * gap;
+              rig.add(frame);
+              objects.push(frame);
+            }
+            rig.rotation.x = 0.0;
+            camera.position.set(0, 3.4, 7.2);
+            camera.lookAt(0, 0.1, 0);
+            draw = (t) => {
+              const c = cues();
+              objects.forEach((o, k) => {
+                const p = prog(t, c[k] != null ? c[k] : s.start + 0.4 + k * 0.4, 0.8);
+                o.position.y = (k - (n - 1) / 2) * gap + (1 - p) * -1.6;
+                setOpacity(o, p);
+              });
+              rig.rotation.y = -0.35 + Math.sin((t - s.start) * 0.35) * 0.22;
+              camera.position.z = 7.4 - Math.min(1, Math.max(0, (t - s.start) / Math.max(s.end - s.start, 1))) * 0.5;
+            };
+          } else if (s.kind === "bars") {
+            const maxV = Math.max(...s.series.map((p) => p.value), 0) || 1;
+            const bw = Math.min(0.9, 4.4 / n), gapX = 5.2 / n;
+            s.series.forEach((p, k) => {
+              const h = 0.3 + (p.value / maxV) * 3.4;
+              const color = k === s.highlight ? glow[0] : glow[2 % glow.length];
+              const box = new THREE.Mesh(new THREE.BoxGeometry(bw, h, bw),
+                new THREE.MeshStandardMaterial({ color: cinematic ? "#0d1024" : "#ffffff", emissive: color, emissiveIntensity: k === s.highlight ? 0.55 : 0.25, roughness: 0.4, metalness: 0.1, transparent: true }));
+              const edges = new THREE.LineSegments(new THREE.EdgesGeometry(box.geometry), new THREE.LineBasicMaterial({ color, transparent: true }));
+              const g = new THREE.Group();
+              g.add(box, edges);
+              g.position.x = (k - (n - 1) / 2) * gapX;
+              g.userData.h = h;
+              rig.add(g);
+              objects.push(g);
+            });
+            scene.add(new THREE.HemisphereLight(0xffffff, 0x223355, cinematic ? 1.4 : 2.2));
+            const key = new THREE.PointLight(glow[0], 40, 30);
+            key.position.set(2, 5, 4);
+            scene.add(key);
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), new THREE.MeshBasicMaterial({ color: fog, transparent: true, opacity: 0.0 }));
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -1.95;
+            rig.add(floor);
+            camera.position.set(0, 2.6, 8.2);
+            camera.lookAt(0, -0.2, 0);
+            draw = (t) => {
+              const c = cues();
+              objects.forEach((o, k) => {
+                const p = prog(t, c[k] != null ? c[k] : s.start + 0.5 + k * 0.4, 0.9);
+                o.scale.y = Math.max(0.001, p);
+                o.position.y = -1.9 + (o.userData.h * p) / 2;
+                o.children.forEach((ch) => { ch.material.opacity = Math.min(1, p * 1.5); });
+              });
+              rig.rotation.y = -0.28 + Math.sin((t - s.start) * 0.3) * 0.18;
+            };
+          } else if (s.kind === "orbit") {
+            const core = new THREE.Mesh(new THREE.SphereGeometry(0.62, 32, 24), new THREE.MeshBasicMaterial({ color: glow[0] }));
+            core.add(glowSprite(glow[0], 3.2));
+            rig.add(core);
+            const ring = new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.012, 8, 120), new THREE.MeshBasicMaterial({ color: inkColor, transparent: true, opacity: 0.35 }));
+            ring.rotation.x = Math.PI / 2;
+            rig.add(ring);
+            for (let k = 0; k < n; k++) {
+              const node = new THREE.Mesh(new THREE.SphereGeometry(0.26, 24, 16), new THREE.MeshBasicMaterial({ color: glow[k % glow.length], transparent: true }));
+              node.add(glowSprite(glow[k % glow.length], 1.5));
+              rig.add(node);
+              objects.push(node);
+            }
+            rig.rotation.x = 0.55;
+            camera.position.set(0, 1.2, 8.4);
+            camera.lookAt(0, 0, 0);
+            draw = (t) => {
+              const c = cues();
+              const spin = (t - s.start) * 0.35;
+              objects.forEach((o, k) => {
+                const p = prog(t, c[k] != null ? c[k] : s.start + 0.5 + k * 0.4, 0.7);
+                const a = spin + (k * Math.PI * 2) / n;
+                o.position.set(Math.cos(a) * 2.6, 0, Math.sin(a) * 2.6);
+                o.scale.setScalar(Math.max(0.001, p));
+                o.material.opacity = p;
+                o.children[0].material.opacity = p;
+              });
+              core.scale.setScalar(1 + 0.04 * Math.sin((t - s.start) * 2.2));
+            };
+          } else {
+            // cards: floating glass plates in depth, drifting on their own phases
+            for (let k = 0; k < n; k++) {
+              const card = neonFrame(2.6, 1.6, glow[k % glow.length], 0.05);
+              card.position.set((k % 2 ? 1.1 : -1.1) * (1 + (k >> 1) * 0.15), 1.1 - k * 0.75, -k * 1.1);
+              card.rotation.set(-0.15, (k % 2 ? -0.35 : 0.35), 0);
+              rig.add(card);
+              objects.push(card);
+            }
+            camera.position.set(0, 0.4, 7.6);
+            camera.lookAt(0, 0, -1);
+            draw = (t) => {
+              const c = cues();
+              objects.forEach((o, k) => {
+                const p = prog(t, c[k] != null ? c[k] : s.start + 0.4 + k * 0.45, 0.8);
+                const base = 1.1 - k * 0.75;
+                o.position.y = base + (1 - p) * -0.9 + Math.sin((t - s.start) * 0.8 + k * 1.7) * 0.08;
+                o.rotation.y = (k % 2 ? -0.35 : 0.35) + Math.sin((t - s.start) * 0.5 + k) * 0.06;
+                setOpacity(o, p);
+              });
+              camera.position.z = 7.8 - Math.min(1, Math.max(0, (t - s.start) / Math.max(s.end - s.start, 1))) * 0.6;
+            };
+          }
+          b.renderAt = (t) => {
+            draw(t);
+            renderer.render(scene, camera);
+          };
+          b.renderAt(s.start);
+        });
+        const active = built.filter((b) => b.renderAt);
+        window.addEventListener("hf-seek", (event) => {
+          const t = event.detail.time;
+          active.forEach((b) => {
+            if (t >= b.scene.start - 0.6 && t <= b.scene.end + 0.6) b.renderAt(t);
+          });
+        });
+        active.forEach((b) => b.renderAt(window.__hfThreeTime || 0));
       }
 
       document.fonts.ready.then(build);

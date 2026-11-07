@@ -22,7 +22,15 @@ from . import vision
 from . import vocabulary as V
 from .library import Library, open_library
 from .recipes import Recipe, builtin_recipes
-from .style_plan import STYLE_PLAN_SCHEMA, StylePlan, StylePlanError, is_default, validate_style, validate_style_plan
+from .style_plan import (
+    DEFAULT_STYLE,
+    STYLE_PLAN_SCHEMA,
+    StylePlan,
+    StylePlanError,
+    is_default,
+    validate_style,
+    validate_style_plan,
+)
 
 log = logging.getLogger("newsletter_video")
 
@@ -234,7 +242,7 @@ def apply_recipe_policy(plan, policy: str, lib: Library | None = None) -> int:
     return count
 
 
-DEFAULT_STYLE_KEYS = ("transition", "entrance", "hold", "type_treatment", "background", "ease", "accent", "speed", "stagger")
+DEFAULT_STYLE_KEYS = tuple(k for k in DEFAULT_STYLE if k != "recipe")
 
 
 def style_plan_from_file(path, n_scenes: int, lib: Library | None = None) -> StylePlan:

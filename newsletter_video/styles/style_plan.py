@@ -19,7 +19,7 @@ from typing import Any
 
 from . import vocabulary as V
 
-KNOBS = ("transition", "entrance", "hold", "type_treatment", "background", "ease")
+KNOBS = ("transition", "entrance", "hold", "type_treatment", "background", "ease", "look")
 KNOB_VALUES: dict[str, tuple[str, ...]] = {
     "transition": tuple(V.TRANSITIONS),
     "entrance": tuple(V.ENTRANCES),
@@ -27,6 +27,7 @@ KNOB_VALUES: dict[str, tuple[str, ...]] = {
     "type_treatment": tuple(V.TYPE_TREATMENTS),
     "background": tuple(V.BACKGROUNDS),
     "ease": tuple(V.EASES),
+    "look": tuple(V.LOOKS),
 }
 SPEED_RANGE = (0.5, 2.0)
 STAGGER_RANGE = (0.02, 0.4)
@@ -35,7 +36,8 @@ _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
 
 DEFAULT_STYLE: dict[str, Any] = {
     "recipe": "", "transition": "default", "entrance": "default", "hold": "default", "type_treatment": "default",
-    "background": "default", "ease": "default", "accent": "", "speed": 1.0, "stagger": None,
+    "background": "default", "ease": "default", "look": "default", "accent": "", "palette": [], "speed": 1.0,
+    "stagger": None,
 }
 
 
@@ -51,7 +53,12 @@ def is_default(style: dict | None) -> bool:
     for k in KNOBS:
         if style.get(k, "default") != "default":
             return False
-    return not style.get("accent") and float(style.get("speed", 1.0) or 1.0) == 1.0 and not style.get("stagger")
+    return (not style.get("accent") and not style.get("palette") and float(style.get("speed", 1.0) or 1.0) == 1.0
+            and not style.get("stagger"))
+
+
+def is_cinematic(style: dict | None) -> bool:
+    return bool(style) and style.get("look") == "cinematic"
 
 
 def validate_style(raw: Any, known_recipes: set[str] | None = None) -> tuple[dict | None, list[str]]:
@@ -83,6 +90,21 @@ def validate_style(raw: Any, known_recipes: set[str] | None = None) -> tuple[dic
             if value and not _HEX.match(value):
                 errors.append(f"style.accent {value!r} is not a #rrggbb colour")
             out["accent"] = value.lower()
+        elif key == "palette":
+            # The glow colours of a cinematic look: up to MAX_PALETTE #rrggbb values.
+            if value in (None, ""):
+                out["palette"] = []
+                continue
+            if not isinstance(value, (list, tuple)):
+                errors.append("style.palette must be a list of #rrggbb colours")
+                continue
+            colours = [str(v or "").strip().lower() for v in value]
+            bad = [c for c in colours if not _HEX.match(c)]
+            if bad:
+                errors.append(f"style.palette has non-colour entries: {', '.join(repr(b) for b in bad)}")
+            if len(colours) > V.MAX_PALETTE:
+                errors.append(f"style.palette has {len(colours)} colours, at most {V.MAX_PALETTE}")
+            out["palette"] = colours
         elif key == "speed":
             try:
                 speed = float(value) if value not in (None, "") else 1.0
@@ -114,7 +136,7 @@ def validate_style(raw: Any, known_recipes: set[str] | None = None) -> tuple[dic
 def style_from_recipe(recipe_knobs: dict, overrides: dict | None = None) -> dict:
     """A style dict from a recipe's knobs with optional per-scene overrides
     (not yet validated)."""
-    out = {k: v for k, v in recipe_knobs.items() if k in DEFAULT_STYLE}
+    out = {k: (list(v) if k == "palette" else v) for k, v in recipe_knobs.items() if k in DEFAULT_STYLE}
     for k, v in (overrides or {}).items():
         if k in DEFAULT_STYLE and v not in (None, ""):
             out[k] = v

@@ -322,7 +322,7 @@ def _style_detail(scene: dict) -> str:
     if not isinstance(st, dict):
         return ""
     bits = []
-    for k in ("transition", "entrance", "hold", "type_treatment", "background"):
+    for k in ("look", "transition", "entrance", "hold", "type_treatment", "background"):
         if st.get(k) and st[k] != "default":
             bits.append(f"{k.replace('_', ' ')} {st[k]}")
     if st.get("recipe"):

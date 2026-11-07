@@ -93,16 +93,20 @@ def rewrite(out_dir: Path, vid: str, run_overrides: dict | None = None) -> dict:
 
 def _overrides_from_args(args) -> dict:
     raw = {"style": args.style, "character": args.character, "theme": args.theme, "background": args.background,
-           "recipe": args.recipe}
+           "recipe": args.recipe, "preset": getattr(args, "preset", None)}
     return {k: v for k, v in raw.items() if v is not None}
 
 
 def add_look_arguments(parser: argparse.ArgumentParser) -> None:
+    from .look import THEMES
+
     parser.add_argument("--style", choices=("avatar", "explainer"), help="override VIDEO_STYLE for this run")
     parser.add_argument("--character", help="override CHARACTER for this run ('' for the default narrator)")
-    parser.add_argument("--theme", choices=("light", "dark"), help="override VIDEO_THEME for this run")
+    parser.add_argument("--theme", choices=THEMES, help="override VIDEO_THEME for this run")
     parser.add_argument("--background", choices=("gameplay", "none"), help="override BACKGROUND_STYLE for this run")
     parser.add_argument("--recipe", help="style recipe policy for this run: auto, none or a recipe id")
+    parser.add_argument("--preset", "--look-preset", dest="preset",
+                        help="a look preset id from newsletter_video/looks/presets.json (theme + recipe; '' for none)")
 
 
 def main(argv: list[str] | None = None) -> int:
