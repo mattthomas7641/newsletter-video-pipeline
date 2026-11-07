@@ -214,7 +214,8 @@ class RunService:
             "uploads": saved["YOUTUBE_UPLOAD"] == "1",
             "privacy": saved["YOUTUBE_PRIVACY"],
         }
-        return self.jobs.create("batch", argv, self._env({}), meta)
+        # The button promises the whole job with no review step, whatever DAILY_MODE the 7:00 run uses.
+        return self.jobs.create("batch", argv, self._env({"DAILY_MODE": "full"}), meta)
 
     # --- reporting ---
 

@@ -192,6 +192,94 @@ def test_partial_failure_is_reported_as_problems(stubbed_pipeline, isolated_env,
     assert "1 failed: 02_second" in notifications[-1][1]
 
 
+# --- approval mode (DAILY_MODE=plan) ---
+
+@pytest.fixture
+def stubbed_planner(stubbed_pipeline, monkeypatch):
+    """plan_day binds its own names to the source and writer, so route them
+    through the same fakes (and the same `ctl`) as run_pipeline."""
+    from newsletter_video import plan_day
+
+    monkeypatch.setattr(plan_day, "_wait_for_network", lambda: True)
+    monkeypatch.setattr(plan_day, "get_source", lambda: run_pipeline.get_source())
+    monkeypatch.setattr(plan_day, "build_scripts", lambda *a, **k: run_pipeline.build_scripts(*a, **k))
+    return stubbed_pipeline
+
+
+def test_daily_mode_full_is_exactly_the_default_run(stubbed_pipeline, isolated_env, notifications, monkeypatch):
+    monkeypatch.setenv("DAILY_MODE", "full")
+    assert run_pipeline.main([DAY.isoformat()]) == 0
+    folder = isolated_env / DAY.isoformat()
+    assert len(stubbed_pipeline["built"]) == 3 and len(list(folder.glob("*.mp4"))) == 3
+    assert not (folder / "plan.json").exists()
+    assert notifications[-1][0] == "Pipeline finished" and "3 video(s) made" in notifications[-1][1]
+
+
+def test_daily_mode_plan_only_plans_and_notifies(stubbed_planner, isolated_env, notifications, monkeypatch):
+    from newsletter_video import plan_manifest as pm
+
+    monkeypatch.setenv("DAILY_MODE", "plan")
+    monkeypatch.setenv("YOUTUBE_UPLOAD", "1")
+    assert run_pipeline.main([DAY.isoformat()]) == 0
+    folder = isolated_env / DAY.isoformat()
+    assert stubbed_planner["built"] == [] and stubbed_planner["uploads"] == []
+    assert list(folder.glob("*.mp4")) == []
+    plan = pm.read_manifest(folder)
+    assert [v["status"] for v in plan["videos"]] == ["planned"] * 3
+    assert load_state(folder)["run"]["mode"] == "plan" and load_state(folder)["run"]["finished"]
+    title, message, ok = notifications[-1]
+    assert title == "Daily plan finished" and ok is True
+    assert "3 video(s) planned" in message and "control panel" in message and "nothing rendered" in message
+
+
+def test_daily_mode_plan_keeps_a_plan_the_day_already_has(stubbed_planner, isolated_env, notifications, monkeypatch):
+    from newsletter_video import plan_manifest as pm
+
+    folder = isolated_env / DAY.isoformat()
+    folder.mkdir()
+    mine = pm.new_manifest([make_script("Picked by hand 1"), make_script("Picked by hand 2")], DAY)
+    mine["videos"][0]["look"] = {"style": "explainer"}
+    pm.write_manifest(folder, mine)
+    monkeypatch.setenv("DAILY_MODE", "plan")
+    assert run_pipeline.main([DAY.isoformat()]) == 0
+    plan = pm.read_manifest(folder)
+    assert [v["title"] for v in plan["videos"]] == ["Picked by hand 1", "Picked by hand 2"]
+    assert plan["videos"][0]["look"] == {"style": "explainer"}
+    assert "2 video(s) planned" in notifications[-1][1]
+
+
+def test_daily_mode_plan_then_final_render_makes_the_videos(stubbed_planner, isolated_env, notifications, monkeypatch):
+    from newsletter_video import plan_manifest as pm, render_plan
+
+    monkeypatch.setenv("DAILY_MODE", "plan")
+    assert run_pipeline.main([DAY.isoformat()]) == 0
+    folder = isolated_env / DAY.isoformat()
+    assert list(folder.glob("*.mp4")) == []
+
+    monkeypatch.setattr(render_plan, "OUTPUT_DIR", isolated_env)
+    monkeypatch.setattr(render_plan, "validate_config", lambda *a: None)
+    monkeypatch.setattr(render_plan, "build_shorts", run_pipeline.build_shorts)
+    monkeypatch.setattr(render_plan, "upload_recent", lambda day: pytest.fail("uploads are off"))
+    assert render_plan.main([DAY.isoformat(), "--final"]) == 0  # the panel's Render all
+    assert len(list(folder.glob("*.mp4"))) == 3
+    assert all(v["status"] == "rendered" for v in pm.read_manifest(folder)["videos"])
+    assert notifications[-1][0] == "Final render finished" and "3 video(s) made" in notifications[-1][1]
+
+
+def test_daily_mode_plan_is_refused_while_a_run_holds_the_lock(stubbed_planner, isolated_env, notifications, monkeypatch):
+    monkeypatch.setenv("DAILY_MODE", "plan")
+    with RunLock(run_pipeline.LOCK_PATH):
+        assert run_pipeline.main([DAY.isoformat()]) == EXIT_LOCKED
+    assert not (isolated_env / DAY.isoformat() / "plan.json").exists()
+
+
+def test_bad_daily_mode_fails_fast(stubbed_pipeline, notifications, monkeypatch):
+    monkeypatch.setenv("DAILY_MODE", "sometimes")
+    assert run_pipeline.main([DAY.isoformat()]) == EXIT_CONFIG
+    assert notifications[-1][0] == "Pipeline not started" and "DAILY_MODE" in notifications[-1][1]
+    assert stubbed_pipeline["built"] == []
+
+
 def test_corrupt_sidecar_is_skipped_not_fatal(stubbed_pipeline, isolated_env):
     old = isolated_env / "2026-10-01"
     old.mkdir()

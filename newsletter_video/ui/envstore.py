@@ -75,6 +75,9 @@ SCHEMA: dict[str, Field] = {f.key: f for f in [
     Field("CHARACTER", "", _slug_or_blank),
     Field("BACKGROUND_STYLE", "gameplay", _one_of("gameplay", "none"), ("gameplay", "none")),
     Field("VIDEOS_PER_DAY", "3", _int_between(1, 20)),
+    # What the scheduled run does: full = plan, render and upload in one go (the original
+    # behaviour); plan = write the day's plan.json, notify, and wait for a Render in the panel.
+    Field("DAILY_MODE", "full", _one_of("full", "plan"), ("full", "plan")),
     Field("YOUTUBE_UPLOAD", "0", _one_of("0", "1"), ("0", "1")),
     Field("YOUTUBE_PRIVACY", "private", _one_of("private", "unlisted", "public"),
           ("private", "unlisted", "public")),

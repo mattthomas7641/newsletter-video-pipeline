@@ -19,7 +19,8 @@ asks viewers to comment.
 
 - **Runs itself:** a macOS `launchd` job writes, voices, renders and uploads the day's
   videos at 7:00 AM, logging every stage. With a locally cloned voice, 10 videos take about
-  85 minutes on a laptop.
+  85 minutes on a laptop. Or, in approval mode (`DAILY_MODE=plan`), it only writes the
+  day's plan and notifies you; you review it in the control panel and press Render.
 - **Two-stage story selection:** with a TypeSafe API key, Jev screens every candidate for
   scope and newsworthiness first, so Claude only sees the shortlist (see
   [Story selection with Jev](#story-selection-with-jev)).
@@ -110,8 +111,9 @@ your system. Press Ctrl+C in the terminal to stop it; anything already running k
   character* takes a name, a picture (it warns when there is no transparent background),
   voice recordings to clone (5 to 30 seconds of clean, single-speaker speech each) or an
   existing Voicebox voice, and an optional personality. Cloning runs in the background.
-- **Settings.** Videos per day, YouTube upload and privacy, and what happens to videos made by
-  the fallback writer. Changes are only written when you press *Save*, and apply from the next
+- **Settings.** Videos per day, what the scheduled run does (make everything, or plan and
+  ask you: see [Approval mode](#approval-mode)), YouTube upload and privacy, and what happens
+  to videos made by the fallback writer. Changes are only written when you press *Save*, and apply from the next
   run, including the scheduled one, because they live in `.env`.
 - **Videos.** Test videos and the last two weeks of daily videos, with YouTube links where
   uploads were recorded. A *Setup check* in Settings shows whether Voicebox, an API key and
@@ -119,7 +121,7 @@ your system. Press Ctrl+C in the terminal to stop it; anything already running k
 
 **Safety.** The panel listens on `127.0.0.1` only. It will only ever read or write these
 `.env` keys: `CHARACTER`, `VIDEO_STYLE`, `VIDEO_THEME`, `BACKGROUND_STYLE`, `VIDEOS_PER_DAY`,
-`YOUTUBE_UPLOAD`, `YOUTUBE_PRIVACY`, `FALLBACK_UPLOAD`, `STYLE_LIBRARY`, `STYLE_RECIPE`. Comments, other lines and the file's
+`DAILY_MODE`, `YOUTUBE_UPLOAD`, `YOUTUBE_PRIVACY`, `FALLBACK_UPLOAD`, `STYLE_LIBRARY`, `STYLE_RECIPE`. Comments, other lines and the file's
 permissions are left as they were. API keys and tokens are never sent to the browser or
 written to its logs; the panel only says whether one is set. Requests are checked for the
 loopback `Host`, a same-origin `Origin`, and a random per-launch token, so another web page
@@ -144,6 +146,7 @@ Copy `.env.example` to `.env`. Everything is optional:
 | `SOURCE` | Where stories come from: `tldr` (default, the only source so far; see `newsletter_video/sources/`) |
 | `VIDEO_THEME` | Explainer style only: `light` (default) or `dark` |
 | `BACKGROUND_STYLE` | Avatar style only: `gameplay` (default) or `none` for the plain graph-paper background |
+| `DAILY_MODE` | What the scheduled run does: `full` (default) plans, renders and uploads in one go; `plan` only writes the day's plan and notifies you (see [Approval mode](#approval-mode)) |
 | `YOUTUBE_UPLOAD` | `1` uploads each day's videos after rendering |
 | `YOUTUBE_PRIVACY`, `YOUTUBE_SCHEDULE` | Visibility and timed publishing (once your API project is audited) |
 | `FALLBACK_UPLOAD` | What to do with rule-based fallback scripts when uploads are on: `skip` (default: make none, notify), `private` or `public` |
@@ -400,6 +403,22 @@ launchctl unload ~/Library/LaunchAgents/com.tldrbrainrot.daily.plist   # stop th
 
 `run_daily.sh` wraps the run in `caffeinate -i` so the Mac doesn't idle-sleep during the
 ~100 minutes it takes (a closed lid still sleeps it; the run just resumes on wake).
+
+### Approval mode
+
+By default the scheduled run makes and posts everything on its own. Set `DAILY_MODE=plan`
+(Settings → *What the scheduled run does* → *Plan, then ask me*) and the 7:00 AM job stops
+after the planning step: it fetches the newsletters, picks the stories (skipping any already
+covered), writes the scripts (one writer call, about 3 cents) into `output/<date>/plan.json`,
+and sends the usual notification ("Daily plan finished: 3 video(s) planned ... waiting for
+your review"). Nothing is voiced, rendered or uploaded. The Studio page then shows *Plan
+ready — review and render* until you have previewed, changed looks and pressed *Render all…*
+or *Render selected…* (or run `python -m newsletter_video.render_plan <date> --final`), which
+renders and uploads exactly as the full run would, under the same lock, watchdog and
+`status.json` bookkeeping, and skips any story covered since planning. A plan the day already
+has (made from the panel before 7:00) is kept, not replaced. *Run the full daily job now…* in
+the panel always runs the full job, whatever `DAILY_MODE` says. `DAILY_MODE=full` (or unset)
+is exactly the previous behaviour.
 
 ## When things fail
 
