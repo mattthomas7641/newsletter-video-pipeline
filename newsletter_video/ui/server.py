@@ -417,14 +417,24 @@ def make_handler(app: App):
             sys.stderr.write(f"  {self.command} {path} -> {args[1] if len(args) > 1 else ''}\n")
 
         def _dispatch(self):
+            parts = urlsplit(self.path)
+            if self.command in ("POST", "PUT"):
+                # Host/Origin/token are checked on the headers alone, before a
+                # single body byte is read: a cross-site 300 MB upload is
+                # refused without being received (App.handle checks again).
+                is_api = parts.path.startswith("/api/") or parts.path.startswith("/media/")
+                rejection = app.guard.check(self.command, self.headers, api=is_api)
+                if rejection:
+                    self._send(error(*rejection))
+                    self.close_connection = True
+                    return
             length = int(self.headers.get("Content-Length") or 0)
-            limit = body_limit(urlsplit(self.path).path) if self.command in ("POST", "PUT") else 0
+            limit = body_limit(parts.path) if self.command in ("POST", "PUT") else 0
             if length > limit:
                 self._send(error(413, "That request is too large."))
                 self.close_connection = True
                 return
             body = self.rfile.read(length) if length else b""
-            parts = urlsplit(self.path)
             req = Request(self.command, self.path, parse_qs(parts.query), self.headers, body)
             self._send(app.handle(req))
 

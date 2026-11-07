@@ -131,3 +131,40 @@ def test_remove_needs_confirmation_and_deletes_the_folder(client, paths):
     assert not lib.entry_dir("punchy").exists() and not list((lib.root / "inbox").glob("punchy-*"))
     assert client.send_json("POST", "/api/styles/..%2Fx/remove", {"confirm": True})[0] == 404
     assert client.send_json("POST", "/api/styles/ghost/remove", {"confirm": True})[1]["removed"] is False
+
+
+def test_add_reference_rejects_a_clip_over_the_duration_cap(client, spawner, paths, monkeypatch):
+    from newsletter_video.styles.library import ReferenceTooLong
+
+    seen = {}
+
+    def too_long(clip, limit=None):
+        seen["limit"] = limit
+        raise ReferenceTooLong("a.mp4 is 300 s long; references are capped at 120 s (STYLE_MAX_SECONDS).")
+
+    monkeypatch.setattr(styles_svc, "check_reference_duration", too_long)
+    body, ctype = multipart({"name": "Long"}, [("video", "a.mp4", MP4)])
+    status, _, raw = client.request("POST", "/api/styles", body=body, content_type=ctype)
+    assert status == 400 and "capped at 120 s" in json.loads(raw)["error"]
+    assert seen["limit"] == 120.0 and spawner.calls == []
+    assert not list((paths.root / "style_library" / "inbox").glob("*"))  # the upload is not kept
+    # the cap is a validated setting
+    assert client.send_json("PUT", "/api/settings", {"updates": {"STYLE_MAX_SECONDS": "abc"}})[0] == 400
+    assert client.send_json("PUT", "/api/settings", {"updates": {"STYLE_MAX_SECONDS": "60"}})[0] == 200
+    assert EnvStore(paths.env_path).read()["values"]["STYLE_MAX_SECONDS"] == "60"
+    client.request("POST", "/api/styles", body=body, content_type=ctype)
+    assert seen["limit"] == 60.0
+
+
+def test_failed_add_leaves_no_partial_folder(client, spawner, paths, app):
+    body, ctype = multipart({"name": "Punchy", "vision": "0"}, [("video", "a.mp4", MP4)])
+    _, _, raw = client.request("POST", "/api/styles", body=body, content_type=ctype)
+    job = json.loads(raw)["job"]
+    partial = paths.root / "style_library" / "punchy.partial"
+    partial.mkdir(parents=True)
+    (partial / "meta.json").write_text("{}")
+    (app.jobs.jobs_dir / job["id"] / "result.json").write_text(json.dumps({"exit_code": 1, "finished_at": 1}))
+    _, data = client.get_json(f"/api/jobs/{job['id']}")
+    assert data["outcome"]["ok"] is False and not partial.exists()
+    # and the name is free again
+    assert client.request("POST", "/api/styles", body=body, content_type=ctype)[0] == 202

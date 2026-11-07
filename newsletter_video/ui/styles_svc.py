@@ -15,7 +15,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from newsletter_video.styles.library import OFF_VALUES, Library, slugify
+from newsletter_video.styles.library import OFF_VALUES, Library, ReferenceTooLong, check_reference_duration, slugify
 
 from . import security
 from .config import UIPaths
@@ -174,6 +174,11 @@ class StyleService:
         inbox.mkdir(parents=True, exist_ok=True)
         clip = inbox / f"{slug}-{job_id}.{kind}"
         clip.write_bytes(video)
+        try:
+            self._check_duration(clip)
+        except BaseException:
+            clip.unlink(missing_ok=True)
+            raise
         argv = [sys.executable, "-m", "newsletter_video.styles", "add", str(clip), "--name", slug]
         if notes:
             argv += ["--notes", notes]
@@ -190,9 +195,25 @@ class StyleService:
             clip.unlink(missing_ok=True)
             raise
 
+    def _check_duration(self, clip: Path) -> None:
+        """Rejects a reference over STYLE_MAX_SECONDS before the paid
+        analysis starts. The cap is read from the project's .env (the add
+        job reads the same file). A clip ffprobe cannot read is left to
+        the job, which fails with its own message."""
+        raw = str(self.store.read()["values"].get("STYLE_MAX_SECONDS", "") or "").strip()
+        limit = float(raw) if raw else None  # validated by the settings schema
+        try:
+            check_reference_duration(clip, limit)
+        except ReferenceTooLong as exc:
+            raise security.UploadError(str(exc)) from None
+        except Exception:  # noqa: BLE001 - unreadable clip: the job reports it
+            return
+
     def add_outcome(self, job: JobView) -> dict:
         """What the finished `styles add` produced, from the library itself."""
         lib = self.library()
+        if lib is not None and job.state != "done":
+            lib.clean_partials()  # a cancelled or failed add leaves nothing behind
         name = job.meta.get("name", "")
         entry = lib.get(name) if lib and NAME.match(name) else None
         tail = self.jobs.tail(job.id, 6)
