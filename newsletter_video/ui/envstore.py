@@ -86,6 +86,8 @@ SCHEMA: dict[str, Field] = {f.key: f for f in [
     # default recipe policy for new videos (auto = the planner, none, or one recipe).
     Field("STYLE_LIBRARY", "style_library", _library),
     Field("STYLE_RECIPE", "auto", _recipe_policy),
+    # Longest reference clip the library accepts, in seconds (probed before any paid call).
+    Field("STYLE_MAX_SECONDS", "120", _int_between(5, 999)),
 ]}
 
 # Keys the panel may only ever report as present/missing.

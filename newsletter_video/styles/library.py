@@ -156,14 +156,42 @@ class Library:
         self.save(entries)
 
     def remove(self, name: str) -> bool:
+        """Drops the entry from the index and deletes its folder; a folder
+        the index does not know about (an orphan) is deleted too."""
         entries = self.entries()
-        if not any(e.name == name for e in entries):
-            return False
-        self.save([e for e in entries if e.name != name])
-        d = self.entry_dir(name)
-        if d.exists():
-            shutil.rmtree(d)
-        return True
+        indexed = any(e.name == name for e in entries)
+        if indexed:
+            self.save([e for e in entries if e.name != name])
+        removed = indexed
+        for d in (self.entry_dir(name), self.partial_dir(name)):
+            if d.is_dir():
+                shutil.rmtree(d)
+                removed = True
+        return removed
+
+    # --- staging (an entry is built in <name>.partial and renamed in at the end) ---
+    PARTIAL_SUFFIX = ".partial"
+
+    def partial_dir(self, name: str) -> Path:
+        return self.root / (name + self.PARTIAL_SUFFIX)
+
+    def clean_partials(self) -> list[Path]:
+        """Removes every leftover `<name>.partial` folder (an add that was
+        cancelled or crashed). Nothing in one is ever indexed."""
+        gone = []
+        if not self.root.is_dir():
+            return gone
+        for d in self.root.iterdir():
+            if d.is_dir() and d.name.endswith(self.PARTIAL_SUFFIX):
+                shutil.rmtree(d, ignore_errors=True)
+                gone.append(d)
+        return gone
+
+    def staging(self, name: str) -> "Library":
+        """A view of this library whose `entry_dir(name)` is the partial
+        folder, so the analysis, recreation, recipes and README are all
+        written there and only land under `name` once everything succeeded."""
+        return _Staging(self.root, name)
 
     def write_recipes(self, name: str, recipes: list[Recipe]) -> None:
         (self.entry_dir(name)).mkdir(parents=True, exist_ok=True)
@@ -232,7 +260,51 @@ class Library:
         return results[:limit]
 
 
+class _Staging(Library):
+    """`Library.staging(name)`: the same library, with one entry's folder
+    redirected to its `.partial` folder while it is being built."""
+
+    def __init__(self, root: Path, name: str):
+        super().__init__(root)
+        self._staged = name
+
+    def entry_dir(self, name: str) -> Path:
+        return self.partial_dir(name) if name == self._staged else super().entry_dir(name)
+
+
 V_SUFFIXES = (".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".gif")
+DEFAULT_MAX_SECONDS = 120
+
+
+def max_reference_seconds() -> float:
+    """STYLE_MAX_SECONDS: the longest reference the library accepts (the
+    vision and recreation passes are paid per scene, so a long clip is
+    both slow and expensive). Default 120; 0 or a non-number disables."""
+    raw = (os.environ.get("STYLE_MAX_SECONDS") or "").strip()
+    if not raw:
+        return float(DEFAULT_MAX_SECONDS)
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        log.warning("STYLE_MAX_SECONDS=%r is not a number; using %s", raw, DEFAULT_MAX_SECONDS)
+        return float(DEFAULT_MAX_SECONDS)
+
+
+class ReferenceTooLong(ValueError):
+    pass
+
+
+def check_reference_duration(video: Path, limit: float | None = None) -> float:
+    """ffprobe the clip and raise ReferenceTooLong when it is over the cap.
+    Cheap, and run before anything that costs money. Returns the duration."""
+    from .media import probe
+
+    limit = max_reference_seconds() if limit is None else limit
+    duration = float(probe(Path(video)).duration or 0.0)
+    if limit and duration > limit:
+        raise ReferenceTooLong(f"{Path(video).name} is {duration:.0f} s long; references are capped at {limit:.0f} s "
+                               f"(STYLE_MAX_SECONDS). Trim it to the part you want analysed.")
+    return duration
 
 
 def open_library(create: bool = False) -> Library | None:
@@ -254,7 +326,12 @@ def library_enabled() -> bool:
 def add_reference(video: Path, name: str, notes: str = "", tags: list[str] | None = None, recreate: bool = True,
                   use_vision: bool | None = None, call: Callable | None = None, rounds: int | None = None,
                   lib: Library | None = None, copy: bool = True) -> Entry:
-    """Analyse (and by default recreate) one reference into the library."""
+    """Analyse (and by default recreate) one reference into the library.
+
+    Everything is built in `<name>.partial` and renamed into place (and
+    indexed) only at the end, so a crash or a cancel mid-way leaves no
+    half-built folder claiming the name. A clip in the library's inbox is
+    deleted once it has been copied in and the entry is complete."""
     from .analysis import analyze_video
 
     lib = lib or open_library(create=True)
@@ -264,7 +341,32 @@ def add_reference(video: Path, name: str, notes: str = "", tags: list[str] | Non
     if not video.exists():
         raise FileNotFoundError(video)
     slug = slugify(name)
-    d = lib.entry_dir(slug)
+    lib.clean_partials()
+    check_reference_duration(video)  # before anything that costs money
+    final_dir = lib.entry_dir(slug)
+    work = lib.staging(slug)
+    d = work.entry_dir(slug)
+    try:
+        entry = _build_entry(work, d, video, slug, name, notes, tags, recreate, use_vision, call, rounds, copy)
+        if final_dir.exists():
+            shutil.rmtree(final_dir)
+        d.rename(final_dir)
+    except BaseException:
+        shutil.rmtree(d, ignore_errors=True)
+        raise
+    lib.upsert(entry)
+    inbox = lib.root / "inbox"
+    if copy and video.parent.resolve() == inbox.resolve():
+        video.unlink(missing_ok=True)
+    return entry
+
+
+def _build_entry(lib: Library, d: Path, video: Path, slug: str, name: str, notes: str, tags: list[str] | None,
+                 recreate: bool, use_vision: bool | None, call: Callable | None, rounds: int | None, copy: bool) -> Entry:
+    """Writes the whole entry (reference, analysis, recreation, recipes,
+    README) into `d`, which `lib.entry_dir(slug)` must point at."""
+    from .analysis import analyze_video
+
     d.mkdir(parents=True, exist_ok=True)
     ref = d / f"reference{video.suffix.lower()}"
     if copy and video.resolve() != ref.resolve():
@@ -295,7 +397,6 @@ def add_reference(video: Path, name: str, notes: str = "", tags: list[str] | Non
     lib.write_recipes(slug, recipes)
     entry.recipes = [r.id for r in recipes]
     lib.write_readme(entry, analysis, recipes, recreation if recreation and "score" in recreation else None)
-    lib.upsert(entry)
     return entry
 
 
