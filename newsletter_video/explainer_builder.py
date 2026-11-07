@@ -396,6 +396,13 @@ def render_plan(plan: ScenePlan, out_path: Path, audio_path: Path, work_dir: Pat
     _pad_audio(audio_path, assets / "voice.wav", tail)
 
     payload = story_payload(plan, per_line, speech_duration, kicker, tail, theme)
+    return render_story(payload, out_path, work_dir)
+
+
+def render_story(payload: dict, out_path: Path, work_dir: Path) -> Path:
+    """Render a `story` payload with the composition already prepared in
+    `work_dir` (assets/voice.wav in place). Shared by the pipeline and the
+    style library's recreations, which build their own payloads."""
     variables_path = work_dir / "story.json"
     variables_path.write_text(json.dumps({"story": json.dumps(payload)}))
 
@@ -476,6 +483,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--write-plan", action="store_true",
                         help="ask Claude for a scene plan from the sidecar's script (one call)")
     parser.add_argument("--save-plan", type=Path, help="also write the plan used to this JSON file")
+    parser.add_argument("--style-plan", type=Path,
+                        help="a style plan from `python -m newsletter_video.styles plan --out ...` to apply to the scenes")
+    parser.add_argument("--style", action="store_true",
+                        help="ask the style library's planner for styles (needs a non-empty STYLE_LIBRARY)")
     parser.add_argument("--theme", choices=THEMES, help="override VIDEO_THEME")
     parser.add_argument("--date", type=date.fromisoformat, help="date for the kicker (default: sidecar folder)")
     parser.add_argument("--reuse-audio", action="store_true",
@@ -490,6 +501,15 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit("Invalid scene plan:\n  " + "\n  ".join(exc.errors))
     for note in plan.repairs:
         log.info("Plan repair: %s", note)
+    if args.style_plan:
+        from .styles.planner import apply_style_plan, style_plan_from_file
+
+        styled = apply_style_plan(plan, style_plan_from_file(args.style_plan, len(plan.scenes)))
+        log.info("Style plan: %d of %d scenes styled", styled, len(plan.scenes))
+    elif args.style:
+        from .styles import style_scene_plan
+
+        style_scene_plan(plan, str(meta.get("title", "")))
     if args.save_plan:
         args.save_plan.parent.mkdir(parents=True, exist_ok=True)
         args.save_plan.write_text(json.dumps({"scenes": plan.to_list()}, indent=2, ensure_ascii=False))
