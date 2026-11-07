@@ -196,3 +196,32 @@ def test_previews_are_hidden_once_the_script_or_look_changes(tmp_path):
     (pm.preview_dir(folder, "v01") / "storyboard.jpg").write_bytes(b"x")
     pm.replace_script(folder, "v01", make_script("B"))
     assert not pm.preview_dir(folder, "v01").exists()  # a rewritten script drops its previews
+
+
+def test_update_entry_is_safe_under_concurrent_writers(tmp_path):
+    import threading
+
+    from newsletter_video.runstate import write_json_atomic
+
+    pm.write_manifest(tmp_path, pm.new_manifest([make_script("A")], DAY))
+    errors = []
+
+    def worker(i):
+        try:
+            for n in range(10):
+                pm.update_entry(tmp_path, "v01", **{f"field{i}": n})
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    entry = pm.get_entry(pm.read_manifest(tmp_path), "v01")
+    assert not errors and all(entry[f"field{i}"] == 9 for i in range(6))  # no writer lost another's field
+    # the atomic writer uses a unique temp name and leaves nothing behind
+    for n in range(3):
+        write_json_atomic(tmp_path / "x.json", {"n": n})
+    assert json.loads((tmp_path / "x.json").read_text()) == {"n": 2}
+    assert [p.name for p in tmp_path.iterdir() if p.name.startswith(".x.json")] == []
