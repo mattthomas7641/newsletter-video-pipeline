@@ -56,7 +56,7 @@ No writer call, no TTS, no `render`, no upload, nothing written outside `_previe
 From the panel, `POST /api/plans/<ref>/videos/<vid>/studio` (token-guarded, no
 confirmation: it is free and local) picks a free port, starts the server as a `studio`
 job, waits up to ~25 s for it to answer and returns `{job, url, ready}`; the button
-opens the URL in a new tab, and the card shows "Studio open" with a Stop button while
+opens the URL in a new tab, and the video shows "Studio open" with a Stop button while
 it runs. Rules:
 
 - at most one Studio server at a time: starting it for another video stops the previous one;
@@ -105,11 +105,40 @@ changing the narrator afterwards changes the voice and avatar, not the wording.
 `none` strips them, and a recipe id applies that recipe to the middle scenes with no
 model call.
 
+## The Look workbench: reference, test video, tweak
+
+The panel's second page turns the pieces above into one loop for trying a look
+(`newsletter_video/ui/static/js/views/workbench.js`). Everything on it is a thin layer over
+the API already described; nothing new runs on the backend except one listing field.
+
+1. **References.** `GET /api/styles` lists each reference with its contact sheet, recipes and
+   `frames`: one served keyframe per detected scene (`keyframes/sNN_mid.jpg`, else the first
+   keyframe), read from the entry's `analysis.json` and only when the file exists inside the
+   keyframes folder. Adding a reference is the same background `style-add` job as before.
+2. **Test video.** *Make a test video* is `POST /api/plans {ref: null, overrides}` with the
+   chosen recipe (and `style: explainer`) as run overrides. `plan_day` stores run overrides on
+   the entry's `look`, so the test video's resolved recipe names the reference it was styled
+   by, and the page draws that link from the recipe's `source` rather than remembering it.
+3. **Tweak and compare.** The reference's scene keyframes sit beside the storyboard's frames
+   (`preview.stills.frames`), row by row. Every control change is `PUT .../look` followed by
+   `POST .../preview {tier: stills}`: the fingerprint change hides the old storyboard, so the
+   page keeps the last storyboard in `sessionStorage` and shows it dimmed as "previous look"
+   until the new capture lands, and lists earlier looks below for comparison. *Try another
+   recipe* steps through `GET /api/plans` → `recipes` (library recipes first). Rewrite and
+   final render go through the same confirmed endpoints as the daily page.
+
+The rail at the top is computed from the same state (references present, a test plan loaded,
+a storyboard present, a running job) and names the next free or paid step. Costs shown
+on buttons are the fixed estimates from this document; the session ledger counts writer
+calls, previews and renders started from this browser session.
+
 ## Limits
 
 - The Studio tab is HyperFrames' own server on a second local port, outside the panel's
   token guard (it binds 127.0.0.1 only), and its edits are not written back to the plan.
 - Approval mode (`DAILY_MODE=plan`, Settings → "What the scheduled run does") is the hand-off
-  from the daily job to this flow: it writes the day's plan and notifies, and the Studio page
-  shows "Plan ready — review and render" until everything is rendered. There is no automatic
-  render if you never review.
+  from the daily job to this flow: it writes the day's plan and notifies, and the Today's
+  videos page shows "Plan ready: review and render" until everything is rendered. There is
+  no automatic render if you never review.
+- The "previous look" and "earlier looks" on the workbench are kept in the browser session
+  only; a reload after the browser is closed starts that comparison afresh.
