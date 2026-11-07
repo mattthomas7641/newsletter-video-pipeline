@@ -70,7 +70,7 @@ export function mountWorkbench(root) {
   // jobs that belong to a test plan; once the plan list is known, a finished
   // job for a plan that no longer exists has nothing to show
   const runPanel = mountRunPanel(runHost, { accept: (job) => (Boolean(job.meta?.test) || isTestRef(job.meta?.ref))
-    && (job.state === "running" || !state.plans || !job.meta?.ref || testCards().some((p) => p.ref === job.meta.ref)) });
+    && (job.state === "running" || job.state === "failed" || job.state === "interrupted" || !state.plans || !job.meta?.ref || testCards().some((p) => p.ref === job.meta.ref)) });
   onCleanup(() => runPanel.dispose());
 
   function stage(n, title, sub, actions, ...body) {
@@ -117,6 +117,7 @@ export function mountWorkbench(root) {
     render();
     await attempt(async () => {
       await planTest(overrides);
+      toast("Writing your test video. This takes about 30 seconds; the storyboard follows by itself.", "good", 8000);
       pendingTestJob = state.runs.latest?.id || null;
       makeOpen = false;
       runPanel.focus();
