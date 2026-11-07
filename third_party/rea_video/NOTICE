@@ -1,0 +1,13 @@
+rea-video
+Copyright 2026 JuneYaooo
+
+Licensed under the Apache License, Version 2.0.
+
+----------------------------------------------------------------------
+This directory contains a small, MODIFIED subset of rea-video
+(https://github.com/JuneYaooo/rea-video), vendored into the ByteSize
+News pipeline (newsletter_video/styles/). See README.md in this
+directory for exactly which functions were adapted and how they differ.
+The upstream project depends on OpenCV; the adapted functions here were
+rewritten against numpy only. All modifications are released under the
+same Apache License, Version 2.0.
