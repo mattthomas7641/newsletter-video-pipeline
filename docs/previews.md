@@ -34,6 +34,39 @@ captures the frames. Each scene's time is after its entrance and its last reveal
 `<folder>/_preview/<video>/` with a `preview.json`; a preview is hidden once the
 video's script or look changes (its fingerprint no longer matches).
 
+## Open in HyperFrames Studio (live, scrubbable)
+
+Stills and draft clips are snapshots; **Open in Studio** on a planned video serves the
+live composition with HyperFrames Studio so you can scrub the timeline, inspect scenes
+and try tweaks without rendering anything.
+
+```bash
+./venv/bin/python -m newsletter_video.preview output/2026-11-07 --video v02 --studio --port 3102
+```
+
+What happens: the same work copy the stills use is prepared under
+`<folder>/_preview/<video>/_studio/` (template copy, the video's resolved look, cached
+or estimated timing, silent or cached voice track, the story baked into the
+composition's variable default), then `npx hyperframes@0.8.141 preview <work> --port N
+--foreground --no-open --force-new` serves it on `127.0.0.1` (the exact command
+`hyperframes preview --background` spawns, kept attached so the panel owns the process).
+Measured: the server answers in about 2 s once the npx package is cached.
+No writer call, no TTS, no `render`, no upload, nothing written outside `_preview/`.
+
+From the panel, `POST /api/plans/<ref>/videos/<vid>/studio` (token-guarded, no
+confirmation: it is free and local) picks a free port, starts the server as a `studio`
+job, waits up to ~25 s for it to answer and returns `{job, url, ready}`; the button
+opens the URL in a new tab, and the card shows "Studio open" with a Stop button while
+it runs. Rules:
+
+- at most one Studio server at a time: starting it for another video stops the previous one;
+- it stops with the panel (`python -m newsletter_video.ui` cancels it on exit) or via
+  `POST /api/jobs/<id>/cancel`;
+- it is not a "heavy" run: storyboards and drafts can be made while it is open, but it
+  does not start while a final render or the daily job is using the machine;
+- Studio edits live in the work copy only. Change the look or the script through the
+  panel to affect the real plan; re-open Studio to see the result.
+
 ## Plan first, render last
 
 ```bash
@@ -74,8 +107,8 @@ model call.
 
 ## Not done (honest limits)
 
-- No live scrubbable HyperFrames Studio link: embedding another local server without
-  the panel's token and lifecycle was not cheap enough to do safely.
+- The Studio tab is HyperFrames' own server on a second local port, outside the panel's
+  token guard (it binds 127.0.0.1 only), and its edits are not written back to the plan.
 - The daily job has no "plan and wait for approval" mode; it keeps rendering with the
   defaults. Plan by hand before 7:00 AM if you want to review that day.
 - A reference upload is analysed in place (not atomically), has no duration cap before

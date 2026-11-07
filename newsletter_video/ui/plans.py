@@ -13,7 +13,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import socket
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
@@ -31,6 +33,10 @@ VID = re.compile(r"^(v\d{2,3}|\d{2,}_[A-Za-z0-9._-]{0,150})$")
 PREVIEW_FILE = re.compile(r"^(storyboard\.jpg|draft\.mp4|frames/\d{2}_\d{3}\.\d{1}s\.png)$")
 TIERS = ("stills", "draft")
 MAX_PLAN_VIDEOS = 20
+STUDIO_KIND = "studio"  # one live HyperFrames Studio at a time; not a heavy run (previews may run beside it)
+STUDIO_HOST = "127.0.0.1"
+STUDIO_DIRNAME = "_studio"  # = preview.STUDIO_DIRNAME (not imported: the panel stays free of the render stack)
+STUDIO_WAIT_SECONDS = 25.0  # how long a start request waits for the server to answer before returning anyway
 
 
 class PlanError(ValueError):
@@ -44,6 +50,7 @@ class PlanService:
         self.store = store
         self.runs = runs
         self.characters = characters
+        self.studio_wait = STUDIO_WAIT_SECONDS
 
     # --- references ---
 
@@ -124,7 +131,7 @@ class PlanService:
             })
         return {"ref": ref, "kind": data.get("kind", "day"), "date": data.get("date"), "created": data.get("created"),
                 "updated": data.get("updated"), "writer": data.get("writer", ""), "default_look": defaults,
-                "videos": videos, "is_test": self.is_test(ref)}
+                "videos": videos, "is_test": self.is_test(ref), "studio": self.studio_state()}
 
     def _environ(self) -> dict:
         env = dict(os.environ)
@@ -262,6 +269,65 @@ class PlanService:
             argv.append("--voice")
         return self.jobs.create("preview", argv, self._env(), {"ref": ref, "video": vid, "tier": tier, "voice": bool(voice)})
 
+    # --- HyperFrames Studio (live, scrubbable composition) ---
+
+    def studio_state(self) -> dict | None:
+        """The running Studio job, if any: which video it shows and its URL."""
+        for job in self.jobs.active(kinds=(STUDIO_KIND,)):
+            return {"id": job.id, "ref": job.meta.get("ref"), "video": job.meta.get("video"),
+                    "url": job.meta.get("url"), "port": job.meta.get("port"), "started_at": job.created_at}
+        return None
+
+    def stop_studio(self) -> bool:
+        """Stops the running Studio server (there is at most one)."""
+        stopped = False
+        for job in self.jobs.active(kinds=(STUDIO_KIND,)):
+            stopped = self.jobs.cancel(job.id) or stopped
+        return stopped
+
+    def start_studio(self, ref: str, vid: str, overrides: dict | None = None) -> dict:
+        """Prepares the video's composition (resolved look, cached timing, no
+        voice) and serves it with HyperFrames Studio on a free 127.0.0.1 port.
+        Starting another Studio stops the previous one. Returns the job and
+        the local URL; `ready` says whether the server answered in time."""
+        folder = self.folder(ref)
+        if not VID.match(vid or ""):
+            raise KeyError(vid)
+        clean = looks.validate_look(overrides or {})
+        if vid.startswith("v"):
+            data = pm.read_manifest(folder)
+            if data is None:
+                raise KeyError(ref)
+            try:
+                pm.get_entry(data, vid)
+            except pm.ManifestError:
+                raise KeyError(vid) from None
+            source = [str(folder), "--video", vid]
+        else:
+            sidecar = folder / f"{vid}.json"
+            if not sidecar.is_file():
+                raise KeyError(vid)
+            source = [str(sidecar)]
+        self.runs.guard()  # not while a render is using the machine; Studio itself never blocks a preview
+        self.stop_studio()
+        port = _free_port()
+        url = f"http://{STUDIO_HOST}:{port}/#project/{STUDIO_DIRNAME}"  # the URL Studio itself prints
+        argv = [sys.executable, "-m", "newsletter_video.preview", *source, "--studio", "--port", str(port), *_look_args(clean)]
+        meta = {"ref": ref, "video": vid, "port": port, "url": url, "test": self.is_test(ref)}
+        job = self.jobs.create(STUDIO_KIND, argv, self._env(), meta)
+        ready = self._wait_for_studio(job.id, port, self.studio_wait)
+        return {"job": self.jobs.get(job.id).to_json(), "url": url, "ready": ready}
+
+    def _wait_for_studio(self, job_id: str, port: int, timeout: float) -> bool:
+        deadline = time.monotonic() + timeout
+        while True:
+            if _port_answers(port):
+                return True
+            view = self.jobs.get(job_id)
+            if view is None or view.state != "running" or time.monotonic() >= deadline:
+                return False
+            time.sleep(0.25)
+
     def start_render(self, ref: str, only: list[str] | None, confirm: bool) -> JobView:
         folder = self.folder(ref)
         data = pm.read_manifest(folder)
@@ -285,6 +351,20 @@ class PlanService:
         meta = {"ref": ref, "only": only, "videos": len(only) if only else len(ids), "test": self.is_test(ref),
                 "uploads": saved["YOUTUBE_UPLOAD"] == "1" and not self.is_test(ref), "privacy": saved["YOUTUBE_PRIVACY"]}
         return self.jobs.create("render", argv, env, meta)
+
+
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind((STUDIO_HOST, 0))
+        return int(sock.getsockname()[1])
+
+
+def _port_answers(port: int) -> bool:
+    try:
+        with socket.create_connection((STUDIO_HOST, port), timeout=0.3):
+            return True
+    except OSError:
+        return False
 
 
 def _look_args(clean: dict) -> list[str]:

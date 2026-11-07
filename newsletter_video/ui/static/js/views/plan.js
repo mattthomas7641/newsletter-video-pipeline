@@ -94,6 +94,40 @@ export function mountPlanPanel(host, { onJobStarted }) {
     }
   }
 
+  // HyperFrames Studio: the live composition (scrub, tweak) on a local port.
+  // The tab is opened on the click itself so the browser doesn't block it,
+  // then pointed at the server once it answers.
+  async function openStudio(v) {
+    if (busyVideo) return;
+    const tab = window.open("about:blank", "_blank");
+    busyVideo = { id: v.id, tier: "studio" };
+    render();
+    try {
+      const data = await api.post(`/api/plans/${encodeURIComponent(plan().ref)}/videos/${encodeURIComponent(v.id)}/studio`, {});
+      if (tab) tab.location = data.url; else window.open(data.url, "_blank");
+      if (!data.ready) toast("Studio is still starting; reload its tab in a few seconds.", "warn");
+      await loadPlan(plan().ref);
+    } catch (err) {
+      if (tab) tab.close();
+      toast(err.message, "bad");
+    } finally {
+      busyVideo = null;
+      renderedKey = "";
+      render();
+    }
+  }
+
+  async function stopStudio(studio) {
+    try {
+      await api.post(`/api/jobs/${encodeURIComponent(studio.id)}/cancel`, {});
+      await loadPlan(plan().ref);
+    } catch (err) {
+      toast(err.message, "bad");
+    }
+    renderedKey = "";
+    render();
+  }
+
   async function rewrite(v) {
     if (isRunning() || busyVideo) return;
     const ok = await confirmDialog({
@@ -192,6 +226,7 @@ export function mountPlanPanel(host, { onJobStarted }) {
   }
 
   function videoCard(v) {
+    const p = plan();
     const job = jobFor(v.id);
     const busy = busyVideo?.id === v.id;
     const blocked = isRunning() || Boolean(busyVideo);
@@ -228,7 +263,15 @@ export function mountPlanPanel(host, { onJobStarted }) {
       onClick: () => startPreview(v, "draft", true) }, icon("voice", "sm"), "Draft with voice");
     const rewriteBtn = h("button", { class: "btn small quiet", type: "button", disabled: blocked, onClick: () => rewrite(v) },
       busy && busyVideo.tier === "rewrite" ? spinner() : icon("refresh", "sm"), "Rewrite script…");
-    const actions = h("div", { class: "pv-actions" }, stillsBtn, draftBtn, voiceBtn, h("span", { class: "grow" }), rewriteBtn);
+    const studio = p.studio && p.studio.ref === p.ref && p.studio.video === v.id ? p.studio : null;
+    const studioBtn = studio
+      ? h("span", { class: "pv-studio" },
+        h("a", { class: "btn small", href: studio.url, target: "_blank", rel: "noopener" }, icon("link", "sm"), "Studio open"),
+        h("button", { class: "btn small quiet", type: "button", onClick: () => stopStudio(studio), title: "Stops the Studio server" }, icon("stop", "sm"), "Stop"))
+      : h("button", { class: "btn small quiet", type: "button", disabled: blocked, onClick: () => openStudio(v),
+        title: "Opens the live composition in HyperFrames Studio (a new tab) to scrub and tweak it. Free; starting it for another video stops this one." },
+      busy && busyVideo.tier === "studio" ? spinner() : icon("layers", "sm"), "Open in Studio");
+    const actions = h("div", { class: "pv-actions" }, stillsBtn, draftBtn, voiceBtn, studioBtn, h("span", { class: "grow" }), rewriteBtn);
 
     const progress = job ? h("div", { class: "pv-progress", role: "status" }, spinner(),
       h("span", {}, h("strong", { text: job.kind === "preview" ? (job.meta.tier === "draft" ? "Rendering a draft clip" : "Capturing the storyboard")

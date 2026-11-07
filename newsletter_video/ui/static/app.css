@@ -587,6 +587,7 @@ dialog ul { margin: 0; padding-left: 18px; color: var(--text-2); }
 .pv-editor .form-actions { padding: 14px 0 10px; border-top: 1px solid var(--line); }
 .pv-editor .form-actions .help { flex-basis: 100%; }
 .pv-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.pv-studio { display: inline-flex; gap: 4px; align-items: center; }
 .pv-progress { display: flex; gap: 10px; align-items: center; padding: 12px 16px; border-radius: var(--r-ctl); background: var(--accent-soft); color: var(--text); font-size: 14px; }
 .pv-progress .spinner { color: var(--accent); }
 .pv-previews { display: flex; flex-direction: column; gap: 16px; }
