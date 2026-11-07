@@ -98,6 +98,7 @@ class StyleService:
                 "side_by_side": f"/media/style/{e.name}/recreation/side_by_side.jpg"
                 if (folder / "recreation" / "side_by_side.jpg").is_file() else None,
                 "has_reference": lib.reference_path(e.name) is not None,
+                "frames": self._scene_frames(lib, e.name),
             })
         if hits:
             refs.sort(key=lambda r: -(r["score"] or 0))
@@ -119,6 +120,22 @@ class StyleService:
                 "library_setting": values.get("STYLE_LIBRARY", "style_library"),
                 "keys": {"ANTHROPIC_API_KEY": self.store.secret_presence().get("ANTHROPIC_API_KEY", False)},
                 "adding": [j.to_json() for j in self.jobs.active(kinds=("style-add",))]}
+
+    @staticmethod
+    def _scene_frames(lib: Library, name: str) -> list[dict]:
+        """One keyframe per detected scene (the mid-scene one, else the first),
+        so the panel can lay the reference beside a storyboard scene by scene."""
+        analysis = lib.analysis(name) or {}
+        folder = lib.entry_dir(name)
+        out = []
+        for i, scene in enumerate(analysis.get("scenes") or []):
+            rels = [r for r in (scene.get("keyframes") or []) if isinstance(r, str) and MEDIA.match(r) and (folder / r).is_file()]
+            if not rels:
+                continue
+            rel = next((r for r in rels if r.endswith("_mid.jpg")), rels[0])
+            out.append({"index": i + 1, "at": scene.get("start"), "duration": scene.get("duration"),
+                        "url": f"/media/style/{name}/{rel}"})
+        return out
 
     @staticmethod
     def _recipe_json(r) -> dict:

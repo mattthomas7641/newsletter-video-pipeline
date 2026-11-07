@@ -13,11 +13,19 @@ MP4 = b"\x00\x00\x00\x18ftypisom" + b"\x00" * 64
 WEBM = b"\x1aE\xdf\xa3" + b"\x00" * 64
 
 
-def seed_library(paths, name="punchy"):
+def seed_library(paths, name="punchy", keyframes=False):
     lib = Library(paths.root / "style_library")
     folder = lib.entry_dir(name)
     folder.mkdir(parents=True)
     (folder / "contact_sheet.jpg").write_bytes(b"\xff\xd8\xff")
+    if keyframes:
+        (folder / "keyframes").mkdir()
+        for rel in ("s00_first.jpg", "s00_mid.jpg", "s01_first.jpg"):
+            (folder / "keyframes" / rel).write_bytes(b"\xff\xd8\xff")
+        (folder / "analysis.json").write_text(json.dumps({"scenes": [
+            {"index": 0, "start": 0.0, "duration": 2.5, "keyframes": ["keyframes/s00_first.jpg", "keyframes/s00_mid.jpg"]},
+            {"index": 1, "start": 2.5, "duration": 3.0, "keyframes": ["keyframes/s01_first.jpg", "keyframes/s01_mid.jpg"]},
+            {"index": 2, "start": 5.5, "duration": 1.0, "keyframes": ["../../.env"]}]}))
     (folder / "recipes.json").write_text(json.dumps({"recipes": [
         {"id": f"{name}-look", "name": "Punchy look", "description": "hard cuts", "knobs": {"transition": "cut"},
          "scene_types": ["*"], "source": name, "fidelity": 0.71}]}))
@@ -43,6 +51,21 @@ def test_styles_listing_with_and_without_a_library(client, paths):
     assert miss["references"] == []
     _, plans = client.get_json("/api/plans")
     assert plans["recipes"][0]["id"] == "punchy-look"  # library recipes first in the per-video picker
+
+
+def test_reference_scene_frames_for_side_by_side_compare(client, paths):
+    """Each reference lists one served keyframe per scene (mid-scene when it
+    exists, else the first), skipping scenes whose files are missing or
+    whose paths fall outside the keyframes folder."""
+    seed_library(paths, keyframes=True)
+    _, data = client.get_json("/api/styles")
+    frames = data["references"][0]["frames"]
+    assert [f["url"] for f in frames] == ["/media/style/punchy/keyframes/s00_mid.jpg", "/media/style/punchy/keyframes/s01_first.jpg"]
+    assert frames[0]["index"] == 1 and frames[1]["at"] == 2.5 and frames[1]["duration"] == 3.0
+    assert client.request("GET", frames[0]["url"])[0] == 200
+    seed_library(paths, name="plain")
+    _, data = client.get_json("/api/styles")
+    assert next(r for r in data["references"] if r["name"] == "plain")["frames"] == []
 
 
 def test_style_media_refuses_traversal(client, paths):
