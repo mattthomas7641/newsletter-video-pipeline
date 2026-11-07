@@ -28,7 +28,9 @@ function frame(kind) {
   return holder;
 }
 
-export function mountLook(root, ctx) {
+/** The default look and narrator. Mounted inside Settings (`embedded`), or
+ * as its own page with a header. */
+export function mountLook(root, { embedded = false } = {}) {
   const cleanup = [];
   const onCleanup = (fn) => cleanup.push(fn);
   const sampleUi = new Map(); // slug -> {button, status}
@@ -37,7 +39,7 @@ export function mountLook(root, ctx) {
   let addPanel = null;
 
   // ---- header ----
-  const head = h("header", { class: "page-head" },
+  const head = embedded ? null : h("header", { class: "page-head" },
     h("div", {}, h("h1", { text: "Look and voice" }),
       h("p", { class: "lede", text: "Choose what your videos look like and who narrates them. Saved choices apply from the next video, including the 7:00 AM run." })),
     savePill(onCleanup));
@@ -88,7 +90,8 @@ export function mountLook(root, ctx) {
     h("div", { class: "section-head" }, h("h2", { id: "theme-h", text: "Colors" }),
       h("p", { text: "Light or dark graphics for explainer videos." })), themeSeg, themeNote);
 
-  root.append(head, styleSection, narratorSection, bgSection, themeSection);
+  root.append(...[head, styleSection, narratorSection, bgSection, themeSection].filter(Boolean));
+  if (embedded) for (const s of [styleSection, narratorSection, bgSection, themeSection]) s.classList.add("sub");
 
   // ---- characters gallery ----
   function characterCard(c) {
@@ -257,6 +260,6 @@ export function mountLook(root, ctx) {
   return () => {
     stopAudio();
     cleanup.forEach((fn) => fn());
-    root.replaceChildren();
+    if (!embedded) root.replaceChildren();
   };
 }
