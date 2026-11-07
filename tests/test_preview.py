@@ -112,6 +112,70 @@ def test_stills_and_draft_never_synthesise_without_voice(tmp_path, monkeypatch):
     assert timing2 == "cached voice" and audio2 == audio and calls == [1]
 
 
+class FakeProc:
+    """Stands in for the Studio server process: records the command, exits 0."""
+
+    def __init__(self, cmd, **kwargs):
+        self.cmd, self.kwargs, self.pid, self.code = cmd, kwargs, 4242, None
+
+    def poll(self):
+        return self.code
+
+    def wait(self, timeout=None):
+        self.code = 0
+        return 0
+
+    def terminate(self):
+        self.code = -15
+
+
+def test_studio_serves_a_prepared_work_copy_without_voice_or_render(tmp_path, monkeypatch):
+    """`--studio` prepares the same work copy as the stills (look, cached
+    timing, baked story) and runs HyperFrames Studio attached on 127.0.0.1;
+    it never calls the voice, `render` or `snapshot`."""
+    folder = tmp_path / "2026-11-07"
+    pm.write_manifest(folder, pm.new_manifest([make_script("A")], DAY, look_overrides={"style": "avatar", "background": "none"}))
+    source = preview.source_from_plan(folder, "v01")
+    started = []
+    monkeypatch.setattr(preview.subprocess, "Popen", lambda cmd, **kw: started.append(FakeProc(cmd, **kw)) or started[-1])
+    monkeypatch.setattr(preview.eb, "_voice_paced", lambda *a, **k: pytest.fail("Studio must not voice"))
+    monkeypatch.setattr(preview, "_snapshot", lambda *a, **k: pytest.fail("Studio must not snapshot"))
+    monkeypatch.setattr(preview, "npx_path", lambda: "/fake/npx")
+
+    def fake_prepare(src, payload, audio, work_dir):  # the real one copies the template and writes media
+        assert audio is None and src.look["style"] == "avatar" and src.look["background"] == "none"
+        work_dir.mkdir(parents=True, exist_ok=True)
+        (work_dir / "story.json").write_text(json.dumps({"story": json.dumps(payload)}))
+        return work_dir
+
+    monkeypatch.setattr(preview, "prepare_workdir", fake_prepare)
+    assert preview.run_studio(source, 3102) == 0
+    assert len(started) == 1
+    cmd = started[0].cmd
+    work = source.out_dir / preview.STUDIO_DIRNAME
+    assert cmd[2] == f"hyperframes@{preview.HYPERFRAMES_VERSION}" and cmd[3] == "preview" and cmd[4] == str(work)
+    assert cmd[cmd.index("--port") + 1] == "3102" and "--no-open" in cmd and "--foreground" in cmd
+    assert "render" not in cmd and "snapshot" not in cmd
+    assert started[0].kwargs["env"]["HYPERFRAMES_PREVIEW_HOST"] == "127.0.0.1"
+    story = json.loads(json.loads((work / "story.json").read_text())["story"])
+    assert story["duration"] > 0 and story["hook"]["words"]  # the avatar payload, baked for Studio
+    assert work.is_relative_to(folder / preview.PREVIEW_DIRNAME)  # never a real output folder
+    assert not (folder / "final.mp4").exists() and not list(folder.glob("*.mp4"))
+
+
+def test_cli_studio_flag_runs_the_server_and_excludes_final(tmp_path, monkeypatch):
+    folder = tmp_path / "2026-11-07"
+    pm.write_manifest(folder, pm.new_manifest([make_script("A")], DAY))
+    seen = {}
+    monkeypatch.setattr(preview, "run_studio", lambda source, port: seen.update(port=port, key=source.key) or 0)
+    monkeypatch.setattr(preview, "render_final", lambda *a: pytest.fail("--studio must not render"))
+    monkeypatch.setattr(preview.eb, "PROJECT_ROOT", tmp_path)
+    assert preview.main([str(folder), "--video", "v01", "--studio", "--port", "3111"]) == 0
+    assert seen == {"port": 3111, "key": "v01"}
+    with pytest.raises(SystemExit):
+        preview.main([str(folder), "--video", "v01", "--studio", "--final"])
+
+
 def test_cli_defaults_to_stills_and_needs_final_for_a_full_render(tmp_path, monkeypatch):
     folder = tmp_path / "2026-11-07"
     pm.write_manifest(folder, pm.new_manifest([make_script("A")], DAY))
