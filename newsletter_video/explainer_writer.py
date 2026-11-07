@@ -327,6 +327,19 @@ def _validated_videos(user: str, n_videos: int) -> list[tuple[dict, ScenePlan]] 
     return accepted
 
 
+def _apply_style_library(plan: ScenePlan, title: str) -> None:
+    """With a non-empty style library (STYLE_LIBRARY), one planner call per
+    video chooses recipes from the owner's references for each scene; the
+    plan is untouched otherwise, and on any failure."""
+    try:
+        from .styles import library_enabled, style_scene_plan
+
+        if library_enabled():
+            style_scene_plan(plan, title)
+    except Exception as exc:  # noqa: BLE001 - styling never blocks a video
+        log.warning("Style library skipped for %r (%s: %s)", title, type(exc).__name__, exc)
+
+
 def llm_explainer_scripts(candidates: list[Story], n_videos: int) -> list[ExplainerScript] | None:
     """The explainer counterpart of script_writer._llm_scripts: one call
     for the day's videos. Videos whose plan fails validation are skipped
@@ -347,6 +360,7 @@ def llm_explainer_scripts(candidates: list[Story], n_videos: int) -> list[Explai
     scripts = []
     for video, plan in accepted:
         ids = [i for i in video.get("story_ids", []) if isinstance(i, int) and 0 <= i < len(candidates)]
+        _apply_style_library(plan, str(video.get("title", "")))
         scripts.append(script_from_plan(plan, str(video.get("title", "")).strip() or "Untitled",
                                         str(video.get("badge", "NEWS")), [candidates[i] for i in ids],
                                         str(video.get("post_caption", "")), list(video.get("hashtags", []))))
