@@ -105,18 +105,11 @@ changing the narrator afterwards changes the voice and avatar, not the wording.
 `none` strips them, and a recipe id applies that recipe to the middle scenes with no
 model call.
 
-## Not done (honest limits)
-
-- No live scrubbable HyperFrames Studio link: embedding another local server without
-  the panel's token and lifecycle was not cheap enough to do safely.
-- Approval mode (`DAILY_MODE=plan`, Settings → "What the scheduled run does") is the only
-  hand-off from the daily job to this flow: it writes the day's plan and notifies, and the
-  Studio page shows "Plan ready — review and render" until everything is rendered.
+## Limits
 
 - The Studio tab is HyperFrames' own server on a second local port, outside the panel's
   token guard (it binds 127.0.0.1 only), and its edits are not written back to the plan.
-- The daily job has no "plan and wait for approval" mode; it keeps rendering with the
-  defaults. Plan by hand before 7:00 AM if you want to review that day.
-- A reference upload is analysed in place (not atomically), has no duration cap before
-  the paid vision call, and the inbox copy is kept; `plan.json` edits take a lock but
-  concurrent edits from two panels are not otherwise coordinated.
+- Approval mode (`DAILY_MODE=plan`, Settings → "What the scheduled run does") is the hand-off
+  from the daily job to this flow: it writes the day's plan and notifies, and the Studio page
+  shows "Plan ready — review and render" until everything is rendered. There is no automatic
+  render if you never review.
