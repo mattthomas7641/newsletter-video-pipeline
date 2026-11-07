@@ -2041,13 +2041,34 @@
             tl.to("#flash", { opacity: 0, duration: 0.12, ease: "power1.out" }, start);
           }
           // --- backgrounds (a colour band behind the stage, a plain ground) ---
+          // The band arrives with the scene's own transition and leaves with
+          // the next scene's, so the ground never cuts on its own.
           if (bgK === "accent-field" || bgK === "gradient-wash") {
             const field = document.getElementById("field");
             const fieldStyle = bgK === "accent-field"
               ? { opacity: 1, background: accentS }
               : { opacity: 1, background: "linear-gradient(180deg, " + (hexToRgba(accentS, 0.22) || accentS) + ", rgba(0,0,0,0))" };
-            tl.set(field, fieldStyle, start);
-            if (!last) tl.set(field, { opacity: 0 }, end + T);
+            const FULL = "inset(0px 0px 0px 0px)";
+            if (transition === "wipe") {
+              tl.set(field, { ...fieldStyle, clipPath: "inset(0px 0px 100% 0px)" }, start);
+              tl.to(field, { clipPath: FULL, duration: T, ease: "power3.inOut" }, start);
+            } else if (transition === "wipe-left") {
+              tl.set(field, { ...fieldStyle, clipPath: "inset(0px 0px 0px 100%)" }, start);
+              tl.to(field, { clipPath: FULL, duration: T, ease: "power3.inOut" }, start);
+            } else if (transition === "fade" || transition === "zoom-through" || transition === "mask-circle") {
+              tl.set(field, { ...fieldStyle, opacity: 0, clipPath: FULL }, start);
+              tl.to(field, { opacity: 1, duration: 0.4 / speed, ease: "power1.inOut" }, start);
+            } else {
+              tl.set(field, { ...fieldStyle, clipPath: FULL }, start);
+            }
+            if (!last) {
+              const nextT = sceneTransition(i + 1);
+              if (nextT === "wipe") tl.to(field, { clipPath: "inset(100% 0px 0px 0px)", duration: T, ease: "power3.inOut" }, end);
+              else if (nextT === "wipe-left") tl.to(field, { clipPath: "inset(0px 100% 0px 0px)", duration: T, ease: "power3.inOut" }, end);
+              else if (nextT === "fade" || nextT === "zoom-through" || nextT === "mask-circle") tl.to(field, { opacity: 0, duration: 0.4, ease: "power1.inOut" }, Math.max(start + 0.6, end - 0.4));
+              else tl.set(field, { opacity: 0 }, end);
+              tl.set(field, { opacity: 0, clipPath: FULL }, end + T);
+            }
           }
           if (bgK === "solid") {
             tl.set("#paper", { opacity: 0 }, start);
