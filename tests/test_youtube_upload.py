@@ -199,14 +199,32 @@ def test_401_mid_run_is_an_auth_error(fake_youtube, isolated_env):
         upload_day(DAY)
 
 
-def test_pending_uploads_are_found_however_old(fake_youtube, isolated_env):
+def test_stale_leftovers_are_not_published_by_the_daily_run(fake_youtube, isolated_env, monkeypatch):
+    monkeypatch.delenv("UPLOAD_MAX_AGE_DAYS", raising=False)
+    old = DAY - timedelta(days=12)
+    recent = DAY - timedelta(days=1)
+    _day_folder(isolated_env, day=old, n=1)
+    _day_folder(isolated_env, day=recent, n=1)
+    _day_folder(isolated_env, day=DAY, n=1)
+    (isolated_env / "not-a-date").mkdir()
+    assert days_with_pending_uploads(DAY) == [old, recent, DAY]  # still found...
+    assert upload_recent(DAY) == ["vid1", "vid2"]  # ...but only the last 2 days go up
+    assert days_with_pending_uploads(DAY) == [old]  # the stale one stays on disk, untouched
+
+
+def test_stale_limit_can_be_turned_off(fake_youtube, isolated_env, monkeypatch):
+    monkeypatch.setenv("UPLOAD_MAX_AGE_DAYS", "off")
     old = DAY - timedelta(days=12)
     _day_folder(isolated_env, day=old, n=1)
     _day_folder(isolated_env, day=DAY, n=1)
-    (isolated_env / "not-a-date").mkdir()
-    assert days_with_pending_uploads(DAY) == [old, DAY]
-    assert upload_recent(DAY) == ["vid1", "vid2"]  # before: a 3-day look-back left `old` orphaned forever
+    assert upload_recent(DAY) == ["vid1", "vid2"]
     assert days_with_pending_uploads(DAY) == []
+
+
+def test_a_specific_old_day_can_still_be_uploaded_by_hand(fake_youtube, isolated_env):
+    old = DAY - timedelta(days=12)
+    _day_folder(isolated_env, day=old, n=1)
+    assert upload_day(old) == ["vid1"]
 
 
 def test_cleanup_keeps_videos_whose_upload_is_unconfirmed(isolated_env):

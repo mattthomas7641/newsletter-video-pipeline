@@ -338,13 +338,37 @@ def days_with_pending_uploads(today: date) -> list[date]:
     return sorted(days)
 
 
+DEFAULT_UPLOAD_MAX_AGE_DAYS = 2
+
+
+def _max_age_days() -> int | None:
+    """UPLOAD_MAX_AGE_DAYS: how old (in days) a leftover video may be and still
+    go up with the daily run. News goes stale, so the default is short; set
+    "off" to upload leftovers of any age."""
+    raw = os.environ.get("UPLOAD_MAX_AGE_DAYS", "").strip().lower()
+    if raw in ("off", "none", "never"):
+        return None
+    try:
+        return int(raw) if raw else DEFAULT_UPLOAD_MAX_AGE_DAYS
+    except ValueError:
+        return DEFAULT_UPLOAD_MAX_AGE_DAYS
+
+
 def upload_recent(today: date, days_back: int | None = None) -> list[str]:
-    """Uploads anything still pending from earlier days (oldest first), then
-    today's videos — so a video blocked by a limit goes up on a later run.
-    `days_back` limits how far back to look (default: no limit)."""
+    """Uploads anything still pending from the last few days (oldest first),
+    then today's videos — so a video blocked by a limit goes up on a later
+    run. Videos older than UPLOAD_MAX_AGE_DAYS (default 2) are left on disk
+    and reported, not published: a two-week-old news video is worse than none.
+    Upload a specific old day by hand with `youtube_upload YYYY-MM-DD`."""
+    if days_back is None:
+        days_back = _max_age_days()
     uploaded = []
     for day in days_with_pending_uploads(today):
         if days_back is not None and (today - day).days > days_back:
+            log.warning("YouTube: %s has videos still pending but is %d days old (limit %d); "
+                        "not uploading stale news. Upload by hand if you still want them: "
+                        "python -m newsletter_video.youtube_upload %s",
+                        day, (today - day).days, days_back, day)
             continue
         uploaded += upload_day(day)
     return uploaded
