@@ -1,6 +1,7 @@
 import { h, icon, spinner, nextId, formatClock } from "../dom.js";
 import { savePill, notYetNote } from "../components.js";
-import { state, subscribe, value, setDraft, loadSetup } from "../store.js";
+import { state, subscribe, value, setDraft, loadSetup, loadStyles } from "../store.js";
+import { mountLook } from "./look.js";
 
 const PRIVACY = [
   ["private", "Private", "Only you can see them until you publish."],
@@ -14,8 +15,34 @@ export function mountSettings(root, ctx) {
 
   const head = h("header", { class: "page-head" },
     h("div", {}, h("h1", { text: "Settings" }),
-      h("p", { class: "lede", text: "Everyday options for the daily run. Nothing changes until you save, and saved changes apply from the next run." })),
+      h("p", { class: "lede", text: "Defaults for every new video and the daily run. Nothing changes until you save, and saved changes apply from the next run." })),
     savePill(onCleanup));
+
+  // ---- default look and narrator ----
+  const lookHost = h("div", { class: "look-defaults" });
+  const lookSection = h("section", { class: "section", "aria-labelledby": "look-h" },
+    h("div", { class: "section-head" }, h("h2", { id: "look-h", text: "Default look and narrator" }),
+      h("p", { text: "What every video gets unless its own look says otherwise. Try looks on a test video in the Look workbench; set the defaults here." })),
+    lookHost);
+  onCleanup(mountLook(lookHost, { embedded: true }));
+
+  // ---- style library ----
+  const libId = nextId("lib");
+  const libBox = h("input", { id: libId, type: "checkbox", role: "switch", onChange: () => setDraft("STYLE_LIBRARY", libBox.checked ? "style_library" : "off") });
+  const libState = h("span", { class: "state" });
+  const policySel = h("select", { class: "select", "aria-labelledby": "policy-l", onChange: () => setDraft("STYLE_RECIPE", policySel.value) });
+  const policyHelp = h("p", { class: "help", id: "policy-help" });
+  const library = h("section", { class: "section", "aria-labelledby": "lib-h" },
+    h("div", { class: "section-head" }, h("h2", { id: "lib-h", text: "Style library" }),
+      h("p", { text: "Reference videos and the recipes made from them live in the Look workbench. These two settings decide whether new videos use them." })),
+    h("div", { class: "panel rows" },
+      h("div", { class: "row" },
+        h("div", {}, h("label", { class: "label", for: libId, text: "Use the style library" }),
+          h("p", { class: "help", text: "Off means the template's own look, exactly as before the library existed." })),
+        h("div", { class: "control" }, h("label", { class: "switch" }, libBox, h("span", { class: "track" }), libState))),
+      h("div", { class: "row", id: "policy-row" },
+        h("div", {}, h("span", { class: "label", id: "policy-l", text: "Style recipes for new videos" }), policyHelp),
+        h("div", { class: "control" }, policySel))));
 
   // ---- videos per day ----
   const perDayId = nextId("perday");
@@ -115,7 +142,27 @@ export function mountSettings(root, ctx) {
       h("p", { text: "What this computer has ready. Only whether something is present is shown, never the secret itself." })),
     checksHost, h("div", { class: "form-actions" }, recheck));
 
-  root.append(head, production, youtube, writer, setup);
+  root.append(head, lookSection, library, production, youtube, writer, setup);
+
+  function syncLibrary() {
+    const on = value("STYLE_LIBRARY") !== "off";
+    libBox.checked = on;
+    libState.textContent = on ? "On" : "Off";
+    const policy = value("STYLE_RECIPE") || "auto";
+    const data = state.styles;
+    policySel.replaceChildren(
+      h("option", { value: "auto", text: "Auto: the planner picks per scene" }),
+      h("option", { value: "none", text: "None: the template's own look" }),
+      ...(data?.references || []).flatMap((r) => r.recipes.map((rc) => h("option", { value: rc.id, text: `${r.title}: ${rc.name}` }))),
+      ...(data?.builtin_recipes || []).map((rc) => h("option", { value: rc.id, text: `Built-in: ${rc.name}` })));
+    if (![...policySel.options].some((o) => o.value === policy)) policySel.append(h("option", { value: policy, text: policy }));
+    policySel.value = policy;
+    policySel.disabled = !on;
+    root.querySelector("#policy-row").toggleAttribute("data-off", !on);
+    policyHelp.textContent = !on ? "Only used when the library is on."
+      : policy === "auto" ? "One small planner call per video (about 2 cents) chooses recipes from your references that fit each scene."
+        : policy === "none" ? "No recipes unless a video's own look asks for one." : "Every video gets this one recipe on its middle scenes, with no planner call.";
+  }
 
   async function runCheck() {
     recheck.disabled = true;
@@ -149,7 +196,7 @@ export function mountSettings(root, ctx) {
 
     for (const input of modeSeg.querySelectorAll("input")) input.checked = input.value === value("DAILY_MODE");
     modeHelp.textContent = value("DAILY_MODE") === "plan"
-      ? "Approval mode: it only picks the stories and writes the scripts, then notifies you. Nothing is voiced, rendered or uploaded until you press Render on the Studio page."
+      ? "Approval mode: it only picks the stories and writes the scripts, then notifies you. Nothing is voiced, rendered or uploaded until you press Render on the Today's videos page."
       : "Writes, voices, renders and uploads every video in one go, with no review step.";
     modeNote.replaceChildren(notYetNote(state.settings?.supported?.DAILY_MODE) || "");
 
@@ -193,14 +240,16 @@ export function mountSettings(root, ctx) {
     } else {
       chip.textContent = "Not scheduled";
       chip.className = "chip";
-      help.textContent = "No scheduled job was found. You can still run the batch by hand from the Studio page.";
+      help.textContent = "No scheduled job was found. You can still run the batch by hand from the Today's videos page.";
     }
+    syncLibrary();
     renderChecks();
   }
 
   sync();
   onCleanup(subscribe(sync));
   if (!state.setup) loadSetup().catch(() => {});
+  if (!state.styles) loadStyles().catch(() => {});
 
   return () => { cleanup.forEach((fn) => fn()); root.replaceChildren(); };
 }

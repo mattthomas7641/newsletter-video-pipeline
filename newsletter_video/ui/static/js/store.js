@@ -2,6 +2,12 @@ import { api, ApiError } from "./api.js";
 
 const listeners = new Set();
 
+// ---- small persisted bits: what the workbench is looking at, what this session spent ----
+const BENCH_KEY = "bytesize.bench";
+const LEDGER_KEY = "bytesize.ledger";
+const readJson = (store, key, fallback) => { try { return { ...fallback, ...(JSON.parse(store.getItem(key) || "null") || {}) }; } catch { return { ...fallback }; } };
+const writeJson = (store, key, value) => { try { store.setItem(key, JSON.stringify(value)); } catch { /* storage unavailable */ } };
+
 export const state = {
   loaded: false,
   loadError: null,
@@ -15,13 +21,16 @@ export const state = {
   plans: null, // {plans: [...], recipes: [...]}
   plan: null, // the plan being reviewed: {ref, kind, videos: [...]}
   planRef: null,
+  styles: null, // the style library: {enabled, references, builtin_recipes, keys, root, adding}
+  bench: readJson(localStorage, BENCH_KEY, { reference: null, planRef: null }),
+  ledger: readJson(sessionStorage, LEDGER_KEY, { writer: 0, previews: 0, renders: 0, references: 0 }),
   saving: false,
   saveError: null,
   justSaved: false,
 };
 
 // ---- the look as the panel's settings describe it (for run overrides) ----
-// A plan or preview started with unsaved Look-page changes uses them as run
+// A plan or preview started with unsaved look changes uses them as run
 // overrides, so what you see on screen is what gets planned.
 const LOOK_KEYS = { VIDEO_STYLE: "style", CHARACTER: "character", VIDEO_THEME: "theme", BACKGROUND_STYLE: "background", STYLE_RECIPE: "recipe" };
 export function draftLook() {
@@ -29,6 +38,31 @@ export function draftLook() {
   for (const [env, field] of Object.entries(LOOK_KEYS)) if (env in state.draft) out[field] = state.draft[env];
   return out;
 }
+
+export const isTestRef = (ref) => Boolean(ref) && !/^\d{4}-\d{2}-\d{2}$/.test(ref);
+
+export function setBench(patch) {
+  state.bench = { ...state.bench, ...patch };
+  writeJson(localStorage, BENCH_KEY, state.bench);
+  notify();
+}
+
+// What this browser session has spent: writer calls are the only paid steps
+// the workbench starts; previews are free but counted so the pace is visible.
+export function noteSpend(kind) {
+  state.ledger = { ...state.ledger, [kind]: (state.ledger[kind] || 0) + 1 };
+  writeJson(sessionStorage, LEDGER_KEY, state.ledger);
+  notify();
+}
+
+// ---- recipes and the references they came from ----
+export const recipes = () => state.plans?.recipes || [];
+export const recipeInfo = (id) => recipes().find((r) => r.id === id) || null;
+export function referenceForRecipe(id) {
+  if (!id || id === "auto" || id === "none") return null;
+  return (state.styles?.references || []).find((r) => (r.recipes || []).some((x) => x.id === id)) || null;
+}
+export const referenceByName = (name) => (state.styles?.references || []).find((r) => r.name === name) || null;
 
 export async function loadPlans() {
   state.plans = await api.get("/api/plans");
@@ -47,6 +81,12 @@ export async function loadPlan(ref) {
   }
   notify();
   return state.plan;
+}
+
+export async function loadStyles(query = "") {
+  state.styles = await api.get(`/api/styles${query ? `?q=${encodeURIComponent(query)}` : ""}`);
+  notify();
+  return state.styles;
 }
 
 export function subscribe(fn) {
@@ -162,3 +202,4 @@ export async function refreshRuns() {
 }
 
 export const isRunning = () => state.runs.activity.length > 0;
+export const runningJob = () => (state.runs.latest?.state === "running" ? state.runs.latest : null);
