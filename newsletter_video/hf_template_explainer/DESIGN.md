@@ -178,6 +178,25 @@ scene and the progress rule always moving, something meaningful moves every
 plan's times, so every frame is a pure function of time (seek-safe,
 deterministic); counts and typing are discrete sets, never `onUpdate` state.
 
+## Style knobs (the style library)
+
+A scene may carry a validated `style` object from the style library
+(`newsletter_video/styles`, docs in `docs/style-library.md`): `transition`,
+`entrance`, `hold`, `type_treatment`, `background`, `ease`, `accent`, `speed`
+and `stagger`, every one a closed set whose `default` is exactly the behaviour
+above. The composition reads them in `build()`: the transition in (and the
+previous scene's exit) can become a cut, a left push, a right-to-left wipe
+behind `#wipe-v`, a zoom-through, a circle mask, a fade or an accent flash
+(`#flash`); text entrances can be a line slide, typewriter, scale-pop, fade,
+mask reveal, letter stagger or blur-in instead of the word wave; the hold can
+be a stronger push, parallax, a float or a pulse, or nothing; type treatments
+add `st-caps` / `st-oversized` / `st-sans` / `st-outline` / `st-band` classes
+before the fit pass; backgrounds switch the dot grid off or put an accent
+band (`#field`, the stage rows only, so chrome and captions keep their ground)
+behind the scene; `--accent` can be set per scene. Reveal cues still come from
+the voice. With no `style` on any scene the timeline is built exactly as
+before.
+
 ## Why one file
 
 HyperFrames lint flags the composition as large and suggests sub-compositions.
