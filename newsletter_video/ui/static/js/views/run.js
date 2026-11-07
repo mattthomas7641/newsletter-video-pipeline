@@ -24,7 +24,16 @@ export function explainFailure(line) {
   if (/No stories scraped/i.test(line)) return "No stories were found in today's newsletters yet. Try again later.";
   if (/api[_ ]?key|authentication|401/i.test(line)) return "The AI writer rejected the API key. Check ANTHROPIC_API_KEY in your .env file.";
   if (/snapshot wrote|no video/i.test(line)) return "The preview renderer didn't produce frames. Try again; if it keeps failing, see the log.";
+  if (/nothing to plan|no valid structural plan|no stories selected/i.test(line)) return "The AI writer didn't run (it needs ANTHROPIC_API_KEY in the project's .env file), so no script could be written. Add the key, then try again.";
   return line;
+}
+
+// What a job is doing and roughly how long it takes, so a click is never silent.
+function expectation(latest) {
+  if (latest.kind === "plan") return latest.meta?.test ? "Reading today's newsletter and writing one script. Usually 20 to 40 seconds." : "Reading today's newsletter and writing the scripts. Usually under a minute.";
+  if (latest.kind === "preview") return latest.meta?.tier === "draft" ? "Rendering a low-quality draft clip. Usually 30 to 60 seconds." : "Capturing one frame per scene. Usually about 15 seconds.";
+  if (latest.kind === "rewrite") return "The writer is redoing the script. Usually 20 to 40 seconds.";
+  return "";
 }
 
 export function mountRunPanel(host, { accept = () => true } = {}) {
@@ -92,7 +101,7 @@ export function mountRunPanel(host, { accept = () => true } = {}) {
 
     if (latest.state === "running") {
       stageLine.textContent = latest.stage || "Starting up";
-      lastLine.textContent = latest.last_line || "";
+      lastLine.textContent = latest.last_line || expectation(latest);
     } else if (latest.state === "done") {
       stageLine.textContent = {
         plan: latest.meta?.test ? "The test video is written. Its storyboard is next." : "The plan is ready. Review it below.",
