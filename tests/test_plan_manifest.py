@@ -155,3 +155,44 @@ def test_render_plan_main_runs_under_the_pipeline_supervisor(tmp_path, monkeypat
     assert render_plan.main([DAY.isoformat(), "--final"]) == 0
     assert notifications and notifications[-1][0] == "Final render finished"
     assert (folder / "01_alpha.json").exists()
+
+
+def test_render_plan_skips_stories_covered_since_planning(tmp_path, monkeypatch, isolated_env):
+    """The plan may be hours old: a story the 07:00 run rendered meanwhile
+    is skipped, so Render all never duplicates the daily job."""
+    folder = isolated_env / DAY.isoformat()
+    pm.write_manifest(folder, pm.new_manifest([make_script("Alpha"), make_script("Beta")], DAY))
+    earlier = isolated_env / "2026-11-06"
+    earlier.mkdir()
+    write_metadata(make_script("Alpha"), earlier / "01_alpha.mp4")  # the same story, covered yesterday
+    monkeypatch.setattr(render_plan, "validate_config", lambda *a: None)
+    monkeypatch.setattr(render_plan, "upload_recent", lambda day: None)
+    seen = []
+
+    def fake_build_shorts(scripts, out_dir, audio_dir, target_date=None, on_rendered=None):
+        for i, s in enumerate(scripts, start=1):
+            seen.append(s.title)
+            p = out_dir / f"{i:02d}_{s.title.lower()}.mp4"
+            p.write_bytes(b"\x00")
+            on_rendered(s, p)
+        return []
+
+    monkeypatch.setattr(render_plan, "build_shorts", fake_build_shorts)
+    render_plan.render(folder, final=True)
+    assert seen == ["Beta"]
+    status = {v["id"]: (v["status"], v.get("error") or "") for v in pm.read_manifest(folder)["videos"]}
+    assert status["v01"][0] == "failed" and "already covered" in status["v01"][1] and status["v02"][0] == "rendered"
+
+
+def test_previews_are_hidden_once_the_script_or_look_changes(tmp_path):
+    folder = tmp_path / "2026-11-07"
+    pm.write_manifest(folder, pm.new_manifest([make_script("A")], DAY))
+    entry = pm.get_entry(pm.read_manifest(folder), "v01")
+    before = pm.entry_fingerprint(entry)
+    assert before == pm.entry_fingerprint(pm.get_entry(pm.read_manifest(folder), "v01"))  # stable
+    pm.update_entry(folder, "v01", look={"theme": "dark"})
+    assert pm.entry_fingerprint(pm.get_entry(pm.read_manifest(folder), "v01")) != before
+    pm.preview_dir(folder, "v01").mkdir(parents=True)
+    (pm.preview_dir(folder, "v01") / "storyboard.jpg").write_bytes(b"x")
+    pm.replace_script(folder, "v01", make_script("B"))
+    assert not pm.preview_dir(folder, "v01").exists()  # a rewritten script drops its previews

@@ -103,8 +103,9 @@ def test_preview_results_are_reported_and_served(client, paths, app, spawner):
     (out / "frames").mkdir(parents=True)
     (out / "storyboard.jpg").write_bytes(b"\xff\xd8\xff")
     (out / "frames" / "00_001.2s.png").write_bytes(b"\x89PNG")
+    fp = pm.entry_fingerprint(pm.get_entry(pm.read_manifest(paths.output_dir / DAY.isoformat()), "v01"))
     (out / "preview.json").write_text(json.dumps({"version": 1, "key": "v01", "look": {"style": "explainer"}, "stills": {
-        "tier": "stills", "file": "storyboard.jpg", "timing": "estimated timing", "seconds": 12.3, "at": 1,
+        "tier": "stills", "file": "storyboard.jpg", "timing": "estimated timing", "seconds": 12.3, "at": 1, "fingerprint": fp,
         "duration": 40, "frames": [{"label": "1 · title", "at": 1.2, "detail": "", "file": "00_001.2s.png"}]}}))
     _, plan = client.get_json(f"/api/plans/{DAY.isoformat()}")
     stills = plan["videos"][0]["preview"]["stills"]
@@ -156,6 +157,22 @@ def test_test_plan_renders_never_upload(client, spawner, paths):
     assert "--test" in call["argv"] and call["env"]["YOUTUBE_UPLOAD"] == "0"
     _, plans = client.get_json("/api/plans")
     assert plans["plans"][0]["ref"] == "abc123def" and plans["plans"][0]["kind"] == "day"
+
+
+def test_stale_previews_are_not_reported(client, paths):
+    folder = seed_plan(paths)
+    entry = pm.get_entry(pm.read_manifest(folder), "v01")
+    out = folder / "_preview" / "v01"
+    out.mkdir(parents=True)
+    (out / "storyboard.jpg").write_bytes(b"\xff\xd8\xff")
+    (out / "preview.json").write_text(json.dumps({"version": 1, "stills": {
+        "tier": "stills", "file": "storyboard.jpg", "timing": "estimated timing", "frames": [],
+        "fingerprint": pm.entry_fingerprint(entry)}}))
+    _, plan = client.get_json(f"/api/plans/{DAY.isoformat()}")
+    assert "stills" in plan["videos"][0]["preview"]
+    client.send_json("PUT", f"/api/plans/{DAY.isoformat()}/videos/v01/look", {"look": {"theme": "dark"}})
+    _, plan = client.get_json(f"/api/plans/{DAY.isoformat()}")
+    assert plan["videos"][0]["preview"] == {}  # the look changed: the old storyboard is hidden
 
 
 def test_no_plan_endpoint_leaks_secrets(client, paths):

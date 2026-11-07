@@ -297,6 +297,8 @@ class App:
             data = self._read_json(req)
             kind = data.get("kind")
             if kind == "test":
+                if data.get("confirm") is not True:  # a full render, like the batch: never implicit
+                    return error(400, "A full test render needs confirmation. Use a plan and a preview instead.")
                 overrides = data.get("overrides") or {}
                 if not isinstance(overrides, dict):
                     return error(400, "overrides must be an object.")

@@ -15,8 +15,12 @@ unattended daily run does.
 """
 from __future__ import annotations
 
+import fcntl
+import hashlib
 import json
 import re
+import shutil
+from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import date
 from pathlib import Path
@@ -39,6 +43,48 @@ class ManifestError(ValueError):
 
 def manifest_path(folder: Path) -> Path:
     return Path(folder) / MANIFEST_NAME
+
+
+@contextmanager
+def locked(folder: Path):
+    """An exclusive flock on plan.json.lock around a read-modify-write, so
+    the panel saving a look and the renderer marking a video rendered can
+    never lose each other's update."""
+    folder = Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    with (folder / (MANIFEST_NAME + ".lock")).open("a+") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def fingerprint(script: dict | None, scene_plan: dict | None, look: dict | None) -> str:
+    """What a preview depends on: the script, the scene plan and the look.
+    A preview whose fingerprint no longer matches its video is stale."""
+    payload = {"script": script or {}, "scene_plan": scene_plan or {},
+               "look": {k: v for k, v in (look or {}).items() if k != "version" and v is not None}}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
+
+
+def entry_fingerprint(entry: dict) -> str:
+    return fingerprint(entry.get("script"), entry.get("scene_plan"), entry.get("look"))
+
+
+def sidecar_fingerprint(meta: dict) -> str:
+    return fingerprint(meta.get("script"), meta.get("scene_plan"), _overrides_from_sidecar_look(meta.get("look")))
+
+
+def preview_dir(folder: Path, vid: str) -> Path:
+    return Path(folder) / "_preview" / vid
+
+
+def drop_previews(folder: Path, vid: str | None = None) -> None:
+    """Previews of one video (or of every video) are deleted when what
+    they showed no longer exists: a rewritten script, a new plan."""
+    target = preview_dir(folder, vid) if vid else Path(folder) / "_preview"
+    shutil.rmtree(target, ignore_errors=True)
 
 
 def story_dict(story: Story) -> dict:
@@ -163,29 +209,33 @@ def get_entry(data: dict, vid: str) -> dict:
 def update_entry(folder: Path, vid: str, **fields) -> dict:
     """Atomically updates one entry (re-reading the manifest first, so two
     writers cannot clobber each other's fields)."""
-    data = read_manifest(folder)
-    if data is None:
-        raise ManifestError(f"no plan in {folder}")
-    entry = get_entry(data, vid)
     if "look" in fields:
         fields["look"] = looks.compact(looks.validate_look(fields["look"] or {}))
-    entry.update(fields)
-    entry["updated"] = now_iso()
-    write_manifest(folder, data)
+    with locked(folder):
+        data = read_manifest(folder)
+        if data is None:
+            raise ManifestError(f"no plan in {folder}")
+        entry = get_entry(data, vid)
+        entry.update(fields)
+        entry["updated"] = now_iso()
+        write_manifest(folder, data)
     return entry
 
 
 def replace_script(folder: Path, vid: str, script: Script) -> dict:
-    """Swap in a rewritten script, keeping the entry's id, index and look."""
-    data = read_manifest(folder)
-    if data is None:
-        raise ManifestError(f"no plan in {folder}")
-    entry = get_entry(data, vid)
-    fresh = entry_from_script(script, int(entry["index"]))
-    fresh["look"] = entry.get("look") or looks.compact({})
-    fresh["status"], fresh["rendered"], fresh["error"] = "planned", None, None
-    data["videos"][data["videos"].index(entry)] = fresh
-    write_manifest(folder, data)
+    """Swap in a rewritten script, keeping the entry's id, index and look.
+    Its previews showed the old script, so they are deleted."""
+    with locked(folder):
+        data = read_manifest(folder)
+        if data is None:
+            raise ManifestError(f"no plan in {folder}")
+        entry = get_entry(data, vid)
+        fresh = entry_from_script(script, int(entry["index"]))
+        fresh["look"] = entry.get("look") or looks.compact({})
+        fresh["status"], fresh["rendered"], fresh["error"] = "planned", None, None
+        data["videos"][data["videos"].index(entry)] = fresh
+        write_manifest(folder, data)
+    drop_previews(folder, vid)
     return fresh
 
 

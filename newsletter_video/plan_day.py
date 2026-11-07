@@ -60,7 +60,9 @@ def plan(target_date: date, out_dir: Path, n_videos: int, kind: str = "day",
             log.info("Script %r (%s): %d words, stories %s", script.title, script.writer or "?", script.word_count,
                      [s.title for s in script.stories])
     data = pm.new_manifest(scripts, target_date, kind=kind, default_look=resolved, look_overrides=run_overrides)
-    path = pm.write_manifest(out_dir, data)
+    with pm.locked(out_dir):
+        pm.drop_previews(out_dir)  # previews of the previous plan showed other videos
+        path = pm.write_manifest(out_dir, data)
     log.info("Planned %d video(s): %s", len(scripts), path)
     return data
 

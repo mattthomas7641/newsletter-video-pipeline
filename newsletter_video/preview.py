@@ -77,6 +77,7 @@ class Source:
     origin: str  # "sidecar" | "plan"
     audio_hint: Path | None = None  # a known narration file for this exact script
     cached_timing: bool = False
+    fingerprint: str = ""  # of script + plan + look overrides: a stale preview is hidden
 
     @property
     def lines(self) -> list[str]:
@@ -114,7 +115,8 @@ def source_from_sidecar(path: Path, overrides: dict | None = None) -> Source:
     if m:
         candidate = folder.parent / "_audio" / folder.name / f"{m.group(1)}.wav"
         hint = candidate if candidate.is_file() else None
-    return Source(script, look, folder, Path(path).stem, _day_of(folder), "sidecar", hint)
+    return Source(script, look, folder, Path(path).stem, _day_of(folder), "sidecar", hint,
+                  fingerprint=pm.sidecar_fingerprint(meta) if not overrides else "")
 
 
 def source_from_plan(folder: Path, vid: str, overrides: dict | None = None) -> Source:
@@ -129,7 +131,8 @@ def source_from_plan(folder: Path, vid: str, overrides: dict | None = None) -> S
         day = date.fromisoformat(data.get("date", ""))
     except ValueError:
         day = _day_of(folder)
-    return Source(script, look, Path(folder).resolve(), vid, day, "plan")
+    return Source(script, look, Path(folder).resolve(), vid, day, "plan",
+                  fingerprint=pm.entry_fingerprint(entry) if not overrides else "")
 
 
 def apply_look_to_plan(source: Source) -> None:
@@ -423,6 +426,7 @@ def _write_result(source: Source, result: dict) -> Path:
     except (OSError, ValueError):
         pass
     existing.update({"version": PREVIEW_VERSION, "key": source.key, "title": source.script.title, "look": source.look})
+    result["fingerprint"] = source.fingerprint
     existing[result["tier"]] = result
     write_json_atomic(path, existing)
     return path
