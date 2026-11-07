@@ -478,3 +478,65 @@ def test_add_reference_with_injected_render_and_no_model(tmp_path, monkeypatch):
     assert (lib.entry_dir("tiny-clip") / "recreation" / "side_by_side.jpg").exists()
     assert lib.get("tiny-clip").recipes and lib_mod.library_enabled()
     assert lib.search("test")[0][1].name == "tiny-clip"
+
+
+def test_add_reference_stages_in_a_partial_folder_and_leaves_nothing_on_failure(tmp_path, monkeypatch):
+    from newsletter_video.styles import analysis as an_mod
+    from newsletter_video.styles.library import Library, add_reference
+
+    monkeypatch.setenv("STYLE_LIBRARY", str(tmp_path / "lib"))
+    video = _tiny_video(tmp_path / "tiny.mp4")
+    lib = lib_mod.open_library(create=True)
+    (lib.root / "stale.partial").mkdir()  # a cancelled add from earlier
+    seen = {}
+    real_analyze = an_mod.analyze_video
+
+    def boom(path, out_dir, **kw):
+        seen["out_dir"] = Path(out_dir)
+        raise RuntimeError("model down")
+
+    monkeypatch.setattr(an_mod, "analyze_video", boom)
+    with pytest.raises(RuntimeError):
+        add_reference(video, "Tiny Clip", use_vision=False, recreate=False)
+    assert seen["out_dir"] == lib.root / "tiny-clip.partial"  # built in the partial folder...
+    assert not (lib.root / "tiny-clip").exists() and not (lib.root / "tiny-clip.partial").exists()  # ...and gone on failure
+    assert not (lib.root / "stale.partial").exists() and lib.get("tiny-clip") is None
+    monkeypatch.setattr(an_mod, "analyze_video", real_analyze)
+    # success: the inbox copy is deleted, the folder is final, and no partial remains
+    inbox = lib.root / "inbox"
+    inbox.mkdir()
+    clip = shutil.copy(video, inbox / "tiny-clip-job1.mp4")
+    entry = add_reference(Path(clip), "Tiny Clip", use_vision=False, recreate=False)
+    assert entry.name == "tiny-clip" and lib.get("tiny-clip") is not None
+    assert (lib.root / "tiny-clip" / "reference.mp4").exists() and not list(lib.root.glob("*.partial"))
+    assert not Path(clip).exists()
+    # an orphan folder the index does not know about can still be removed
+    (lib.root / "orphan").mkdir()
+    assert Library(lib.root).remove("orphan") is True and not (lib.root / "orphan").exists()
+    assert Library(lib.root).remove("ghost") is False
+
+
+def test_reference_duration_cap_runs_before_any_analysis(tmp_path, monkeypatch):
+    from newsletter_video.styles import analysis as an_mod
+    from newsletter_video.styles import media
+    from newsletter_video.styles.library import ReferenceTooLong, add_reference, check_reference_duration, max_reference_seconds
+
+    monkeypatch.setenv("STYLE_LIBRARY", str(tmp_path / "lib"))
+    monkeypatch.delenv("STYLE_MAX_SECONDS", raising=False)
+    assert max_reference_seconds() == 120
+    monkeypatch.setenv("STYLE_MAX_SECONDS", "nope")
+    assert max_reference_seconds() == 120
+    monkeypatch.setenv("STYLE_MAX_SECONDS", "30")
+    clip = tmp_path / "long.mp4"
+    clip.write_bytes(b"\x00\x00\x00\x18ftypisom" + b"\x00" * 32)
+    monkeypatch.setattr(media, "probe", lambda p: media.VideoInfo(path=p, width=1080, height=1920, fps=30, duration=45.0, has_audio=False))
+    with pytest.raises(ReferenceTooLong, match="45 s long.*capped at 30 s"):
+        check_reference_duration(clip)
+    assert check_reference_duration(clip, 60) == 45.0
+    monkeypatch.setenv("STYLE_MAX_SECONDS", "0")  # disabled
+    assert check_reference_duration(clip) == 45.0
+    monkeypatch.setenv("STYLE_MAX_SECONDS", "30")
+    monkeypatch.setattr(an_mod, "analyze_video", lambda *a, **k: pytest.fail("the paid analysis must not run"))
+    with pytest.raises(ReferenceTooLong):
+        add_reference(clip, "Long One")
+    assert not list((tmp_path / "lib").glob("long-one*"))
