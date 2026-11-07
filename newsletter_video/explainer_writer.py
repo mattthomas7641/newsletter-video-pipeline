@@ -151,6 +151,8 @@ the spoken line, in order, so each appears as it is said.
 quotes someone.
 - outro: closes every video. `text` is the closing line the viewer reads; its `say` is the \
 spoken outro, at most 14 words: a reason to comment or follow, tied to the topic.
+- object3d, depth, kinetic and glass are the rich scenes of the cinematic look. Use them only \
+when a "Look: cinematic" note follows below; otherwise never.
 Pictograms (`icon`): each stands for something; pick the one that means what the scene is \
 about, use '' when none fits, never a filler, and never the same icon in two scenes in a row. \
 Questions and calls to comment use "comment" or "question" (the outro always gets "comment"). \
@@ -193,6 +195,26 @@ EXPLAINER_WRITER_SYSTEM = EXPLAINER_WRITER_SYSTEM.replace(
     "{ICON_LIST}", "\n".join(f"- {name}: {meaning}" for name, meaning in ICON_MEANINGS.items()) + "\n"
 )
 
+CINEMATIC_NOTE = """
+Look: cinematic
+- This video renders in the cinematic look: a near-black ground with a perspective grid floor, \
+glowing accents in the reference's colours, vignette and grain. Think of a dark 3D motion-graphics \
+explainer about infrastructure, networks, hardware or security. The rich scenes below now fit; use \
+2-3 of them across the video, mixed with the regular library, and still keep every rule above.
+- object3d: a 3D hero drawn with Three.js. `kind` "stack" (2-5 glowing layers bottom to top, each a \
+`label` and short `text`: tiers, versions, protocol layers, a pipeline), "bars" (2-5 3D columns from \
+`series` numbers, a `unit`, a `highlight`), "orbit" (a `center` with 3-5 `nodes` circling it: an \
+ecosystem, dependencies, a platform and its users) or "cards" (2-4 floating cards: products, teams, \
+options). At most 2 object3d scenes per video. Use the data from the stories, never decoration.
+- depth: 2-4 layered planes the camera pushes through, front to back, each with a `label` and \
+`text`: a chain of causes, a sequence of steps, "behind this is this". Deepest layer is the point.
+- kinetic: glowing kinetic type: 1-3 `lines` under 24 characters that land one by one, an optional \
+big `value` (a numeral or a short word under 4 characters, e.g. "5", "3x", "OSI") and a small `label`. \
+A chapter title, a punchline, the single phrase to remember.
+- glass: a glassy HUD panel with a header `label` and 2-4 rows (`nodes`: label is the key, text is \
+the value under 22 characters): a spec sheet, a routing table, a price list, a status readout.
+"""
+
 _EXPLAINER_SCHEMA = {
     "type": "object",
     "properties": {
@@ -220,22 +242,37 @@ _EXPLAINER_SCHEMA = {
 
 def _system_prompt() -> str:
     """The explainer prompt plus the active character's persona (tone only;
-    the avatar image is irrelevant in this style)."""
+    the avatar image is irrelevant in this style), plus the cinematic
+    scene notes when the resolved look (theme or pinned recipe) asks for
+    the cinematic look."""
+    prompt = EXPLAINER_WRITER_SYSTEM
     try:
         from .characters import active
 
         character = active()
     except Exception:  # a missing CHARACTER folder is reported by run_pipeline, not here
         character = None
-    if not (character and character.persona):
-        return EXPLAINER_WRITER_SYSTEM
-    return (
-        EXPLAINER_WRITER_SYSTEM
-        + f"\nNarrator character\n- The narrator is {character.name}: {character.persona.rstrip('. ')}. "
-        "This shapes the tone and word choice of the spoken lines only. Every fact, number and "
-        "claim must still come from the stories, and the word budget, scene rules and caps above "
-        "still apply.\n"
-    )
+    if character and character.persona:
+        prompt += (
+            f"\nNarrator character\n- The narrator is {character.name}: {character.persona.rstrip('. ')}. "
+            "This shapes the tone and word choice of the spoken lines only. Every fact, number and "
+            "claim must still come from the stories, and the word budget, scene rules and caps above "
+            "still apply.\n"
+        )
+    try:
+        from .look import cinematic_requested, look_from_env
+        from .looks import get_preset
+
+        if cinematic_requested():
+            prompt += CINEMATIC_NOTE
+            log.info("Explainer writer: offering the cinematic scenes (the look is cinematic)")
+        preset = get_preset(look_from_env().get("preset") or "")
+        if preset and preset.emphasis:
+            prompt += (f"\nLook preset: {preset.name}\n- {preset.description} Prefer these scene types where "
+                       f"the story supports them: {', '.join(preset.emphasis)}. Every rule above still applies.\n")
+    except Exception as exc:  # noqa: BLE001 - the look never blocks writing
+        log.warning("Could not resolve the look for the writer (%s: %s); writing the paper look", type(exc).__name__, exc)
+    return prompt
 
 
 def _call_writer(user: str) -> dict | None:

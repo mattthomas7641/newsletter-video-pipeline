@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "notes": "Look presets for the explainer style. `look` holds the look fields a preset implies (theme; the recipe is derived as look-<id>), `knobs` the style-recipe knobs applied to the middle scenes (styles/vocabulary.py closed sets), `emphasis` the scene types the writer is asked to prefer, `registry` the HyperFrames registry items the look is built with (installed under hf_template_explainer/compositions, adapted inline in index.html), `thumbnail` a path under newsletter_video/ui/static.",
+  "presets": [
+    {
+      "id": "paper",
+      "name": "Clean paper",
+      "description": "The default editorial look: warm paper, one cobalt accent, serif headlines, dot grid. Exactly today's daily video.",
+      "default": true,
+      "look": {},
+      "knobs": {},
+      "emphasis": [],
+      "registry": [],
+      "thumbnail": "looks/paper.jpg"
+    },
+    {
+      "id": "cinematic-glass",
+      "name": "Cinematic dark glass",
+      "description": "Near-black ground with a drifting mesh-gradient shader, grid floor, glass panels, neon 3D stacks and bars; scenes dissolve and push in slowly.",
+      "look": {"theme": "cinematic"},
+      "knobs": {
+        "look": "cinematic",
+        "transition": "fade",
+        "entrance": "fade-up",
+        "hold": "slow-push",
+        "ease": "inOut",
+        "background": "mesh-gradient",
+        "accent": "#ff7a1a",
+        "palette": ["#ff7a1a", "#ff3d8a", "#8b5cff", "#22d3ee"],
+        "speed": 0.9
+      },
+      "emphasis": ["object3d", "glass", "depth", "kinetic"],
+      "registry": ["mesh-gradient", "grain-overlay", "aurora-drift"],
+      "thumbnail": "looks/cinematic-glass.jpg"
+    },
+    {
+      "id": "depth-cards",
+      "name": "Depth cards",
+      "description": "Dark theme, layered cards the camera pushes through, glassy panels and device frames; scenes slide in from the right with a parallax hold.",
+      "look": {"theme": "dark"},
+      "knobs": {
+        "transition": "push-left",
+        "entrance": "line-slide",
+        "hold": "parallax",
+        "ease": "out",
+        "accent": "#7b96ff",
+        "stagger": 0.1
+      },
+      "emphasis": ["depth", "glass", "device", "diagram"],
+      "registry": ["camera-rig-depth-stack"],
+      "thumbnail": "looks/depth-cards.jpg"
+    },
+    {
+      "id": "data-focus",
+      "name": "Data focus",
+      "description": "Light paper with heavy sans headlines, hard wipes and popping bars: every scene is a number, a chart, a comparison or a 3D bar chart.",
+      "look": {"theme": "light"},
+      "knobs": {
+        "transition": "wipe-down",
+        "entrance": "scale-pop",
+        "ease": "out",
+        "type_treatment": "sans-heavy",
+        "accent": "#1f49d6",
+        "speed": 1.15
+      },
+      "emphasis": ["chart", "stat", "comparison", "object3d"],
+      "registry": ["animated-bar-chart"],
+      "thumbnail": "looks/data-focus.jpg"
+    },
+    {
+      "id": "glow-type",
+      "name": "Glow type",
+      "description": "Cinematic ground with magenta and cyan neon, letters stepping in, caps everywhere, a pulse on the hold: kinetic type carries the story.",
+      "look": {"theme": "cinematic"},
+      "knobs": {
+        "look": "cinematic",
+        "transition": "cut",
+        "entrance": "letter-stagger",
+        "type_treatment": "caps",
+        "hold": "pulse",
+        "ease": "out",
+        "accent": "#ff3d8a",
+        "palette": ["#ff3d8a", "#22d3ee", "#8b5cff", "#ff7a1a"],
+        "speed": 1.2,
+        "stagger": 0.04
+      },
+      "emphasis": ["kinetic", "statement", "stat", "glass"],
+      "registry": ["grain-overlay", "caption-neon-glow"],
+      "thumbnail": "looks/glow-type.jpg"
+    },
+    {
+      "id": "quiet-editorial",
+      "name": "Quiet editorial",
+      "description": "The paper look slowed down: cross-fades, soft fade-ups and a floating hold for quotes, timelines and considered statements.",
+      "look": {"theme": "light"},
+      "knobs": {
+        "transition": "fade",
+        "entrance": "fade-up",
+        "hold": "float",
+        "ease": "inOut",
+        "speed": 0.8
+      },
+      "emphasis": ["quote", "statement", "timeline", "list"],
+      "registry": [],
+      "thumbnail": "looks/quiet-editorial.jpg"
+    }
+  ]
+}

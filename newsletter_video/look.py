@@ -26,7 +26,10 @@ from typing import Any, Iterator, Mapping
 
 LOOK_VERSION = 1
 STYLES = ("avatar", "explainer")
-THEMES = ("light", "dark")
+# "cinematic" is the explainer's dark look family (near-black ground, glow
+# accents, grid floor, vignette, grain); a recipe with `look: cinematic`
+# selects it on its own, so the theme field only needs it for an explicit choice.
+THEMES = ("light", "dark", "cinematic")
 BACKGROUNDS = ("gameplay", "none")
 # The style-recipe policy for the explainer style's style library:
 #   auto  - the writer's planner picks recipes (one small model call per video)
@@ -34,12 +37,17 @@ BACKGROUNDS = ("gameplay", "none")
 #   <id>  - one specific recipe applied to the middle scenes, deterministic
 RECIPE_AUTO = "auto"
 RECIPE_NONE = "none"
-FIELDS = ("style", "character", "theme", "background", "recipe")
+# `preset` names a look preset (newsletter_video/looks/presets.json): it
+# resolves into a theme and a recipe (`look-<preset>`) that sit between the
+# environment defaults and a layer's explicit fields, so a per-video look can
+# still override any field. "" means no preset: nothing added.
+FIELDS = ("style", "character", "theme", "background", "recipe", "preset")
 ENV_KEYS = {"style": "VIDEO_STYLE", "character": "CHARACTER", "theme": "VIDEO_THEME",
-            "background": "BACKGROUND_STYLE", "recipe": "STYLE_RECIPE"}
+            "background": "BACKGROUND_STYLE", "recipe": "STYLE_RECIPE", "preset": "LOOK_PRESET"}
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _RECIPE = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
-DEFAULTS = {"style": "explainer", "character": "", "theme": "light", "background": "gameplay", "recipe": RECIPE_AUTO}
+DEFAULTS = {"style": "explainer", "character": "", "theme": "light", "background": "gameplay", "recipe": RECIPE_AUTO,
+            "preset": ""}
 
 
 class LookError(ValueError):
@@ -71,6 +79,14 @@ def _check_field(key: str, value: Any) -> tuple[str | None, str | None]:
         if v in (RECIPE_AUTO, RECIPE_NONE) or _RECIPE.match(v):
             return v, None
         return None, f"look.recipe must be 'auto', 'none' or a recipe id, not {v!r}"
+    if key == "preset":
+        v = v.lower()
+        if v == "":
+            return v, None
+        from .looks import preset_ids
+
+        ids = preset_ids()
+        return (v, None) if v in ids else (None, f"look.preset must be one of {', '.join(ids)}, not {v!r}")
     return None, f"look has an unknown field {key!r}"
 
 
@@ -93,7 +109,7 @@ def validate_look(raw: Any, partial: bool = True) -> dict[str, str | None]:
         if key not in FIELDS:
             errors.append(f"look has an unknown field {key!r}")
             continue
-        if value == "" and key != "character":
+        if value == "" and key not in ("character", "preset"):
             value = None  # an empty choice in a form means "inherit"
         normalised, problem = _check_field(key, value)
         if problem:
@@ -117,7 +133,7 @@ def compact(look: Mapping[str, Any] | None) -> dict[str, Any]:
     """Only the set fields, with the version, for storing in a sidecar."""
     out: dict[str, Any] = {"version": LOOK_VERSION}
     for key in FIELDS:
-        if look and look.get(key) is not None:
+        if look and look.get(key) is not None and not (key == "preset" and look[key] == ""):
             out[key] = look[key]
     return out
 
@@ -130,20 +146,43 @@ def look_from_env(environ: Mapping[str, str] | None = None) -> dict[str, str]:
     raw = {}
     for key, env_key in ENV_KEYS.items():
         value = environ.get(env_key)
-        raw[key] = value if value is not None and (value.strip() or key == "character") else DEFAULTS[key]
-    return validate_look(raw, partial=False)  # type: ignore[return-value]
+        raw[key] = value if value is not None and (value.strip() or key in ("character", "preset")) else DEFAULTS[key]
+    return apply_preset(validate_look(raw, partial=False))  # type: ignore[arg-type]
+
+
+def apply_preset(look: dict[str, Any], explicit: set[str] | None = None) -> dict[str, Any]:
+    """Fold `look.preset` into the look: the preset's theme and recipe fill
+    every field not in `explicit` (the fields a layer set by hand). With no
+    preset the look is returned untouched."""
+    pid = look.get("preset") or ""
+    if not pid:
+        return look
+    from .looks import get_preset
+
+    preset = get_preset(pid)
+    if preset is None:
+        return look
+    for key, value in preset.look_fields().items():
+        if key not in (explicit or set()):
+            look[key] = value
+    return look
 
 
 def resolve_look(*layers: Mapping[str, Any] | None, environ: Mapping[str, str] | None = None) -> dict[str, str]:
-    """Default (environment) < each layer in order; a layer's unset fields
-    inherit. Every layer is validated."""
+    """Default (environment) < preset < each layer in order; a layer's unset
+    fields inherit. A preset named by the environment or any layer supplies
+    its theme and recipe wherever no layer set them by hand, so a per-video
+    look can still override any field. Every layer is validated."""
     resolved: dict[str, Any] = dict(look_from_env(environ))
+    explicit: set[str] = set()
     for layer in layers:
         clean = validate_look(layer, partial=True)
         for key in FIELDS:
             if clean[key] is not None:
                 resolved[key] = clean[key]
-    return resolved
+                if key != "preset":
+                    explicit.add(key)
+    return apply_preset(resolved, explicit)
 
 
 def look_env(look: Mapping[str, Any]) -> dict[str, str]:
@@ -173,9 +212,39 @@ def applied(look: Mapping[str, Any] | None) -> Iterator[dict[str, str]]:
                 os.environ[key] = value
 
 
+def cinematic_requested(look: Mapping[str, Any] | None = None, environ: Mapping[str, str] | None = None) -> bool:
+    """Whether the look (or, with none given, the environment) asks for the
+    cinematic look: the theme is 'cinematic', or the recipe policy names a
+    recipe whose knobs carry `look: cinematic`. The writer uses this to
+    offer the rich scene types; a missing library or recipe means False."""
+    try:
+        resolved = dict(look) if look else look_from_env(environ)
+    except LookError:
+        return False
+    if resolved.get("style") == "avatar":
+        return False
+    if resolved.get("theme") == "cinematic":
+        return True
+    recipe = str(resolved.get("recipe") or RECIPE_AUTO)
+    if recipe in (RECIPE_AUTO, RECIPE_NONE):
+        return False
+    try:
+        from .styles.library import open_library
+        from .styles.recipes import builtin_recipes
+
+        lib = open_library()
+        recipes = lib.all_recipes() if lib is not None else builtin_recipes()
+    except Exception:  # noqa: BLE001 - a broken library never blocks writing
+        return False
+    r = recipes.get(recipe)
+    return bool(r and r.cinematic)
+
+
 def describe(look: Mapping[str, Any]) -> str:
     style = look.get("style", "?")
     bits = [style]
+    if look.get("preset"):
+        bits.append(f"preset {look['preset']}")
     bits.append(f"narrator {look['character']}" if look.get("character") else "default narrator")
     if style == "avatar":
         bits.append(f"{look.get('background', 'gameplay')} background")

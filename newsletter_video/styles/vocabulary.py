@@ -64,7 +64,20 @@ BACKGROUNDS: dict[str, str] = {
     "accent-field": "the scene sits on a full-bleed accent field with inverted ink",
     "dark-panel": "a dark panel behind the hero on the light ground (or vice versa)",
     "gradient-wash": "a soft two-stop wash in the accent hue",
+    "mesh-gradient": "the registry's mesh-gradient shader drifting behind the scene (cinematic look; WebGPU)",
 }
+
+# --- look families: the whole-video ground a recipe asks for --------------------------
+# A recipe learned from a dark, glowing, 3D-looking reference carries
+# `look: cinematic`; selecting it switches the video to the cinematic theme
+# (near-black ground, perspective grid floor, glow accents from the
+# reference's palette, vignette and grain) and unlocks the rich scene types
+# (object3d, depth, kinetic, glass). "default" is the paper look.
+LOOKS: dict[str, str] = {
+    "default": "the template's own paper look (light or dark theme as configured)",
+    "cinematic": "a dark cinematic ground with glow accents, a perspective grid, vignette and grain; 3D and glass scenes fit",
+}
+MAX_PALETTE = 4  # glow colours a recipe may carry
 
 # --- easing families --------------------------------------------------------------
 EASES: dict[str, str] = {
@@ -88,7 +101,7 @@ FEEL_TAGS: tuple[str, ...] = (
     "voice-synced", "looping", "count-up", "line-draw", "mask-reveal", "parallax", "camera-move",
     "zoom", "split-screen", "grid", "card-stack", "full-bleed-word", "lower-third", "sticker",
     "emoji", "device-mockup", "terminal", "code", "map", "timeline", "list", "comparison",
-    "quote", "stat", "diagram", "music-only", "narrated",
+    "quote", "stat", "diagram", "music-only", "narrated", "glow", "cinematic", "glass", "wireframe",
 )
 
 FONT_CLASSES: tuple[str, ...] = ("serif", "sans-grotesk", "sans-geometric", "sans-humanist", "mono", "display", "script", "mixed")
@@ -96,7 +109,10 @@ CASES: tuple[str, ...] = ("mixed", "upper", "lower", "title")
 LAYOUTS: tuple[str, ...] = ("centered-stack", "left-column", "split-halves", "grid", "full-bleed-word", "card", "lower-third", "scattered")
 
 SCENE_TYPES: tuple[str, ...] = ("title", "statement", "stat", "comparison", "list", "timeline", "quote", "chart",
-                                "diagram", "device", "outro")
+                                "diagram", "device", "object3d", "depth", "kinetic", "glass", "outro")
+# The rich scene types the cinematic look unlocks, and what a reference must
+# show for each to be a good fit (see recipes.cinematic_fits).
+RICH_SCENE_TYPES: tuple[str, ...] = ("object3d", "depth", "kinetic", "glass")
 
 # Search synonyms: a query word on the left matches any tag on the right.
 SYNONYMS: dict[str, tuple[str, ...]] = {
@@ -148,13 +164,18 @@ SYNONYMS: dict[str, tuple[str, ...]] = {
     "device": ("device-mockup",),
     "editorial": ("editorial", "serif"),
     "serif": ("serif",),
+    "cinematic": ("cinematic", "dark", "glow", "3d"),
+    "neon": ("neon", "glow", "cinematic"),
+    "3d": ("3d", "isometric", "cinematic"),
+    "glow": ("glow", "neon"),
+    "glass": ("glass", "cinematic"),
 }
 
 
 def all_tags() -> frozenset[str]:
     return frozenset(
         set(TRANSITIONS) | set(ENTRANCES) | set(HOLDS) | set(TYPE_TREATMENTS) | set(BACKGROUNDS)
-        | set(EASES) | set(FEEL_TAGS) | set(FONT_CLASSES) | set(LAYOUTS) | set(SCENE_TYPES)
+        | set(EASES) | set(LOOKS) | set(FEEL_TAGS) | set(FONT_CLASSES) | set(LAYOUTS) | set(SCENE_TYPES)
     ) - {"default"}
 
 

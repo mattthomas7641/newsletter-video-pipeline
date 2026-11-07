@@ -31,6 +31,7 @@ class Recipe:
     source: str = "builtin"  # "builtin" or the library reference name
     fidelity: float | None = None  # measured recreation score (0-1) for library recipes
     params: dict[str, Any] = field(default_factory=dict)  # per-knob allowed values / ranges for the planner
+    fits: list[str] = field(default_factory=list)  # rich scene types (object3d, depth, kinetic, glass) this look suits
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -43,6 +44,14 @@ class Recipe:
     def applies_to(self, scene_type: str) -> bool:
         return "*" in self.scene_types or scene_type in self.scene_types
 
+    @property
+    def look(self) -> str:
+        return str(self.knobs.get("look") or "default")
+
+    @property
+    def cinematic(self) -> bool:
+        return self.look == "cinematic"
+
     def search_text(self) -> str:
         return " ".join([self.id, self.name, self.description, self.when_to_use, " ".join(self.demonstrates),
                          " ".join(self.scene_types), " ".join(f"{k}:{v}" for k, v in self.knobs.items()), self.source]).lower()
@@ -51,14 +60,17 @@ class Recipe:
 KNOB_PARAMS = {
     "transition": list(V.TRANSITIONS), "entrance": list(V.ENTRANCES), "hold": list(V.HOLDS),
     "type_treatment": list(V.TYPE_TREATMENTS), "background": list(V.BACKGROUNDS), "ease": list(V.EASES),
-    "speed": "0.5-2.0", "stagger": "0.02-0.4 s", "accent": "#rrggbb",
+    "look": list(V.LOOKS), "speed": "0.5-2.0", "stagger": "0.02-0.4 s", "accent": "#rrggbb",
+    "palette": f"up to {V.MAX_PALETTE} #rrggbb glow colours (cinematic look)",
 }
+# A fallback glow palette for a dark reference whose strokes were too thin to measure.
+DEFAULT_GLOW_PALETTE = ["#ff7a1a", "#ff3d8a", "#8b5cff", "#22d3ee"]
 
 
 def _r(id: str, name: str, description: str, knobs: dict, demonstrates: list[str], when: str, types: list[str],
-       refs: list[str], gsap: str) -> Recipe:
+       refs: list[str], gsap: str, fits: list[str] | None = None) -> Recipe:
     return Recipe(id=id, name=name, description=description, knobs=knobs, demonstrates=demonstrates, when_to_use=when,
-                  scene_types=types, registry_refs=refs, gsap=gsap, params=KNOB_PARAMS)
+                  scene_types=types, registry_refs=refs, gsap=gsap, params=KNOB_PARAMS, fits=list(fits or []))
 
 
 BUILTIN_RECIPES: list[Recipe] = [
@@ -139,11 +151,29 @@ BUILTIN_RECIPES: list[Recipe] = [
        "a reveal that should feel cinematic rather than cut",
        ["title", "statement", "quote", "stat"], ["focus-blur-resolve"],
        "filter blur(24px)→0 opacity 0→1 power2.out 0.7 s"),
+    _r("cinematic-neon", "Cinematic neon",
+       "The dark cinematic look without a reference: near-black ground, perspective grid floor, neon glow accents, "
+       "vignette and grain; scenes dissolve and drift in; 3D stacks, depth pushes, glowing type and glass panels fit.",
+       {"look": "cinematic", "transition": "fade", "entrance": "fade-up", "hold": "slow-push", "ease": "inOut",
+        "accent": DEFAULT_GLOW_PALETTE[0], "palette": list(DEFAULT_GLOW_PALETTE), "speed": 0.9},
+       ["cinematic", "dark", "glow", "neon", "3d", "fade", "fade-up", "slow-push"],
+       "a story that should feel like a dark 3D motion-graphics explainer (infrastructure, networks, hardware, security)",
+       ["*"], ["camera-dolly-zoom", "lt-neon-border", "yt-screen-warp"],
+       "ground swap via data-theme; glow = box/drop shadows in the accent; Three.js stack rotates from time (hf-seek)",
+       fits=list(V.RICH_SCENE_TYPES)),
 ]
 
 
 def builtin_recipes() -> dict[str, Recipe]:
-    return {r.id: r for r in BUILTIN_RECIPES}
+    """The hand-written presets above plus one recipe per look preset
+    (newsletter_video/looks/presets.json), so a preset's knobs travel
+    through the same recipe policy as everything else."""
+    out = {r.id: r for r in BUILTIN_RECIPES}
+    from ..looks import preset_recipes
+
+    for r in preset_recipes():
+        out.setdefault(r.id, r)
+    return out
 
 
 # --- recipes derived from an analysed reference -----------------------------------------

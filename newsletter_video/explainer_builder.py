@@ -55,7 +55,7 @@ VIDEO_STYLES = ("avatar", "explainer")
 DEFAULT_STYLE = "explainer"
 EXPLAINER_MAX_TAIL = 1.0  # hold after the last word: short, the outro keeps animating to the end
 AUDIO_CACHE_DIRNAME = "_audio_cache"
-THEMES = ("light", "dark")
+THEMES = ("light", "dark", "cinematic")
 SCENE_LEAD_SECONDS = 0.2  # a scene lands this long before its first word is spoken
 CAPTION_WORDS = 4  # max words per lower-third chunk
 CAPTION_CHARS = 24  # ...or fewer, if the words are long
@@ -307,8 +307,16 @@ def story_payload(plan: ScenePlan, per_line: list[list[tuple[str, float]]], spee
             entry["cues"] = cue_times([n["label"] + " " + n["text"] for n in f["nodes"]], words, start, end)
         elif scene.type == "device":
             entry["cues"] = cue_times(f["lines"], words, start, end)
+        elif scene.type == "object3d":
+            names = [p["label"] for p in f["series"]] if f.get("kind") == "bars" else [n["label"] + " " + n["text"] for n in f["nodes"]]
+            entry["cues"] = cue_times(names, words, start, end)
+        elif scene.type in ("depth", "glass"):
+            entry["cues"] = cue_times([n["label"] + " " + n["text"] for n in f["nodes"]], words, start, end)
+        elif scene.type == "kinetic":
+            entry["cues"] = cue_times(f["lines"], words, start, end)
         scenes.append(entry)
 
+    theme, palette = resolve_theme(plan, theme)
     all_words = [(w, t) for words in per_line for w, t in words]
     chunks = caption_chunks(all_words)
     captions = []
@@ -320,7 +328,31 @@ def story_payload(plan: ScenePlan, per_line: list[list[tuple[str, float]]], spee
             "start": chunk[0][1],
             "end": round(min(nxt, speech_duration), 3),
         })
-    return {"theme": theme, "kicker": kicker, "duration": duration, "scenes": scenes, "captions": captions}
+    out = {"theme": theme, "kicker": kicker, "duration": duration, "scenes": scenes, "captions": captions}
+    if palette:
+        out["palette"] = palette
+    return out
+
+
+def resolve_theme(plan: ScenePlan, theme: str) -> tuple[str, list[str]]:
+    """The whole-video theme and glow palette. A recipe is applied per
+    scene, but a look is a ground for the whole video: when any scene's
+    style carries `look: cinematic` the theme becomes "cinematic" and the
+    first such palette (else the accent) is the video's glow palette.
+    Without any cinematic style the theme is exactly what was asked."""
+    palette: list[str] = []
+    cinematic = theme == "cinematic"
+    for scene in plan.scenes:
+        st = scene.fields.get("style")
+        if not isinstance(st, dict):
+            continue
+        if st.get("look") == "cinematic":
+            cinematic = True
+        if not palette and st.get("palette"):
+            palette = [c for c in st["palette"] if isinstance(c, str)]
+        elif not palette and st.get("look") == "cinematic" and st.get("accent"):
+            palette = [st["accent"]]
+    return ("cinematic" if cinematic else theme), palette
 
 
 # --- rendering ------------------------------------------------------------------
