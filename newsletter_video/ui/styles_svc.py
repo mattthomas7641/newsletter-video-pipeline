@@ -107,7 +107,14 @@ class StyleService:
 
             builtin = [self._recipe_json(r) for r in builtin_recipes().values()]
         values = self.store.read()["values"]
-        return {"enabled": enabled, "root": str(self.root()) if enabled else None, "references": refs,
+        root = self.root()
+        shown = None
+        if root is not None:
+            try:
+                shown = str(root.resolve().relative_to(self.paths.root.resolve()))
+            except ValueError:
+                shown = str(root)
+        return {"enabled": enabled, "root": shown, "references": refs,
                 "builtin_recipes": builtin, "policy": values.get("STYLE_RECIPE", "auto"),
                 "library_setting": values.get("STYLE_LIBRARY", "style_library"),
                 "keys": {"ANTHROPIC_API_KEY": self.store.secret_presence().get("ANTHROPIC_API_KEY", False)},

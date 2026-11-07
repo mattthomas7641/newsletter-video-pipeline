@@ -12,10 +12,42 @@ export const state = {
   log: { jobId: null, text: "", next: 0 },
   setup: null,
   videos: null,
+  plans: null, // {plans: [...], recipes: [...]}
+  plan: null, // the plan being reviewed: {ref, kind, videos: [...]}
+  planRef: null,
   saving: false,
   saveError: null,
   justSaved: false,
 };
+
+// ---- the look as the panel's settings describe it (for run overrides) ----
+// A plan or preview started with unsaved Look-page changes uses them as run
+// overrides, so what you see on screen is what gets planned.
+const LOOK_KEYS = { VIDEO_STYLE: "style", CHARACTER: "character", VIDEO_THEME: "theme", BACKGROUND_STYLE: "background", STYLE_RECIPE: "recipe" };
+export function draftLook() {
+  const out = {};
+  for (const [env, field] of Object.entries(LOOK_KEYS)) if (env in state.draft) out[field] = state.draft[env];
+  return out;
+}
+
+export async function loadPlans() {
+  state.plans = await api.get("/api/plans");
+  notify();
+  return state.plans;
+}
+
+export async function loadPlan(ref) {
+  if (!ref) { state.plan = null; state.planRef = null; notify(); return null; }
+  try {
+    state.plan = await api.get(`/api/plans/${encodeURIComponent(ref)}`);
+    state.planRef = ref;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) { state.plan = null; state.planRef = null; }
+    else throw err;
+  }
+  notify();
+  return state.plan;
+}
 
 export function subscribe(fn) {
   listeners.add(fn);

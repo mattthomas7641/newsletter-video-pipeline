@@ -1,26 +1,18 @@
 import { api, ApiError } from "../api.js";
 import { h, icon, spinner, formatDuration, formatBytes, formatClock, formatDay, plural } from "../dom.js";
 import { toast } from "../components.js";
-import { state, subscribe, value, isDirty, refreshRuns, isRunning } from "../store.js";
+import { state, subscribe, value, isDirty, refreshRuns, isRunning, draftLook, loadPlans, loadPlan } from "../store.js";
+import { confirmDialog, mountPlanPanel, lookChips, formatDate } from "./plan.js";
 
 const FINISHED_VISIBLE_MS = 6 * 60 * 60 * 1000;
 const DISMISS_KEY = "bytesize.dismissedRun";
 const readDismissed = () => { try { return localStorage.getItem(DISMISS_KEY); } catch { return null; } };
 const writeDismissed = (id) => { try { localStorage.setItem(DISMISS_KEY, id); } catch { /* storage unavailable */ } };
 
-function confirmDialog({ title, body, confirmLabel, tone = "primary" }) {
-  return new Promise((resolve) => {
-    const dialog = h("dialog", { "aria-labelledby": "dlg-title" },
-      h("form", { method: "dialog" },
-        h("h2", { id: "dlg-title", text: title }), body,
-        h("div", { class: "actions" },
-          h("button", { class: "btn quiet", value: "cancel", type: "submit" }, "Cancel"),
-          h("button", { class: `btn ${tone}`, value: "ok", type: "submit" }, confirmLabel))));
-    dialog.addEventListener("close", () => { resolve(dialog.returnValue === "ok"); dialog.remove(); });
-    document.body.append(dialog);
-    dialog.showModal();
-  });
-}
+const KIND_TITLES = {
+  plan: "Planning", rewrite: "Rewriting a script", preview: "Preview", render: "Final render",
+  batch: "Today's batch", test: "Test video",
+};
 
 export function mountHome(root, ctx) {
   const cleanup = [];
@@ -28,27 +20,28 @@ export function mountHome(root, ctx) {
   let todayKey = "";
   let resultKey = "";
   let startError = null;
-  let starting = null; // "test" | "batch" while the request is in flight
+  let starting = null; // "plan" | "test" | "batch" while the request is in flight
   let detailsOpen = false;
 
   // ---- header ----
   const lede = h("p", { class: "lede" });
   const head = h("header", { class: "page-head" }, h("div", {}, h("h1", { text: "Studio" }), lede));
 
-  // ---- make panel ----
-  const testButton = h("button", { class: "btn primary", type: "button", onClick: startTest }, icon("play", "fill"), "Make a test video");
-  const batchButton = h("button", { class: "btn", type: "button", onClick: startBatch }, "Run today's batch…");
-  const summary = h("div", { class: "summary", "aria-label": "Settings used for the test video" });
-  const unsavedNote = h("p", { class: "small faint", hidden: true, text: "Includes your unsaved changes." });
-  const batchFacts = h("p", { class: "small faint" });
+  // ---- start panel ----
+  const planButton = h("button", { class: "btn primary", type: "button", onClick: () => startPlan(false) }, icon("plus", "fill"), "Plan today's videos");
+  const testButton = h("button", { class: "btn", type: "button", onClick: () => startPlan(true) }, "Plan a test video");
+  const batchButton = h("button", { class: "btn-link", type: "button", onClick: startBatch }, "Run the full daily job now…");
+  const summary = h("div", { class: "summary", "aria-label": "Default look for new plans" });
+  const unsavedNote = h("p", { class: "small faint", hidden: true, text: "Includes your unsaved Look changes." });
+  const planFacts = h("p", { class: "small faint" });
   const startErrorHost = h("div", { class: "section" });
-  const make = h("section", { class: "panel make", "aria-label": "Start a run" },
-    h("div", {}, h("h2", { text: "Test video" }),
-      h("p", { text: "Makes one video with the choices below so you can check how it looks and sounds. It is never uploaded and never counts as a story you have covered." }),
-      summary, h("span", { class: "spacer" }), testButton, unsavedNote),
-    h("div", {}, h("h2", { text: "Today's batch" }),
-      h("p", { text: "Runs the full daily job right now with your saved settings, exactly as the scheduled run would." }),
-      batchFacts, h("span", { class: "spacer" }), batchButton));
+  const make = h("section", { class: "panel make", "aria-label": "Start" },
+    h("div", {}, h("h2", { text: "Today's plan" }),
+      h("p", { text: "Picks the stories and writes the scripts, then stops. Nothing is voiced or rendered until you say so, so you can check each video's look first." }),
+      summary, unsavedNote, h("span", { class: "spacer" }), planFacts, h("div", { class: "run-actions" }, planButton, batchButton)),
+    h("div", {}, h("h2", { text: "Test plan" }),
+      h("p", { text: "One throwaway video to try a look on. It is never uploaded and never counts as a story you have covered." }),
+      h("span", { class: "spacer" }), h("p", { class: "small faint", text: "One writer call, about 3 cents." }), testButton));
 
   // ---- run panel ----
   const runTitle = h("h2", { tabindex: -1 });
@@ -69,6 +62,9 @@ export function mountHome(root, ctx) {
     h("div", { class: "run-head" }, runTitle, runChip, runElapsed, dismissButton), runBody);
   runTitle.id = "run-title";
 
+  // ---- plan panel ----
+  const planHost = h("div");
+
   // ---- today ----
   const todayHost = h("div");
   const todayTitle = h("h2", { text: "Today" });
@@ -77,18 +73,26 @@ export function mountHome(root, ctx) {
     h("div", { class: "today-head" }, todayTitle, todayMeta), todayHost);
   todayTitle.id = "today-h";
 
-  root.append(head, make, startErrorHost, run, today);
+  root.append(head, make, startErrorHost, run, planHost, today);
+  onCleanup(mountPlanPanel(planHost, { onJobStarted: () => { runTitle.focus(); run.scrollIntoView({ block: "nearest", behavior: "smooth" }); } }));
 
   // ---- actions ----
-  function draftOverrides() { return { ...state.draft }; }
-
-  async function startTest() {
+  async function startPlan(test) {
     if (starting || isRunning()) return;
     startError = null;
-    starting = "test";
+    starting = test ? "test" : "plan";
     sync();
     try {
-      await api.post("/api/runs", { kind: "test", overrides: draftOverrides() });
+      const body = { ref: test ? null : todayIso(), overrides: draftLook() };
+      if (!test && state.plan && state.plan.ref === todayIso() && !state.plan.is_test) {
+        const ok = await confirmDialog({
+          title: "Plan today again?",
+          body: h("p", { class: "muted", text: "Today already has a plan. Planning again replaces it with new story picks and scripts (one writer call). Videos already rendered are kept." }),
+          confirmLabel: "Plan again",
+        });
+        if (!ok) return;
+      }
+      await api.post("/api/plans", body);
       detailsOpen = false;
       await refreshRuns();
       runTitle.focus();
@@ -108,15 +112,16 @@ export function mountHome(root, ctx) {
     const uploads = state.settings.values.YOUTUBE_UPLOAD === "1";
     const privacy = state.settings.values.YOUTUBE_PRIVACY;
     const ok = await confirmDialog({
-      title: "Run today's batch now?",
+      title: "Run the full daily job now?",
       body: h("div", { class: "stack" },
+        h("p", { class: "muted", text: "This is the unattended 7:00 AM job: it plans, voices and renders everything in one go, with no review step." }),
         h("ul", {},
-          h("li", { text: `Makes ${plural(n, "video")}. This can take a long while, about ${approx(n)}.` }),
+          h("li", { text: `Makes ${plural(n, "video")} at full quality. About ${approx(n)}.` }),
           h("li", { text: uploads ? `Uploads them to YouTube as ${privacy}.` : "Doesn't upload them to YouTube." }),
-          h("li", { text: "Uses your saved settings." })),
+          h("li", { text: "Uses your saved settings and ignores any plan on this page." })),
         isDirty() ? h("p", { class: "help", text: "You have unsaved changes. They are not included. Save them first if you want them used." }) : null,
         uploads ? h("p", { class: "help", text: "This is the real thing: it posts to your channel." }) : null),
-      confirmLabel: "Run batch",
+      confirmLabel: "Run daily job",
       tone: uploads ? "danger" : "primary",
     });
     if (!ok) return;
@@ -140,11 +145,11 @@ export function mountHome(root, ctx) {
     const latest = state.runs.latest;
     if (!latest || latest.state !== "running") return;
     const ok = await confirmDialog({
-      title: "Stop this run?",
-      body: h("p", { class: "muted", text: latest.kind === "test"
-        ? "The test video won't be finished. Nothing else is affected."
-        : "Videos already made are kept. Anything not yet made is skipped, and the next run will pick up from there." }),
-      confirmLabel: "Stop run", tone: "danger",
+      title: "Stop this job?",
+      body: h("p", { class: "muted", text: latest.kind === "batch" || latest.kind === "render"
+        ? "Videos already made are kept. Anything not yet made is skipped."
+        : "It stops where it is. Nothing else is affected." }),
+      confirmLabel: "Stop", tone: "danger",
     });
     if (!ok) return;
     try { await api.post(`/api/jobs/${latest.id}/cancel`); } catch (err) { toast(err.message, "bad"); }
@@ -172,28 +177,20 @@ export function mountHome(root, ctx) {
 
   function syncMake() {
     const busy = isRunning() || starting;
-    testButton.disabled = Boolean(busy);
-    batchButton.disabled = Boolean(busy);
-    testButton.setAttribute("aria-busy", starting === "test" ? "true" : "false");
-    testButton.replaceChildren(starting === "test" ? spinner() : icon("play", "fill"), "Make a test video");
-    batchButton.title = busy ? "A run is already in progress" : "";
-    testButton.title = busy ? "A run is already in progress" : "";
-
-    const style = value("VIDEO_STYLE");
-    const chosen = state.characters.find((c) => c.slug === value("CHARACTER"));
-    const chips = [h("span", { class: "chip", text: style === "avatar" ? "Avatar style" : "Explainer style" })];
-    chips.push(h("span", { class: "chip", text: `${chosen ? chosen.name : "Default"} narrator` }));
-    chips.push(h("span", { class: "chip", text: style === "avatar"
-      ? (value("BACKGROUND_STYLE") === "gameplay" ? "Gameplay background" : "Plain background")
-      : `${value("VIDEO_THEME") === "dark" ? "Dark" : "Light"} theme` }));
-    summary.replaceChildren(...chips);
-    unsavedNote.hidden = !isDirty();
-
-    const s = state.settings?.values;
-    if (s) {
-      const n = Number(s.VIDEOS_PER_DAY);
-      batchFacts.textContent = `${plural(n, "video")}, ${s.YOUTUBE_UPLOAD === "1" ? `uploaded to YouTube as ${s.YOUTUBE_PRIVACY}` : "not uploaded"}.`;
+    for (const b of [planButton, testButton, batchButton]) {
+      b.disabled = Boolean(busy);
+      b.title = busy ? "A job is already in progress" : "";
     }
+    planButton.setAttribute("aria-busy", starting === "plan" ? "true" : "false");
+    planButton.replaceChildren(starting === "plan" ? spinner() : icon("plus", "fill"), "Plan today's videos");
+    testButton.replaceChildren(...(starting === "test" ? [spinner()] : []), "Plan a test video");
+
+    const resolved = { style: value("VIDEO_STYLE"), character: value("CHARACTER"), theme: value("VIDEO_THEME"),
+      background: value("BACKGROUND_STYLE"), recipe: value("STYLE_RECIPE") };
+    summary.replaceChildren(...lookChips(resolved, {}, state.plans?.recipes));
+    unsavedNote.hidden = !isDirty();
+    const s = state.settings?.values;
+    if (s) planFacts.textContent = `${plural(Number(s.VIDEOS_PER_DAY), "video")}, one writer call (about 3 cents), no rendering.`;
 
     startErrorHost.replaceChildren();
     if (startError) {
@@ -207,8 +204,8 @@ export function mountHome(root, ctx) {
     }
     const sched = state.runs.schedule;
     lede.textContent = sched?.time
-      ? `Make a test video or run today's batch now. The daily job also runs by itself at ${formatClock(sched.time)}.`
-      : "Make a test video or run today's batch now.";
+      ? `Plan, preview and render today's videos one step at a time. The daily job still runs by itself at ${formatClock(sched.time)} with your defaults.`
+      : "Plan, preview and render today's videos one step at a time.";
   }
 
   function syncRun() {
@@ -218,8 +215,7 @@ export function mountHome(root, ctx) {
     run.hidden = !visible;
     if (!visible) return;
 
-    const kindLabel = latest.kind === "test" ? "Test video" : "Today's batch";
-    runTitle.textContent = kindLabel;
+    runTitle.textContent = runLabel(latest);
     const stateInfo = {
       running: ["active", "Running"], done: ["good", "Finished"], failed: ["bad", "Didn't finish"],
       cancelled: ["", "Stopped"], interrupted: ["warn", "Lost track"],
@@ -229,50 +225,64 @@ export function mountHome(root, ctx) {
     dismissButton.hidden = latest.state === "running";
     stopButton.hidden = latest.state !== "running";
 
-    const uploads = latest.kind === "batch" && latest.meta?.uploads;
-    const labels = [...STEP_LABELS.slice(0, 3), uploads ? "Upload" : "Done"];
+    const stepped = latest.kind === "batch" || latest.kind === "test" || latest.kind === "render";
+    steps.hidden = !stepped;
     const failed = latest.state === "failed" || latest.state === "interrupted";
-    const current = latest.state === "done" ? 5 : Math.max(1, latest.step || 1);
-    steps.className = `steps${failed ? " failed" : ""}`;
-    steps.replaceChildren(...labels.map((label, i) => h("li", {
-      dataset: { s: i + 1 < current ? "done" : i + 1 === current ? "current" : "todo" },
-      "aria-current": i + 1 === current && latest.state === "running" ? "step" : null,
-    }, label)));
+    if (stepped) {
+      const uploads = latest.meta?.uploads;
+      const labels = latest.kind === "render" ? ["Plan", "Scripts", "Voice and video", uploads ? "Upload" : "Done"]
+        : [...STEP_LABELS.slice(0, 3), uploads ? "Upload" : "Done"];
+      const current = latest.state === "done" ? 5 : latest.kind === "render" ? Math.max(3, latest.step || 3) : Math.max(1, latest.step || 1);
+      steps.className = `steps${failed ? " failed" : ""}`;
+      steps.replaceChildren(...labels.map((label, i) => h("li", {
+        dataset: { s: i + 1 < current ? "done" : i + 1 === current ? "current" : "todo" },
+        "aria-current": i + 1 === current && latest.state === "running" ? "step" : null,
+      }, label)));
+    }
 
     if (latest.state === "running") {
       stageLine.textContent = latest.stage || "Starting up";
       lastLine.textContent = latest.last_line || "";
     } else if (latest.state === "done") {
-      stageLine.textContent = latest.kind === "test" ? "Your test video is ready." : "The batch finished.";
+      stageLine.textContent = {
+        plan: "The plan is ready. Review it below.", rewrite: "The script was rewritten.", preview: "The preview is ready, in the plan below.",
+        render: "The render finished.", batch: "The batch finished.", test: "Your test video is ready.",
+      }[latest.kind] || "Finished.";
       lastLine.textContent = "";
     } else if (latest.state === "cancelled") {
-      stageLine.textContent = "You stopped this run.";
+      stageLine.textContent = "You stopped this job.";
       lastLine.textContent = "";
     } else {
       stageLine.textContent = latest.state === "interrupted"
-        ? "The panel lost track of this run, for example after a restart. It may have finished or been stopped."
-        : "This run stopped with an error.";
+        ? "The panel lost track of this job, for example after a restart. It may have finished or been stopped."
+        : "This job stopped with an error.";
       lastLine.textContent = "";
     }
 
-    // log: only touch the DOM when the text changed; keep following the tail
     if (state.log.jobId === latest.id && logBox.textContent !== state.log.text) {
       const follow = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight < 40;
       logBox.textContent = state.log.text;
       if (follow) logBox.scrollTop = logBox.scrollHeight;
     }
 
-    // outcome block: rebuilt only when the run's state changes, so a playing video is never reset
     const key = `${latest.id}:${latest.state}:${(latest.videos || []).length}`;
     if (key !== resultKey) {
       resultKey = key;
       resultHost.replaceChildren();
       if (latest.state === "done" && latest.kind === "test") resultHost.append(testResult(latest));
-      else if (latest.state === "done") resultHost.append(batchResult(latest));
+      else if (latest.state === "done" && latest.kind === "batch") resultHost.append(batchResult(latest));
       else if (failed) resultHost.append(failureBlock(latest));
       if (failed) { detailsOpen = true; syncDetails(); }
     }
     tickElapsed();
+  }
+
+  function runLabel(latest) {
+    const base = KIND_TITLES[latest.kind] || "Job";
+    if (latest.kind === "preview") return latest.meta?.tier === "draft" ? "Draft clip" : "Storyboard";
+    if (latest.kind === "render") return `Final render · ${plural(latest.meta?.videos || 0, "video")}`;
+    if (latest.kind === "plan") return latest.meta?.test ? "Planning a test video" : `Planning ${plural(latest.meta?.videos || 0, "video")}`;
+    return base;
   }
 
   function testResult(latest) {
@@ -288,10 +298,7 @@ export function mountHome(root, ctx) {
         h("h3", { text: video.title }),
         h("dl", {}, h("dt", { text: "Size" }), h("dd", { text: formatBytes(video.size) }),
           h("dt", { text: "Saved to" }), h("dd", { class: "mono", text: video.path })),
-        h("p", { class: "help", text: "This is a test. It was not uploaded and sits in a separate folder, so tomorrow's real run is unaffected." }),
-        h("div", { class: "run-actions" },
-          h("a", { class: "btn small", href: "#/videos" }, "See all videos"),
-          h("a", { class: "btn small quiet", href: "#/look" }, "Change the look"))));
+        h("p", { class: "help", text: "This is a test. It was not uploaded and sits in a separate folder, so tomorrow's real run is unaffected." })));
   }
 
   function batchResult(latest) {
@@ -305,7 +312,7 @@ export function mountHome(root, ctx) {
     const raw = lines[lines.length - 1] || "";
     const friendly = explain(raw);
     return h("div", { class: "notice bad", role: "alert" }, icon("alert"), h("div", { class: "notice-body" },
-      h("p", {}, h("strong", { text: friendly || "The run stopped before it finished." })),
+      h("p", {}, h("strong", { text: friendly || "The job stopped before it finished." })),
       raw && friendly !== raw ? h("p", { class: "mono", text: raw }) : null,
       h("p", { class: "help", text: "Open Show details for the full log. Common causes: no internet, Voicebox not running, or a missing API key." })));
   }
@@ -314,6 +321,7 @@ export function mountHome(root, ctx) {
     if (/voicebox/i.test(line)) return "Couldn't reach Voicebox. Open the Voicebox app, wait a few seconds, and try again.";
     if (/No stories scraped/i.test(line)) return "No stories were found in today's newsletters yet. Try again later.";
     if (/api[_ ]?key|authentication|401/i.test(line)) return "The AI writer rejected the API key. Check ANTHROPIC_API_KEY in your .env file.";
+    if (/snapshot wrote|no video/i.test(line)) return "The preview renderer didn't produce frames. Try again; if it keeps failing, see the log.";
     return line;
   }
 
@@ -326,6 +334,20 @@ export function mountHome(root, ctx) {
   const timer = setInterval(tickElapsed, 1000);
   onCleanup(() => clearInterval(timer));
 
+  // ---- plans ----
+  async function refreshPlans(preferRef) {
+    try {
+      const data = await loadPlans();
+      const refs = data.plans.map((p) => p.ref);
+      const latest = state.runs.latest;
+      const fromJob = latest?.meta?.ref && refs.includes(latest.meta.ref) ? latest.meta.ref : null;
+      const ref = preferRef && refs.includes(preferRef) ? preferRef
+        : state.planRef && refs.includes(state.planRef) ? state.planRef
+          : fromJob || (refs.includes(todayIso()) ? todayIso() : refs[0] || null);
+      await loadPlan(ref);
+    } catch { /* shown on the next poll */ }
+  }
+
   // ---- today's videos ----
   async function refreshToday() {
     try {
@@ -337,17 +359,17 @@ export function mountHome(root, ctx) {
   }
 
   function renderToday(day) {
-    todayTitle.textContent = `Today, ${formatDay(day.date)}`;
+    todayTitle.textContent = `Rendered today, ${formatDay(day.date)}`;
     const total = day.videos.length;
     todayMeta.textContent = total ? `${plural(total, "video")}` : "";
     todayHost.replaceChildren();
     if (!total) {
       const sched = state.runs.schedule;
       todayHost.append(h("div", { class: "panel empty" },
-        h("h3", { text: isRunning() ? "Videos will appear here as they finish" : "No videos yet today" }),
-        h("p", { text: isRunning() ? "A run is in progress. This list updates by itself."
-          : sched?.time ? `The scheduled run starts at ${formatClock(sched.time)}. Or make a test video above to see how things look.`
-            : "Make a test video above to see how things look, or run today's batch." })));
+        h("h3", { text: isRunning() ? "Videos will appear here as they finish" : "No videos rendered yet today" }),
+        h("p", { text: isRunning() ? "A job is in progress. This list updates by itself."
+          : sched?.time ? `The scheduled run starts at ${formatClock(sched.time)}. Or plan today's videos above and render the ones you like.`
+            : "Plan today's videos above, then render the ones you like." })));
       return;
     }
     todayHost.append(h("ul", { class: "panel vlist" }, day.videos.map((v) => videoRow(v))));
@@ -373,7 +395,6 @@ export function mountHome(root, ctx) {
       h("div", { class: "acts" }, watch,
         v.youtube ? h("a", { class: "btn small inline", href: v.youtube.url, target: "_blank", rel: "noopener noreferrer" }, "Open on YouTube", icon("link", "sm")) : null),
       player);
-    li.classList.add("withplayer");
     return li;
   }
 
@@ -385,6 +406,7 @@ export function mountHome(root, ctx) {
   sync();
   todayHost.replaceChildren(h("div", { class: "panel empty" }, h("div", { class: "skeleton", "aria-hidden": "true" }), h("p", { class: "help", text: "Loading today's videos" })));
   refreshToday();
+  refreshPlans();
   const todayTimer = setInterval(refreshToday, isRunning() ? 8000 : 20000);
   onCleanup(() => clearInterval(todayTimer));
   let lastRunKey = "";
@@ -392,10 +414,20 @@ export function mountHome(root, ctx) {
     sync();
     const latest = state.runs.latest;
     const key = latest ? `${latest.id}:${latest.state}` : "";
-    if (key !== lastRunKey) { lastRunKey = key; refreshToday(); }
+    if (key !== lastRunKey) {
+      const changed = lastRunKey !== "";
+      lastRunKey = key;
+      refreshToday();
+      if (changed && latest && ["plan", "rewrite", "preview", "render"].includes(latest.kind)) refreshPlans(latest.meta?.ref);
+    }
   }));
 
   return () => { cleanup.forEach((fn) => fn()); root.replaceChildren(); };
+}
+
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function approx(n) {
@@ -404,3 +436,5 @@ function approx(n) {
   const hours = Math.floor(minutes / 60);
   return `${hours} hour${hours > 1 ? "s" : ""}${minutes % 60 ? ` ${minutes % 60} minutes` : ""}`;
 }
+
+export { formatDate };
