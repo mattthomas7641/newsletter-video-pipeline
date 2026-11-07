@@ -367,6 +367,18 @@ def _validate_scene(index: int, raw: Any) -> tuple[Scene | None, list[str], list
         c.repairs.append(f"{c.where}: icon {f['icon']!r} dropped on a question; use 'comment' or 'question' for those")
         f["icon"] = ""
 
+    # An optional `style` (from the style library's planner, or a saved
+    # sidecar) rides along only when it is valid; anything else is dropped
+    # with a note so the scene renders in the default look, never broken.
+    if raw.get("style"):
+        from .styles.style_plan import is_default, validate_style
+
+        style, errs = validate_style(raw.get("style"))
+        if errs:
+            c.repairs.append(f"{c.where}: style dropped ({'; '.join(errs)})")
+        elif style and not is_default(style):
+            f["style"] = style
+
     return Scene(type=kind, say=say, fields=f), c.errors, c.repairs
 
 

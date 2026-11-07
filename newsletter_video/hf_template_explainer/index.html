@@ -215,6 +215,97 @@
         opacity: 0;
         pointer-events: none;
       }
+      /* ---- style-library hooks (scene `style` knobs; inert without them) --- */
+      #wipe-v {
+        position: absolute;
+        top: 0;
+        height: 100%;
+        left: 0;
+        width: 4px;
+        background: var(--accent);
+        opacity: 0;
+        pointer-events: none;
+      }
+      #field {
+        /* a colour band behind the stage only, so chrome and captions keep their ground */
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 248px;
+        height: 1112px;
+        background: var(--accent);
+        opacity: 0;
+        pointer-events: none;
+      }
+      #flash {
+        position: absolute;
+        inset: 0;
+        background: var(--accent);
+        opacity: 0;
+        pointer-events: none;
+      }
+      .st-caps .display,
+      .st-caps .h1,
+      .st-caps .h2,
+      .st-caps .quote .text {
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .st-oversized .display {
+        font-size: 184px;
+        line-height: 0.94;
+        letter-spacing: -0.03em;
+      }
+      .st-oversized .h1 {
+        font-size: 132px;
+        line-height: 1.0;
+        letter-spacing: -0.02em;
+      }
+      .st-sans .display,
+      .st-sans .h1,
+      .st-sans .h2,
+      .st-sans .quote .text {
+        font-family: var(--sans);
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        font-style: normal;
+      }
+      .st-outline .display,
+      .st-outline .h1 {
+        -webkit-text-stroke: 3px var(--ink);
+        color: transparent;
+      }
+      .st-band .em {
+        background: var(--accent);
+        color: var(--bg);
+        padding: 0 0.12em;
+        margin: 0 -0.04em;
+        border-radius: 8px;
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+      }
+      .st-field {
+        --ink: #ffffff;
+        --ink-2: rgba(255, 255, 255, 0.78);
+        --hair: rgba(255, 255, 255, 0.32);
+        --bar: rgba(255, 255, 255, 0.28);
+        --panel: rgba(255, 255, 255, 0.14);
+        --accent-soft: rgba(255, 255, 255, 0.22);
+      }
+      .st-field .label.accent,
+      .st-field .icon.accent path {
+        color: #ffffff;
+        stroke: #ffffff;
+      }
+      .st-panel > .hero {
+        background: var(--screen);
+        --ink: var(--screen-ink);
+        --ink-2: rgba(243, 241, 234, 0.72);
+        --hair: rgba(243, 241, 234, 0.2);
+        --panel: rgba(243, 241, 234, 0.08);
+        border-radius: 32px;
+        padding: 48px;
+      }
       .el {
         display: block;
         width: 100%;
@@ -1192,9 +1283,11 @@
       </div>
       <div id="rule"><div id="progress"></div></div>
 
-      <div id="stage"><div id="wipe"></div></div>
+      <div id="field"></div>
+      <div id="stage"><div id="wipe"></div><div id="wipe-v"></div></div>
 
       <div id="captions" data-layout-allow-caption-zone></div>
+      <div id="flash"></div>
 
       <audio id="voice" src="assets/voice.wav" data-start="0" data-track-index="1"></audio>
     </div>
@@ -1210,6 +1303,46 @@
       const EASE_IN = "power2.in";
       const STAGE_W = 820;
       const STAGE_H = 1064;
+
+      // ---- style-library hooks ---------------------------------------------
+      // A scene may carry a validated `style` (newsletter_video/styles): a
+      // recipe's knobs. Every knob defaults to "default" = exactly what this
+      // composition does on its own, so a plan without styles renders as
+      // before. Knob values are the closed sets in styles/vocabulary.py.
+      const GSAP_EASES = { out: "power3.out", inOut: "power3.inOut", spring: "back.out(1.4)", linear: "none" };
+      const styleOf = (s) => (s && s.style && typeof s.style === "object" ? s.style : null);
+      const knob = (st, k) => (st && st[k] && st[k] !== "default" ? st[k] : null);
+      const TRANSITION_ALIAS = { "wipe-down": "wipe", "push-up": "push", cut: "none" };
+      function sceneTransition(j) {
+        if (j <= 0) return "none";
+        const t = knob(styleOf(story.scenes[j]), "transition");
+        if (!t) return j % 2 ? "wipe" : "push";
+        return TRANSITION_ALIAS[t] || t;
+      }
+      function hexToRgba(hex, alpha) {
+        const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || "");
+        if (!m) return null;
+        return "rgba(" + parseInt(m[1], 16) + ", " + parseInt(m[2], 16) + ", " + parseInt(m[3], 16) + ", " + alpha + ")";
+      }
+      function applyStyleClasses(root, st) {
+        // Build-time (before the fit pass): type treatments, backgrounds and
+        // a per-scene accent are CSS, so the text measures with them on.
+        if (!st) return;
+        const tt = knob(st, "type_treatment");
+        if (tt === "caps") root.classList.add("st-caps");
+        else if (tt === "oversized") root.classList.add("st-oversized");
+        else if (tt === "sans-heavy") root.classList.add("st-sans");
+        else if (tt === "outline") root.classList.add("st-outline");
+        else if (tt === "highlight-band") root.classList.add("st-band");
+        const bg = knob(st, "background");
+        if (bg === "accent-field") root.classList.add("st-field");
+        else if (bg === "dark-panel") root.classList.add("st-panel");
+        if (st.accent) {
+          root.style.setProperty("--accent", st.accent);
+          const soft = hexToRgba(st.accent, 0.14);
+          if (soft) root.style.setProperty("--accent-soft", soft);
+        }
+      }
 
       if (story.theme === "dark") document.documentElement.setAttribute("data-theme", "dark");
       document.getElementById("kicker").textContent = story.kicker || "";
@@ -1786,6 +1919,7 @@
       const built = story.scenes.map((s) => {
         if (s.type === "outro") s.kicker = s.kicker || titleKicker;
         const b = builders[s.type](s);
+        applyStyleClasses(b.root, styleOf(s));
         stage.insertBefore(b.root, wipe);
         return { scene: s, ...b };
       });
@@ -1860,24 +1994,88 @@
           const last = i === n - 1;
           const len = end - start;
           const cues = Array.isArray(s.cues) ? s.cues : [];
-          const transition = i === 0 ? "none" : i % 2 ? "wipe" : "push";
+          const st = styleOf(s);
+          const transition = sceneTransition(i);
+          const isWipe = transition === "wipe" || transition === "wipe-left";
+          // Style knobs for this scene (all inert when there is no style).
+          const speed = st && st.speed > 0 ? Number(st.speed) : 1;
+          const sceneEase = st && GSAP_EASES[st.ease] ? GSAP_EASES[st.ease] : null;
+          const accentS = st && st.accent ? st.accent : accent;
+          const T = TRANSITION / speed;
+          const enterS = (node, from, at, dur, ease) => enter(node, from, at, (dur || ENTER) / speed, ease || sceneEase);
+          const revealS = (node, at, dy, dur) => enterS(node, { y: dy == null ? 36 : dy }, at, dur);
+          const entranceK = knob(st, "entrance");
+          const holdK = knob(st, "hold");
+          const bgK = knob(st, "background");
+          const rowFrom = (dy) => (entranceK === "scale-pop" ? { scale: 0.7, y: 0 } : entranceK === "line-slide" ? { x: -60 } : { y: dy });
 
           // --- entrance of the scene container --------------------------------
           tl.set(b.root, { opacity: 1 }, start);
           tl.set("#counter", { textContent: pad2(i + 1) + " / " + pad2(n) }, start);
           if (transition === "push") {
-            tl.fromTo(b.root, { y: 72 }, { y: 0, duration: TRANSITION, ease: EASE_OUT, immediateRender: false }, start);
+            tl.fromTo(b.root, { y: 72 }, { y: 0, duration: T, ease: sceneEase || EASE_OUT, immediateRender: false }, start);
           } else if (transition === "wipe") {
             // Top-to-bottom reveal behind a travelling accent edge.
-            tl.fromTo(b.root, { clipPath: "inset(0px 0px " + STAGE_H + "px 0px)" }, { clipPath: "inset(0px 0px 0px 0px)", duration: TRANSITION, ease: "power3.inOut", immediateRender: false }, start);
-            tl.set(wipe, { opacity: 1, y: 0 }, start);
-            tl.to(wipe, { y: STAGE_H - 4, duration: TRANSITION, ease: "power3.inOut" }, start);
-            tl.set(wipe, { opacity: 0 }, start + TRANSITION);
+            tl.fromTo(b.root, { clipPath: "inset(0px 0px " + STAGE_H + "px 0px)" }, { clipPath: "inset(0px 0px 0px 0px)", duration: T, ease: "power3.inOut", immediateRender: false }, start);
+            tl.set(wipe, st && st.accent ? { opacity: 1, y: 0, backgroundColor: accentS } : { opacity: 1, y: 0 }, start);
+            tl.to(wipe, { y: STAGE_H - 4, duration: T, ease: "power3.inOut" }, start);
+            tl.set(wipe, { opacity: 0 }, start + T);
+          } else if (transition === "push-left") {
+            tl.fromTo(b.root, { x: 120 }, { x: 0, duration: T, ease: sceneEase || EASE_OUT, immediateRender: false }, start);
+          } else if (transition === "wipe-left") {
+            // Right-to-left reveal behind a vertical accent edge.
+            const wipeV = document.getElementById("wipe-v");
+            tl.fromTo(b.root, { clipPath: "inset(0px 0px 0px " + STAGE_W + "px)" }, { clipPath: "inset(0px 0px 0px 0px)", duration: T, ease: "power3.inOut", immediateRender: false }, start);
+            tl.set(wipeV, { opacity: 1, x: STAGE_W - 4, backgroundColor: accentS }, start);
+            tl.to(wipeV, { x: 0, duration: T, ease: "power3.inOut" }, start);
+            tl.set(wipeV, { opacity: 0 }, start + T);
+          } else if (transition === "zoom-through") {
+            tl.fromTo(b.root, { scale: 1.08, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.6 / speed, ease: sceneEase || EASE_OUT, immediateRender: false }, start);
+          } else if (transition === "mask-circle") {
+            tl.fromTo(b.root, { clipPath: "circle(0% at 50% 50%)" }, { clipPath: "circle(75% at 50% 50%)", duration: T, ease: "power3.inOut", immediateRender: false }, start);
+            tl.set(b.root, { clipPath: "none" }, start + T);
+          } else if (transition === "fade") {
+            tl.fromTo(b.root, { opacity: 0 }, { opacity: 1, duration: 0.4 / speed, ease: "power1.inOut", immediateRender: false }, start);
+          } else if (transition === "flash") {
+            tl.set("#flash", { opacity: 1, backgroundColor: accentS }, start);
+            tl.to("#flash", { opacity: 0, duration: 0.12, ease: "power1.out" }, start);
           }
-          // Slow push-in on the hero layer with the head drifting a touch less (parallax).
-          if (b.hero) tl.fromTo(b.hero, { scale: 1 }, { scale: 1.025, duration: Math.max(len, 0.1), ease: "none", immediateRender: false }, start); // ±10 px: stays inside the safe column
-          const headEl = b.root.querySelector(".head");
-          if (headEl) tl.fromTo(headEl, { y: 0 }, { y: -10, duration: Math.max(len, 0.1), ease: "none", immediateRender: false }, start);
+          // --- backgrounds (a colour band behind the stage, a plain ground) ---
+          if (bgK === "accent-field" || bgK === "gradient-wash") {
+            const field = document.getElementById("field");
+            const fieldStyle = bgK === "accent-field"
+              ? { opacity: 1, background: accentS }
+              : { opacity: 1, background: "linear-gradient(180deg, " + (hexToRgba(accentS, 0.22) || accentS) + ", rgba(0,0,0,0))" };
+            tl.set(field, fieldStyle, start);
+            if (!last) tl.set(field, { opacity: 0 }, end + T);
+          }
+          if (bgK === "solid") {
+            tl.set("#paper", { opacity: 0 }, start);
+            if (!last) tl.set("#paper", { opacity: 1 }, end + T);
+          }
+          // --- hold: what keeps moving while the scene is up ------------------
+          if (!holdK) {
+            // Slow push-in on the hero layer with the head drifting a touch less (parallax).
+            if (b.hero) tl.fromTo(b.hero, { scale: 1 }, { scale: 1.025, duration: Math.max(len, 0.1), ease: "none", immediateRender: false }, start); // ±10 px: stays inside the safe column
+            const headEl = b.root.querySelector(".head");
+            if (headEl) tl.fromTo(headEl, { y: 0 }, { y: -10, duration: Math.max(len, 0.1), ease: "none", immediateRender: false }, start);
+          } else if (holdK === "slow-push") {
+            if (b.hero) tl.fromTo(b.hero, { scale: 1 }, { scale: 1.06, duration: Math.max(len, 0.1), ease: "none", immediateRender: false }, start);
+          } else if (holdK === "parallax") {
+            if (b.hero) tl.fromTo(b.hero, { scale: 1 }, { scale: 1.025, duration: Math.max(len, 0.1), ease: "none", immediateRender: false }, start);
+            const headEl = b.root.querySelector(".head");
+            if (headEl) tl.fromTo(headEl, { y: 0 }, { y: -28, duration: Math.max(len, 0.1), ease: "none", immediateRender: false }, start);
+          } else if (holdK === "float" && b.hero) {
+            for (let t = start + 0.8; t + 2.4 <= end + 0.1; t += 2.4) {
+              tl.to(b.hero, { y: -8, duration: 1.2, ease: "sine.inOut" }, t);
+              tl.to(b.hero, { y: 0, duration: 1.2, ease: "sine.inOut" }, t + 1.2);
+            }
+          } else if (holdK === "pulse" && b.hero) {
+            for (let t = start + 0.8; t + 0.9 <= end + 0.1; t += 0.9) {
+              tl.to(b.hero, { scale: 1.03, duration: 0.45, ease: "sine.inOut" }, t);
+              tl.to(b.hero, { scale: 1, duration: 0.45, ease: "sine.inOut" }, t + 0.45);
+            }
+          }
           // Nothing holds still: every scene gets a re-traced pictogram, a sweep,
           // a flow or a pulse through its hold (see DESIGN.md, motion tokens).
           const loopDraw = (svg, firstAt) => {
@@ -1940,22 +2138,64 @@
             }
           };
 
-          b.parts.forEach((p) => reveal(p.node, start + (transition === "wipe" ? p.at * 0.4 : p.at)));
+          b.parts.forEach((p) => revealS(p.node, start + (isWipe ? p.at * 0.4 : p.at)));
 
           if (b.wordEls && s.type !== "outro") {
-            const step = Math.min(0.055, 0.45 / Math.max(1, b.wordEls.length));
-            b.wordEls.forEach((w, k) => {
-              const t = start + 0.25 + k * step;
-              tl.set(w, { opacity: 0, y: 44 }, 0);
-              tl.set(w, { opacity: 1 }, t);
-              tl.to(w, { y: 0, duration: 0.5, ease: "power4.out" }, t);
-            });
+            const textEl = b.wordEls[0] ? b.wordEls[0].parentElement : null;
+            const waveStep = st && st.stagger ? Number(st.stagger) : Math.min(0.055, 0.45 / Math.max(1, b.wordEls.length));
+            if (!entranceK || entranceK === "word-wave") {
+              b.wordEls.forEach((w, k) => {
+                const t = start + 0.25 + k * waveStep;
+                tl.set(w, { opacity: 0, y: 44 }, 0);
+                tl.set(w, { opacity: 1 }, t);
+                tl.to(w, { y: 0, duration: 0.5 / speed, ease: "power4.out" }, t);
+              });
+            } else if (entranceK === "letter-stagger") {
+              b.wordEls.forEach((w, k) => {
+                const t = start + 0.25 + k * waveStep;
+                tl.set(w, { opacity: 0, y: -40 }, 0);
+                tl.set(w, { opacity: 1 }, t);
+                tl.to(w, { y: 0, duration: 0.3 / speed, ease: sceneEase || "power3.out" }, t);
+              });
+            } else if (entranceK === "typewriter") {
+              const per = Math.min(0.12, 0.9 / Math.max(1, b.wordEls.length)) / speed;
+              b.wordEls.forEach((w, k) => {
+                tl.set(w, { opacity: 0 }, 0);
+                tl.set(w, { opacity: 1 }, start + 0.25 + k * per);
+              });
+            } else if (textEl) {
+              // Whole-block entrances: the words are in place, the block moves.
+              const at = start + 0.25;
+              if (entranceK === "line-slide") enterS(textEl, { x: -60 }, at, 0.5);
+              else if (entranceK === "scale-pop") enterS(textEl, { scale: 0.6, y: 0 }, at, 0.45, sceneEase || "back.out(1.4)");
+              else if (entranceK === "fade-up") enterS(textEl, { y: 24 }, at, 0.8, sceneEase || "power2.inOut");
+              else if (entranceK === "blur-in") {
+                tl.set(textEl, { opacity: 0, filter: "blur(24px)" }, 0);
+                tl.to(textEl, { opacity: 1, filter: "blur(0px)", duration: 0.7 / speed, ease: sceneEase || "power2.out" }, at);
+              } else if (entranceK === "mask-reveal") {
+                tl.set(textEl, { clipPath: "inset(0px 100% 0px 0px)" }, 0);
+                tl.to(textEl, { clipPath: "inset(0px 0% 0px 0px)", duration: 0.6 / speed, ease: sceneEase || "power3.inOut" }, at);
+              }
+            }
           }
           if (b.ic && s.type !== "outro") loopDraw(b.ic, start + 0.35);
 
           if (s.type === "statement" && b.em) {
             const at = s.emphasisAt != null ? Math.max(s.emphasisAt, start + 0.5) : start + 0.9;
-            tl.fromTo(b.em, { color: ink }, { color: accent, duration: 0.35, ease: "power2.out", immediateRender: false }, at);
+            if (knob(st, "type_treatment") === "highlight-band") {
+              const bgColor = css.getPropertyValue("--bg").trim();
+              tl.set(b.em, { backgroundColor: "rgba(0,0,0,0)", color: ink }, 0);
+              tl.to(b.em, { backgroundColor: accentS, color: bgColor, duration: 0.35, ease: "power2.out" }, at);
+            } else if (bgK === "accent-field") {
+              tl.fromTo(b.em, { color: "#ffffff" }, { color: css.getPropertyValue("--bg").trim(), duration: 0.35, ease: "power2.out", immediateRender: false }, at);
+            } else {
+              tl.fromTo(b.em, { color: ink }, { color: accentS, duration: 0.35, ease: "power2.out", immediateRender: false }, at);
+            }
+          }
+          if (knob(st, "type_treatment") === "outline") {
+            // The outlined headline fills in once it has landed.
+            const target = b.root.querySelector(".display, .h1");
+            if (target) tl.to(target, { color: ink, duration: 0.5 / speed, ease: "power2.out" }, start + 0.9);
           }
 
           if (s.type === "stat") {
@@ -1983,20 +2223,20 @@
             const at = cueAt(cues, 0, start, start + 0.35);
             const at2 = cueAt(cues, 1, start, at + 0.45);
             b.cols.forEach((c, k) => {
-              enter(c.col, { x: k ? 40 : -40 }, at);
+              enterS(c.col, { x: k ? 40 : -40 }, at);
               const t = k ? at2 : at;
               if (c.disc) tl.fromTo(c.disc, { scale: 0 }, { scale: 1, duration: 0.9, ease: "power3.out", immediateRender: false }, t + 0.1);
               if (c.ping) pingRing(c.ping, t + 1.1);
               if (c.ic) loopDraw(c.ic, t + 0.1);
             });
-            enter(b.root.querySelector(".vs"), {}, at + 0.3, 0.4, "power1.out");
+            enterS(b.root.querySelector(".vs"), {}, at + 0.3, 0.4, "power1.out");
           }
 
           if (s.type === "list") {
             const ats = b.rowEls.map((_, k) => cueAt(cues, k, start, start + 0.4 + k * 0.45));
             b.rowEls.forEach((r, k) => {
               const at = ats[k];
-              reveal(r.row, at, 28, 0.5);
+              enterS(r.row, rowFrom(28), at, 0.5);
               if (r.ic) loopDraw(r.ic, at + 0.05);
               if (k + 1 < ats.length) waitPulse(r.row, at + 0.55, ats[k + 1]);
             });
@@ -2012,7 +2252,7 @@
             const railTop = b.steps.querySelector(".rail").offsetTop;
             b.stepEls.forEach((step, k) => {
               const at = ats[k];
-              reveal(step.node, at, 24, 0.5);
+              enterS(step.node, rowFrom(24), at, 0.5);
               const y = step.node.offsetTop + parseFloat(getComputedStyle(step.dot).top) - 20;
               if (k === 0) tl.set(b.marker, { opacity: 1, y }, at);
               else tl.to(b.marker, { y, duration: Math.min(0.6, Math.max(0.3, at - ats[k - 1] - 0.1)), ease: "power3.inOut" }, at - 0.3);
@@ -2033,15 +2273,15 @@
               tl.to(b.line, { strokeDashoffset: 0, duration: dur, ease: "power2.inOut" }, at);
               tl.to(b.area, { opacity: 1, duration: 0.6, ease: "power1.out" }, at + dur * 0.5);
               b.dots.forEach((d, k) => {
-                enter(d, { scale: 0 }, at + (dur * k) / Math.max(b.dots.length - 1, 1), 0.35);
+                enterS(d, { scale: 0 }, at + (dur * k) / Math.max(b.dots.length - 1, 1), 0.35);
               });
-              reveal(b.callout, at + dur - 0.2, 20, 0.5);
+              revealS(b.callout, at + dur - 0.2, 20, 0.5);
               countUp(tl, b.callout, b.spec, at + dur - 0.2, 0.8, "power2.out");
             } else if (b.kind === "dots") {
               let t0 = start + 0.3;
               b.groups.forEach((g, k) => {
                 const at = cueAt(cues, k, start, t0);
-                reveal(g.row, at, 20, 0.5);
+                revealS(g.row, at, 20, 0.5);
                 const dur = Math.min(1.1, 0.25 + g.cells.length * 0.012);
                 g.cells.forEach((c, j) => {
                   tl.fromTo(c, { backgroundColor: bar, scale: 0.6 }, { backgroundColor: g.color.startsWith("var") ? css.getPropertyValue(g.color.slice(4, -1)).trim() : g.color, scale: 1, duration: 0.3, ease: EASE_OUT, immediateRender: false }, at + (dur * j) / Math.max(g.cells.length, 1));
@@ -2052,7 +2292,7 @@
             } else {
               b.items.forEach((it, k) => {
                 const at = cueAt(cues, k, start, start + 0.45 + k * 0.3);
-                reveal(it.row, at, 20, 0.45);
+                enterS(it.row, rowFrom(20), at, 0.45);
                 if (k + 1 < b.items.length) waitPulse(it.row, at + 1.1, cueAt(cues, k + 1, start, start + 0.45 + (k + 1) * 0.3));
                 if (it.axis === "x") {
                   tl.fromTo(it.bar, { scaleX: 0 }, { scaleX: Math.max(0.02, it.ratio), duration: 0.9, ease: "power3.out", immediateRender: false }, at + 0.1);
@@ -2078,19 +2318,19 @@
 
           if (s.type === "diagram") {
             if (b.kind === "hub") {
-              enter(b.center, { scale: 0.6 }, start + 0.3, 0.6);
+              enterS(b.center, { scale: 0.6 }, start + 0.3, 0.6);
               b.nodes.forEach((node, k) => {
                 const at = cueAt(cues, k, start, start + 0.7 + k * 0.35);
                 drawable(b.connectors[k]);
                 tl.to(b.connectors[k], { strokeDashoffset: 0, duration: 0.45, ease: "power2.out" }, at - 0.2);
-                enter(node, { scale: 0.8 }, at, 0.5);
+                enterS(node, { scale: 0.8 }, at, 0.5);
                 dashFlow(b.connectors[k], at + 0.3);
                 if (k + 1 < b.nodes.length) waitPulse(node, at + 0.55, cueAt(cues, k + 1, start, start + 0.7 + (k + 1) * 0.35) - 0.2);
               });
             } else if (b.kind === "flow") {
               b.nodes.forEach((node, k) => {
                 const at = cueAt(cues, k, start, start + 0.4 + k * 0.6);
-                reveal(node, at, 28, 0.5);
+                enterS(node, rowFrom(28), at, 0.5);
                 if (k + 1 < b.nodes.length) waitPulse(node, at + 0.55, cueAt(cues, k + 1, start, start + 0.4 + (k + 1) * 0.6) - 0.25);
                 if (k) {
                   drawable(b.connectors[k - 1]);
@@ -2105,14 +2345,14 @@
             } else if (b.kind === "stack") {
               b.nodes.forEach((node, k) => {
                 const at = cueAt(cues, k, start, start + 0.4 + k * 0.45);
-                enter(node, { y: 40, scaleY: 0.9 }, at, 0.55);
+                enterS(node, { y: 40, scaleY: 0.9 }, at, 0.55);
                 if (k + 1 < b.nodes.length) waitPulse(node, at + 0.6, cueAt(cues, k + 1, start, start + 0.4 + (k + 1) * 0.45));
               });
               cycleLit(b.nodes, cueAt(cues, b.nodes.length - 1, start, start + 0.4 + (b.nodes.length - 1) * 0.45) + 0.8, 0.8);
             } else {
               b.nodes.forEach((band, k) => {
                 const at = cueAt(cues, k, start, start + 0.4 + k * 0.45);
-                enter(band, { scaleY: 0.6 }, at, 0.55);
+                enterS(band, { scaleY: 0.6 }, at, 0.55);
                 if (k + 1 < b.nodes.length) waitPulse(band, at + 0.6, cueAt(cues, k + 1, start, start + 0.4 + (k + 1) * 0.45));
               });
               cycleLit(b.nodes, cueAt(cues, b.nodes.length - 1, start, start + 0.4 + (b.nodes.length - 1) * 0.45) + 0.8, 0.8);
@@ -2120,7 +2360,7 @@
           }
 
           if (s.type === "device") {
-            enter(b.frame, { y: 48, scale: 0.97 }, start + 0.2, 0.7);
+            enterS(b.frame, { y: 48, scale: 0.97 }, start + 0.2, 0.7);
             b.lineEls.forEach((line, k) => {
               const at = cueAt(cues, k, start, start + 0.8 + k * 0.55);
               if (b.kind === "terminal") {
@@ -2142,7 +2382,7 @@
                 tl.set(caret, { opacity: 0 }, next - 0.05);
               } else {
                 const fromX = b.kind === "chat" ? (k % 2 ? 40 : -40) : 0;
-                enter(line, fromX ? { x: fromX } : { y: 28 }, at, 0.5);
+                enterS(line, fromX ? { x: fromX } : { y: 28 }, at, 0.5);
                 if (k + 1 < b.lineEls.length) waitPulse(line, at + 0.55, cueAt(cues, k + 1, start, start + 0.8 + (k + 1) * 0.55));
                 const meter = line.querySelector(".meter i");
                 if (meter) {
@@ -2183,7 +2423,7 @@
               b.dots.forEach((d, m) => tl.set(d, { opacity: m === j % 3 ? 1 : 0.3, y: m === j % 3 ? -6 : 0 }, t));
             }
             const ctaAt = Math.min(start + 2.6, start + len * 0.55);
-            enter(b.cta, { y: 36 }, ctaAt, 0.6);
+            enterS(b.cta, { y: 36 }, ctaAt, 0.6);
             for (let t = ctaAt + 0.9; t < end - 0.5; t += 1.4) {
               tl.fromTo(b.arrow, { x: 0 }, { x: 14, duration: 0.45, ease: "power2.out", immediateRender: false }, t);
               tl.to(b.arrow, { x: 0, duration: 0.45, ease: "power2.inOut" }, t + 0.45);
@@ -2192,13 +2432,27 @@
 
           // --- exit ----------------------------------------------------------------
           if (!last) {
-            const nextTransition = (i + 1) % 2 ? "wipe" : "push";
+            const nextTransition = sceneTransition(i + 1);
+            const nextSt = styleOf(story.scenes[i + 1]);
+            const nextSpeed = nextSt && nextSt.speed > 0 ? Number(nextSt.speed) : 1;
+            const Tn = TRANSITION / nextSpeed;
             if (nextTransition === "push") {
               tl.to(b.root, { opacity: 0, y: -56, duration: EXIT, ease: EASE_IN }, Math.max(start + 0.6, end - EXIT));
+            } else if (nextTransition === "wipe") {
+              tl.fromTo(b.root, { clipPath: "inset(0px 0px 0px 0px)" }, { clipPath: "inset(" + STAGE_H + "px 0px 0px 0px)", duration: Tn, ease: "power3.inOut", immediateRender: false }, end);
+            } else if (nextTransition === "wipe-left") {
+              tl.fromTo(b.root, { clipPath: "inset(0px 0px 0px 0px)" }, { clipPath: "inset(0px " + STAGE_W + "px 0px 0px)", duration: Tn, ease: "power3.inOut", immediateRender: false }, end);
+            } else if (nextTransition === "push-left") {
+              tl.to(b.root, { opacity: 0, x: -120, duration: EXIT, ease: EASE_IN }, Math.max(start + 0.6, end - EXIT));
+            } else if (nextTransition === "zoom-through") {
+              tl.to(b.root, { opacity: 0, scale: 1.12, duration: 0.35, ease: EASE_IN }, Math.max(start + 0.6, end - 0.35));
+            } else if (nextTransition === "fade" || nextTransition === "mask-circle") {
+              tl.to(b.root, { opacity: 0, duration: 0.4, ease: "power1.inOut" }, Math.max(start + 0.6, end - 0.4));
             } else {
-              tl.fromTo(b.root, { clipPath: "inset(0px 0px 0px 0px)" }, { clipPath: "inset(" + STAGE_H + "px 0px 0px 0px)", duration: TRANSITION, ease: "power3.inOut", immediateRender: false }, end);
+              // "none" (a hard cut) and "flash": gone on the next scene's first frame
+              tl.set(b.root, { opacity: 0 }, end);
             }
-            tl.set(b.root, { opacity: 0, y: 0, clipPath: "inset(0px 0px 0px 0px)" }, end + TRANSITION);
+            tl.set(b.root, { opacity: 0, y: 0, x: 0, scale: 1, clipPath: "inset(0px 0px 0px 0px)" }, end + Tn);
           }
         });
 
