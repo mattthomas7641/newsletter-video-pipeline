@@ -85,39 +85,48 @@ It opens `http://127.0.0.1:8765` in your browser (another port is used if that o
 and needs nothing beyond the packages already in `requirements.txt`. Light or dark follows
 your system. Press Ctrl+C in the terminal to stop it; anything already running keeps going.
 
-- **Studio.** Plan first, render last. *Plan today's videos* picks the stories and writes the
-  scripts (one writer call, about 3 cents) and stops: nothing is voiced or rendered. Each
-  planned video then shows its look (style, narrator, theme or background, style recipe),
-  which you can change per video with *Change look*; unset fields follow your defaults.
-  *Preview* captures one frame per scene into a labelled storyboard in about 10-15 s;
-  *Draft clip* renders the whole video at 12 fps, draft quality, silent on estimated timing
-  (or with the saved voice when one exists) in about 30 s; neither costs anything or touches
-  the voice. *Rewrite script…* is a separate, confirmed, paid writer call. *Render all…* /
-  *Render selected…* is the only step that makes real videos: full quality, voiced, with
-  confirmation, under the same lock, watchdog and status bookkeeping as the daily job, and
-  uploading only if uploads are on in Settings. Stories covered since planning are skipped.
-  *Plan a test video* does the same for one throwaway video in `output/_previews/<id>/`,
-  which is never uploaded and never counts as a covered story. *Run the full daily job now…*
-  runs the unattended 7:00 AM job as before (no review step). Only one job at a time.
-  See `docs/previews.md` for the tiers, timings and the look layering rules.
-- **Styles.** Your style library (see [Style library](#style-library-teach-the-look-by-example)):
-  each reference with its contact sheet, tags, notes, measured fidelity and recipes; *Add a
-  reference* uploads a video (checked by content, 300 MB cap, stored under a generated name in
-  `style_library/inbox/`) and analyses it in the background with the cost shown; search and
-  remove; the library on/off switch and the default recipe policy (`STYLE_RECIPE`).
-- **Look and voice.** Pick *Avatar* or *Explainer*. Avatar shows the character gallery and the
-  gameplay/plain background; Explainer shows light/dark. Selecting a character selects their
-  voice, and *Hear voice* plays a short sample through the same code a real run uses. *Add a
-  character* takes a name, a picture (it warns when there is no transparent background),
-  voice recordings to clone (5 to 30 seconds of clean, single-speaker speech each) or an
-  existing Voicebox voice, and an optional personality. Cloning runs in the background.
-- **Settings.** Videos per day, what the scheduled run does (make everything, or plan and
-  ask you: see [Approval mode](#approval-mode)), YouTube upload and privacy, and what happens
-  to videos made by the fallback writer. Changes are only written when you press *Save*, and apply from the next
-  run, including the scheduled one, because they live in `.env`.
-- **Videos.** Test videos and the last two weeks of daily videos, with YouTube links where
-  uploads were recorded. A *Setup check* in Settings shows whether Voicebox, an API key and
-  the YouTube sign-in are present (never their values).
+Three pages. Screenshots are in `docs/screenshots/control-panel/`.
+
+- **Today's videos** (the landing page). Plan first, render last. *Plan today's videos* picks
+  the stories and writes the scripts (one writer call, about 3 cents) and stops: nothing is
+  voiced or rendered. In [approval mode](#approval-mode) the scheduled job leaves the plan
+  here with a *Plan ready: review and render* banner. Each planned video shows its look (style,
+  narrator, theme or background, style recipe), which you can change per video with *Change
+  look*; unset fields follow your defaults. *Storyboard* captures one frame per scene in about
+  10-15 s; *Draft clip* renders the whole video at 12 fps, draft quality, in about 30 s; *Open
+  in Studio* serves the live composition; none of these costs anything or touches the voice.
+  *Rewrite script…* is a separate, confirmed, paid writer call. *Render all…* / *Render
+  selected…* is the only step that makes real videos: full quality, voiced, with confirmation,
+  under the same lock, watchdog and status bookkeeping as the daily job, and uploading only if
+  uploads are on in Settings. Stories covered since planning are skipped. *Run the full daily
+  job now…* runs the unattended 7:00 AM job as before (no review step). Below the plan:
+  today's rendered videos and, folded away, the last two weeks. Only one job at a time.
+- **Look workbench.** One guided flow for trying a look, in three stages that stay on one page,
+  with a rail at the top saying where you are, what to do next, and what this session has spent.
+  1. *References*: drop in a video you like (checked by content, 300 MB cap, stored under a
+     generated name in `style_library/inbox/`, analysed in the background with the cost shown).
+     Each reference shows its contact sheet, tags, notes, measured match and the recipes made
+     from it. Pick one to style the test video by.
+  2. *Test video*: *Make a test video* writes one throwaway video from today's newsletter
+     (one writer call, about 3 cents) with the chosen reference's recipe set on it, so the
+     video stays visibly linked to the reference. It lives in `output/_previews/<id>/`, is never
+     uploaded and never counts as a covered story.
+  3. *Tweak and compare*: the reference's keyframes beside the test video's storyboard, scene
+     by scene, with every look control next to it (recipe, style, narrator, theme or
+     background). Any change is saved to that test video only and re-captures the storyboard by
+     itself (free, about 15 s); *Try another recipe* steps through the library in one click, and
+     earlier looks stay on the page to compare. *Draft clip*, *Draft with voice* and *Open in
+     Studio* are there too. Only *Rewrite script…* (paid) and *Render final…* ask first.
+- **Settings.** The default look and narrator for new videos (*Avatar* or *Explainer*, the
+  character gallery with *Hear voice* and *Add a character*, gameplay/plain background,
+  light/dark), the style library on/off switch and default recipe policy (`STYLE_RECIPE`),
+  videos per day, what the scheduled run does (make everything, or plan and ask you), YouTube
+  upload and privacy, what happens to videos made by the fallback writer, and a *Setup check*
+  showing whether Voicebox, an API key and the YouTube sign-in are present (never their values).
+  Changes are only written when you press *Save*, and apply from the next run, including the
+  scheduled one, because they live in `.env`.
+
+See `docs/previews.md` for the preview tiers, timings and the look layering rules.
 
 **Safety.** The panel listens on `127.0.0.1` only. It will only ever read or write these
 `.env` keys: `CHARACTER`, `VIDEO_STYLE`, `VIDEO_THEME`, `BACKGROUND_STYLE`, `VIDEOS_PER_DAY`,
@@ -411,7 +420,7 @@ By default the scheduled run makes and posts everything on its own. Set `DAILY_M
 after the planning step: it fetches the newsletters, picks the stories (skipping any already
 covered), writes the scripts (one writer call, about 3 cents) into `output/<date>/plan.json`,
 and sends the usual notification ("Daily plan finished: 3 video(s) planned ... waiting for
-your review"). Nothing is voiced, rendered or uploaded. The Studio page then shows *Plan
+your review"). Nothing is voiced, rendered or uploaded. The Today's videos page then shows *Plan
 ready — review and render* until you have previewed, changed looks and pressed *Render all…*
 or *Render selected…* (or run `python -m newsletter_video.render_plan <date> --final`), which
 renders and uploads exactly as the full run would, under the same lock, watchdog and
