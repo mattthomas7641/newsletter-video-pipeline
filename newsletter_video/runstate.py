@@ -16,7 +16,7 @@ from pathlib import Path
 
 STATUS_FILE = "status.json"
 # Files in a day folder that are not a video's sidecar metadata.
-NON_SIDECAR_JSON = {"uploads.json", STATUS_FILE}
+NON_SIDECAR_JSON = {"uploads.json", STATUS_FILE, "plan.json"}  # plan.json: a planned, not yet rendered, day
 _INDEX_RE = re.compile(r"^(\d{2,})_")
 
 

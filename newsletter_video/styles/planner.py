@@ -21,7 +21,7 @@ from typing import Callable
 from . import vision
 from . import vocabulary as V
 from .library import Library, open_library
-from .recipes import Recipe
+from .recipes import Recipe, builtin_recipes
 from .style_plan import STYLE_PLAN_SCHEMA, StylePlan, StylePlanError, is_default, validate_style, validate_style_plan
 
 log = logging.getLogger("newsletter_video")
@@ -197,6 +197,44 @@ def apply_style_plan(plan, style_plan: StylePlan | None) -> int:
                 scene.fields["style"] = checked
                 count += 1
     return count
+
+
+def apply_recipe_policy(plan, policy: str, lib: Library | None = None) -> int:
+    """Re-style a validated ScenePlan in place according to a look's recipe
+    policy, with no model call: "auto" keeps whatever styles the plan
+    already carries, "none" strips them, and a recipe id applies that
+    recipe's knobs to every middle scene it suits (title and outro keep the
+    template's timing). Returns the number of styled scenes afterwards.
+    An unknown recipe id strips styles and logs, never raises: a preview or
+    render must still happen."""
+    policy = (policy or "auto").strip().lower()
+    if policy == "auto":
+        return sum(1 for s in plan.scenes if s.fields.get("style"))
+    for scene in plan.scenes:
+        scene.fields.pop("style", None)
+    if policy == "none":
+        return 0
+    lib = lib if lib is not None else open_library()
+    recipes = lib.all_recipes() if lib is not None else builtin_recipes()
+    recipe = recipes.get(policy)
+    if recipe is None:
+        log.warning("Style recipe %r is not in the library; rendering the default look", policy)
+        return 0
+    count = 0
+    n = len(plan.scenes)
+    for i, scene in enumerate(plan.scenes):
+        if i == 0 or i == n - 1 or not recipe.applies_to(scene.type):
+            continue
+        candidate = {k: v for k, v in recipe.knobs.items() if k in DEFAULT_STYLE_KEYS}
+        candidate["recipe"] = recipe.id
+        style, errs = validate_style(candidate)
+        if style and not errs and not is_default(style):
+            scene.fields["style"] = style
+            count += 1
+    return count
+
+
+DEFAULT_STYLE_KEYS = ("transition", "entrance", "hold", "type_treatment", "background", "ease", "accent", "speed", "stagger")
 
 
 def style_plan_from_file(path, n_scenes: int, lib: Library | None = None) -> StylePlan:

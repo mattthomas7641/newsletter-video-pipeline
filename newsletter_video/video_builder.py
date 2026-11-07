@@ -395,6 +395,19 @@ def _prepare_workdir(work_dir: Path) -> None:
 
 def build_short(script: Script, out_path: Path, audio_path: Path, work_dir: Path,
                 kicker: str, background_seed: str) -> Path:
+    """Renders one script. A script carrying a per-video `look` (look.py)
+    is rendered with that look layered over the .env defaults; a script
+    without one renders exactly as the defaults say, so the unattended
+    daily run is unaffected."""
+    from .look import applied, is_empty, resolve_look
+
+    overrides = getattr(script, "look", None)
+    with applied(None if is_empty(overrides) else resolve_look(overrides)):
+        return _build_short(script, out_path, audio_path, work_dir, kicker, background_seed)
+
+
+def _build_short(script: Script, out_path: Path, audio_path: Path, work_dir: Path,
+                 kicker: str, background_seed: str) -> Path:
     from .explainer_builder import explainer_mode  # VIDEO_STYLE=explainer: no avatar, no footage
 
     if explainer_mode():

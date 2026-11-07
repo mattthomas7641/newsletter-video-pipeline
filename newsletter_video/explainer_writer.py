@@ -330,10 +330,20 @@ def _validated_videos(user: str, n_videos: int) -> list[tuple[dict, ScenePlan]] 
 def _apply_style_library(plan: ScenePlan, title: str) -> None:
     """With a non-empty style library (STYLE_LIBRARY), one planner call per
     video chooses recipes from the owner's references for each scene; the
-    plan is untouched otherwise, and on any failure."""
+    plan is untouched otherwise, and on any failure. STYLE_RECIPE (the
+    look's recipe policy) can switch this off ("none") or pin one recipe
+    instead of asking the planner ("auto", the default)."""
     try:
         from .styles import library_enabled, style_scene_plan
 
+        policy = os.environ.get("STYLE_RECIPE", "auto").strip().lower() or "auto"
+        if policy == "none":
+            return
+        if policy != "auto":
+            from .styles.planner import apply_recipe_policy
+
+            apply_recipe_policy(plan, policy)
+            return
         if library_enabled():
             style_scene_plan(plan, title)
     except Exception as exc:  # noqa: BLE001 - styling never blocks a video

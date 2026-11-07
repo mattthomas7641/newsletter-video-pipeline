@@ -248,7 +248,15 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     d = date.fromisoformat(argv[0]) if argv else date.today()
     load_dotenv(PROJECT_ROOT / ".env")
-    out_dir = OUTPUT_DIR / d.isoformat()
+    return supervised(OUTPUT_DIR / d.isoformat(), lambda: run(d))
+
+
+def supervised(out_dir: Path, work, label: str = "Pipeline") -> int:
+    """Runs `work()` under the pipeline's hardening: the lockfile (one run
+    at a time), the run-level watchdog, status.json bookkeeping and a
+    notification whichever way it ends. Shared by the daily run and by
+    render_plan (the panel's explicit final renders), so both behave the
+    same under failure. Returns the process exit code."""
     started = time.monotonic()
 
     def minutes() -> float:
@@ -277,21 +285,21 @@ def main(argv: list[str] | None = None) -> int:
         ),
     ).start()
     try:
-        run(d)
+        work()
     except ConfigError as exc:
         log.error("%s", exc)
-        notify("Pipeline not started", str(exc))
+        notify(f"{label} not started", str(exc))
         return EXIT_CONFIG
     except Exception as exc:
-        log.exception("Pipeline failed")
+        log.exception("%s failed", label)
         update_run(out_dir, finished=now_iso(), error=f"{type(exc).__name__}: {exc}"[:500])
-        notify("Pipeline failed", f"{type(exc).__name__}: {str(exc)[:400]}\nSo far: {run_summary(out_dir, minutes())}")
+        notify(f"{label} failed", f"{type(exc).__name__}: {str(exc)[:400]}\nSo far: {run_summary(out_dir, minutes())}")
         return 1
     else:
         summary = run_summary(out_dir, minutes())
         update_run(out_dir, finished=now_iso(), error=None)
         failed = any(v.get("status") in ("failed", "upload_failed") for v in load_state(out_dir)["videos"].values())
-        notify("Pipeline finished with problems" if failed else "Pipeline finished", summary, ok=not failed)
+        notify(f"{label} finished with problems" if failed else f"{label} finished", summary, ok=not failed)
         return 0
     finally:
         watchdog.cancel()
