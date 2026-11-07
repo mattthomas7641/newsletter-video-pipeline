@@ -84,13 +84,26 @@ It opens `http://127.0.0.1:8765` in your browser (another port is used if that o
 and needs nothing beyond the packages already in `requirements.txt`. Light or dark follows
 your system. Press Ctrl+C in the terminal to stop it; anything already running keeps going.
 
-- **Studio.** *Make a test video* renders exactly one video with the choices currently on
-  screen, saved or not, and never uploads it. It writes to `output/_previews/<id>/`, a folder
-  the real run's story history, YouTube step and clean-up all ignore, so a test can't be
-  posted by accident or use up a story. Progress and the log stream live, then the video
-  plays inline. *Run today's batch…* asks for confirmation, then runs the real pipeline with
-  your saved settings, as the 7:00 AM job would. Only one run at a time: the panel refuses to
-  start if it, the scheduled job or a terminal is already running one.
+- **Studio.** Plan first, render last. *Plan today's videos* picks the stories and writes the
+  scripts (one writer call, about 3 cents) and stops: nothing is voiced or rendered. Each
+  planned video then shows its look (style, narrator, theme or background, style recipe),
+  which you can change per video with *Change look*; unset fields follow your defaults.
+  *Preview* captures one frame per scene into a labelled storyboard in about 10-15 s;
+  *Draft clip* renders the whole video at 12 fps, draft quality, silent on estimated timing
+  (or with the saved voice when one exists) in about 30 s; neither costs anything or touches
+  the voice. *Rewrite script…* is a separate, confirmed, paid writer call. *Render all…* /
+  *Render selected…* is the only step that makes real videos: full quality, voiced, with
+  confirmation, under the same lock, watchdog and status bookkeeping as the daily job, and
+  uploading only if uploads are on in Settings. Stories covered since planning are skipped.
+  *Plan a test video* does the same for one throwaway video in `output/_previews/<id>/`,
+  which is never uploaded and never counts as a covered story. *Run the full daily job now…*
+  runs the unattended 7:00 AM job as before (no review step). Only one job at a time.
+  See `docs/previews.md` for the tiers, timings and the look layering rules.
+- **Styles.** Your style library (see [Style library](#style-library-teach-the-look-by-example)):
+  each reference with its contact sheet, tags, notes, measured fidelity and recipes; *Add a
+  reference* uploads a video (checked by content, 300 MB cap, stored under a generated name in
+  `style_library/inbox/`) and analyses it in the background with the cost shown; search and
+  remove; the library on/off switch and the default recipe policy (`STYLE_RECIPE`).
 - **Look and voice.** Pick *Avatar* or *Explainer*. Avatar shows the character gallery and the
   gameplay/plain background; Explainer shows light/dark. Selecting a character selects their
   voice, and *Hear voice* plays a short sample through the same code a real run uses. *Add a
@@ -106,7 +119,7 @@ your system. Press Ctrl+C in the terminal to stop it; anything already running k
 
 **Safety.** The panel listens on `127.0.0.1` only. It will only ever read or write these
 `.env` keys: `CHARACTER`, `VIDEO_STYLE`, `VIDEO_THEME`, `BACKGROUND_STYLE`, `VIDEOS_PER_DAY`,
-`YOUTUBE_UPLOAD`, `YOUTUBE_PRIVACY`, `FALLBACK_UPLOAD`. Comments, other lines and the file's
+`YOUTUBE_UPLOAD`, `YOUTUBE_PRIVACY`, `FALLBACK_UPLOAD`, `STYLE_LIBRARY`, `STYLE_RECIPE`. Comments, other lines and the file's
 permissions are left as they were. API keys and tokens are never sent to the browser or
 written to its logs; the panel only says whether one is set. Requests are checked for the
 loopback `Host`, a same-origin `Origin`, and a random per-launch token, so another web page

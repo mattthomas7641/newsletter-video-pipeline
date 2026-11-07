@@ -147,8 +147,11 @@ class PlanService:
         except (OSError, ValueError):
             return {}
         state = {}
+        current = self._fingerprint(folder, vid)
         for tier in TIERS:
             info = data.get(tier)
+            if isinstance(info, dict) and info.get("fingerprint") != current:
+                continue  # made from an earlier script or look: stale, hidden
             if isinstance(info, dict) and (out_dir / str(info.get("file", ""))).is_file():
                 state[tier] = {
                     "url": f"/media/plan/{ref}/{vid}/{info['file']}", "timing": info.get("timing"),
@@ -160,6 +163,18 @@ class PlanService:
                     "look": data.get("look"),
                 }
         return state
+
+    def _fingerprint(self, folder: Path, vid: str) -> str | None:
+        if vid.startswith("v"):
+            data = pm.read_manifest(folder)
+            try:
+                return pm.entry_fingerprint(pm.get_entry(data, vid)) if data else None
+            except pm.ManifestError:
+                return None
+        try:
+            return pm.sidecar_fingerprint(json.loads((folder / f"{vid}.json").read_text()))
+        except (OSError, ValueError):
+            return None
 
     def preview_file(self, ref: str, vid: str, rel: str) -> Path | None:
         if not VID.match(vid or "") or not PREVIEW_FILE.match(rel or ""):

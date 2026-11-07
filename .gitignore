@@ -36,3 +36,8 @@ style_library/*/recreation/round*_analysis/
 style_library/*/recreation/_hf_work_recreate/
 style_library/*/recreation/.partial/
 output/_style_eval/
+# Frames and measurements derived from uploaded reference clips stay local too.
+style_library/*/keyframes/
+style_library/*/contact_sheet.jpg
+style_library/*/analysis.json
+style_library/.partial/

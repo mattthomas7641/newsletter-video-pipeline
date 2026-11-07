@@ -69,8 +69,26 @@ def render(folder: Path, only: list[str] | None = None, is_test: bool = False, f
         if unknown:
             raise RuntimeError(f"No such planned video(s): {', '.join(unknown)}")
     wanted = [e for e in wanted if e.get("status") != "rendered"]
+    if not is_test:
+        # The plan may be hours old: the 07:00 job (or an earlier render) may
+        # have covered a story since. Those videos are skipped, never duplicated.
+        from .run_pipeline import _covered_titles
+        from .script_writer import _is_covered, _normalize_title
+
+        covered = [_normalize_title(t) for t in _covered_titles()]
+        still = []
+        for entry in wanted:
+            titles = [str((s or {}).get("title", s)) for s in entry.get("stories", [])]
+            hit = next((t for t in titles if _is_covered(t, covered)), None)
+            if hit:
+                log.warning("Skipping %s (%r): its story %r is already covered by a rendered video", entry["id"],
+                            entry.get("title"), hit)
+                pm.update_entry(folder, entry["id"], status="failed", error=f"Skipped: story already covered ({hit[:80]})")
+                continue
+            still.append(entry)
+        wanted = still
     if not wanted:
-        log.info("Nothing to render: every selected video is already rendered")
+        log.info("Nothing to render: every selected video is already rendered or covered")
         return []
     uploading = os.environ.get("YOUTUBE_UPLOAD") == "1" and not is_test
     validate_config(PROJECT_ROOT, OUTPUT_DIR, TOKEN)
@@ -78,7 +96,12 @@ def render(folder: Path, only: list[str] | None = None, is_test: bool = False, f
 
     scripts = []
     for entry in wanted:
-        script = pm.script_from_entry(entry)
+        try:
+            script = pm.script_from_entry(entry)
+        except (LookError, ValueError) as exc:  # a bad stored look or plan fails this video only
+            log.error("Skipping %s: %s", entry["id"], exc)
+            pm.update_entry(folder, entry["id"], status="failed", error=f"{type(exc).__name__}: {str(exc)[:300]}")
+            continue
         # The entry's own look (partial) rides on the script; the builder
         # layers it over the defaults at render time. A run-level override
         # sits between the two.
@@ -93,6 +116,8 @@ def render(folder: Path, only: list[str] | None = None, is_test: bool = False, f
 
                 apply_recipe_policy(plan, script.look["recipe"])
         scripts.append((entry, script))
+    if not scripts:
+        raise RuntimeError("No planned video could be rendered; see the plan's errors")
     privacy = None
     if not is_test:
         _, privacy = _fallback_policy([s for _, s in scripts], uploading)
