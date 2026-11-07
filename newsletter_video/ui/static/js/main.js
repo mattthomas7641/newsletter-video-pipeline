@@ -5,10 +5,12 @@ import { mountHome } from "./views/home.js";
 import { mountLook } from "./views/look.js";
 import { mountSettings } from "./views/settings.js";
 import { mountVideos } from "./views/videos.js";
+import { mountStyles } from "./views/styles.js";
 
 const ROUTES = {
   "/": { name: "home", title: "Studio", mount: mountHome },
   "/look": { name: "look", title: "Look and voice", mount: mountLook },
+  "/styles": { name: "styles", title: "Styles", mount: mountStyles },
   "/settings": { name: "settings", title: "Settings", mount: mountSettings },
   "/videos": { name: "videos", title: "Videos", mount: mountVideos },
 };
@@ -57,7 +59,8 @@ function renderSideFoot() {
   const latest = state.runs.latest;
   if (isRunning()) {
     kind = "busy";
-    title = latest?.kind === "batch" ? "Daily batch running" : latest?.kind === "test" ? "Test video running" : "A run is in progress";
+    title = { batch: "Daily batch running", test: "Test video running", plan: "Planning", preview: "Preview rendering",
+      render: "Final render running", rewrite: "Rewriting a script" }[latest?.kind] || "A job is in progress";
     text = latest?.stage || "Working";
   } else if (isDirty()) {
     kind = "warn"; title = "Unsaved changes"; text = "Save to use them in the next run.";

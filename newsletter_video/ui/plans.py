@@ -153,6 +153,7 @@ class PlanService:
                 state[tier] = {
                     "url": f"/media/plan/{ref}/{vid}/{info['file']}", "timing": info.get("timing"),
                     "seconds": info.get("seconds"), "at": info.get("at"), "duration": info.get("duration"),
+                    "fps": info.get("fps"), "quality": info.get("quality"), "size": info.get("size"),
                     "frames": [{"label": f.get("label"), "at": f.get("at"), "detail": f.get("detail"),
                                 "url": f"/media/plan/{ref}/{vid}/frames/{f.get('file')}"} for f in info.get("frames", [])]
                     if tier == "stills" else None,
