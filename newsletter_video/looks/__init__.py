@@ -45,6 +45,7 @@ class Preset:
     thumbnail: str = ""
     default: bool = False
     good_for: str = ""  # one line for the panel's library: the stories a preset suits
+    threed: bool = False  # the plan is 3D-ified (threed.py) and the writer is told to prefer 3D scenes
 
     @property
     def recipe_id(self) -> str:
@@ -66,7 +67,7 @@ class Preset:
         return {"id": self.id, "name": self.name, "description": self.description, "default": self.default,
                 "look": dict(self.look), "recipe": self.recipe_id, "knobs": dict(self.knobs), "emphasis": list(self.emphasis),
                 "registry": list(self.registry), "thumbnail": self.thumbnail, "cinematic": self.cinematic,
-                "good_for": self.good_for}
+                "good_for": self.good_for, "threed": self.threed}
 
 
 def _validate(raw: Any) -> Preset:
@@ -90,7 +91,7 @@ def _validate(raw: Any) -> Preset:
         look={k: v for k, v in look.items() if k == "theme"}, knobs={k: v for k, v in (style or {}).items()
                                                                      if k != "recipe" and v not in (None, "", [], "default", 1.0)},
         emphasis=[str(t) for t in raw.get("emphasis") or []], registry=[str(r) for r in raw.get("registry") or []],
-        thumbnail=str(raw.get("thumbnail") or ""), default=bool(raw.get("default")),
+        thumbnail=str(raw.get("thumbnail") or ""), default=bool(raw.get("default")), threed=bool(raw.get("threed")),
         good_for=str(raw.get("good_for") or "")[:160],
     )
 
