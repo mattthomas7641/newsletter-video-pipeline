@@ -28,9 +28,9 @@ function frame(kind) {
   return holder;
 }
 
-/** The default look and narrator. Mounted inside Settings (`embedded`), or
- * as its own page with a header. */
-export function mountLook(root, { embedded = false } = {}) {
+/** The narrators and their voices (and, unless `narratorOnly`, the old style / background / theme
+ * defaults). Mounted inside Settings (`embedded`); the default style itself is set on the Videos page. */
+export function mountLook(root, { embedded = false, narratorOnly = false } = {}) {
   const cleanup = [];
   const onCleanup = (fn) => cleanup.push(fn);
   const sampleUi = new Map(); // slug -> {button, status}
@@ -230,8 +230,9 @@ export function mountLook(root, { embedded = false } = {}) {
     narratorText.textContent = style === "avatar"
       ? "Pick who appears on screen. Their voice comes with them, so there is no separate voice to choose."
       : "Explainer videos don't show a character, but whoever you pick still supplies the voice and writing style.";
-    bgSection.hidden = style !== "avatar";
-    themeSection.hidden = style !== "explainer";
+    bgSection.hidden = narratorOnly || style !== "avatar";
+    themeSection.hidden = narratorOnly || style !== "explainer";
+    styleSection.hidden = narratorOnly;
 
     missingNote.replaceChildren();
     if (state.loaded && selected && !known) {

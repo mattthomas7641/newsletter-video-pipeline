@@ -2,10 +2,11 @@
 // and the explicit actions that cost time or money. The look vocabulary
 // (chips, labels, preview blocks) is shared with the workbench.
 import { h, append, icon, spinner, formatDuration, formatBytes, plural } from "../dom.js";
-import { toast, ago } from "../components.js";
+import { toast, ago, costTag } from "../components.js";
 import { state, subscribe, loadPlan, isRunning, isTestRef } from "../store.js";
 import { startPreview, saveLook, openStudio, stopJob, rewriteVideo, renderFinal, attempt, approxRender } from "../actions.js";
-import { presetName, presetSelect } from "../presets.js";
+import { presetName } from "../presets.js";
+import { stylePicker, valueFromLook, sameValue, diffFromDefault, describeValue, previewTile } from "../stylepicker.js";
 
 export const STYLE_LABEL = { avatar: "Avatar", explainer: "Explainer" };
 export const THEME_LABEL = { light: "Light", dark: "Dark", cinematic: "Cinematic" };
@@ -106,9 +107,9 @@ export function mountPlanPanel(host, { onJobStarted }) {
     const key = JSON.stringify([p, [...selected], [...open], busyVideo, running?.id, running?.kind, running?.meta, state.characters.length, isRunning(), state.looks?.presets?.length]);
     if (key === renderedKey) return;
     renderedKey = key;
-    title.textContent = `Plan for ${formatDate(p.date)}`;
+    title.textContent = p.date === todayIso() ? `Today's videos, ${formatDate(p.date)}` : `Plan for ${formatDate(p.date)}`;
     const rendered = p.videos.filter((v) => v.status === "rendered").length;
-    sub.textContent = `${plural(p.videos.length, "video")} planned${rendered ? `, ${rendered} rendered` : ""}. Change a look, preview it, then render what you want.`;
+    sub.textContent = `${plural(p.videos.length, "video")} planned${rendered ? `, ${rendered} rendered` : ""}. Open a video to try another style, preview it, then render what you want.`;
     list.replaceChildren(...p.videos.map((v) => videoCard(v)));
     renderFooter();
   }
@@ -125,43 +126,48 @@ export function mountPlanPanel(host, { onJobStarted }) {
     }
   }
 
+  // per video: the style being edited (kept across re-renders) and which tile's editor is open
+  const edits = new Map();
+  const defaultValue = () => valueFromLook(plan().default_look);
+  const savedValue = (v) => valueFromLook(v.resolved);
+  const editValue = (v) => edits.get(v.id) || savedValue(v);
+  const isCustom = (v) => Object.keys(v.look || {}).length > 0;
+
+  function statusChip(v, prev) {
+    if (v.status === "rendered") return h("span", { class: "chip good" }, icon("check"), v.rendered?.youtube ? "Uploaded" : "Rendered");
+    if (v.status === "failed") return h("span", { class: "chip bad" }, icon("alert"), "Failed");
+    if (prev.draft) return h("span", { class: "chip" }, icon("play", "sm"), prev.draft.trial ? "Trial drafted" : "Drafted");
+    return h("span", { class: "chip", text: "Planned" });
+  }
+
   function videoCard(v) {
     const p = plan();
     const job = jobFor(v.id);
     const busy = busyVideo?.id === v.id;
     const blocked = isRunning() || Boolean(busyVideo);
     const prev = v.preview || {};
+    const custom = isCustom(v);
     const card = h("article", { class: `pv${v.status === "rendered" ? " done" : ""}`, "aria-label": v.title });
 
     const check = h("input", { type: "checkbox", "aria-label": `Select ${v.title} for rendering`, checked: selected.has(v.id),
       disabled: v.status === "rendered", onChange: () => { check.checked ? selected.add(v.id) : selected.delete(v.id); renderFooter(); } });
-    const status = v.status === "rendered" ? h("span", { class: "chip good" }, icon("check"), "Rendered")
-      : v.status === "failed" ? h("span", { class: "chip bad" }, icon("alert"), "Failed") : null;
     const head = h("div", { class: "pv-head" },
       h("label", { class: "pv-pick" }, check, h("span", { class: "pv-num", text: String(v.index).padStart(2, "0") })),
+      previewTile(savedValue(v), { small: true }),
       h("div", { class: "pv-title" },
         h("h3", { text: v.title }),
-        h("div", { class: "pv-meta" }, h("span", { class: "chip", text: v.badge }), status,
+        h("div", { class: "pv-meta" }, h("span", { class: "chip", text: v.badge }), statusChip(v, prev),
+          h("span", { class: `chip${custom ? " active" : ""}`, title: custom ? "This video has its own style" : "It follows the default style", text: custom ? "Custom style" : "Default style" }),
           h("span", { class: "faint small", text: v.scenes ? `${v.scenes.length} scenes, ${v.words} words` : `${v.words} words` }),
-          v.writer === "heuristic" ? h("span", { class: "chip warn", text: "Rule-based script" }) : null)));
+          v.writer === "heuristic" ? h("span", { class: "chip warn", text: "Rule-based script" }) : null),
+        h("p", { class: "pv-style small muted", text: describeValue(savedValue(v)) })));
     const stories = h("p", { class: "pv-stories small muted", text: v.stories.join(" · ") });
-    const scenes = v.scenes ? h("ol", { class: "pv-scenes", "aria-label": "Scenes" }, v.scenes.map((t) => h("li", { text: t }))) : null;
 
-    const lookRow = h("div", { class: "pv-look" },
-      h("span", { class: "label small", text: "Look" }), ...lookChips(v.resolved, v.look),
-      h("button", { class: "btn small quiet", type: "button", "aria-expanded": String(open.has(v.id)), onClick: () => {
-        open.has(v.id) ? open.delete(v.id) : open.add(v.id); renderedKey = ""; render();
-      } }, icon("sliders", "sm"), open.has(v.id) ? "Close" : "Change look"));
-    const editor = open.has(v.id) ? lookEditor(v) : null;
-
-    const stillsBtn = h("button", { class: "btn small primary", type: "button", disabled: blocked, onClick: () => withBusy(v, "stills", () => startPreview(p.ref, v.id, "stills")) },
-      busy && busyVideo.tier === "stills" ? spinner() : icon("image", "sm"), "Storyboard");
-    const draftBtn = h("button", { class: "btn small", type: "button", disabled: blocked, onClick: () => withBusy(v, "draft", () => startPreview(p.ref, v.id, "draft")) },
-      busy && busyVideo.tier === "draft" ? spinner() : icon("play", "sm"), "Draft clip");
-    const voiceBtn = h("button", { class: "btn small quiet", type: "button", disabled: blocked, title: "Voices the lines first (uses your narrator's voice, may take a minute), then renders a draft clip with real timing",
-      onClick: () => withBusy(v, "voice", () => startPreview(p.ref, v.id, "draft", true)) }, icon("voice", "sm"), "Draft with voice");
-    const rewriteBtn = h("button", { class: "btn small quiet", type: "button", disabled: blocked, onClick: () => withBusy(v, "rewrite", () => rewriteVideo(p.ref, v)) },
-      busy && busyVideo.tier === "rewrite" ? spinner() : icon("refresh", "sm"), "Rewrite script…");
+    const isOpen = open.has(v.id);
+    const toggle = h("button", { class: "btn small", type: "button", "aria-expanded": String(isOpen), onClick: () => {
+      if (isOpen) { open.delete(v.id); edits.delete(v.id); } else open.add(v.id);
+      renderedKey = ""; render();
+    } }, icon("sliders", "sm"), isOpen ? "Close style" : "Style for this video");
     const studio = p.studio && p.studio.ref === p.ref && p.studio.video === v.id ? p.studio : null;
     const studioBtn = studio
       ? h("span", { class: "pv-studio" },
@@ -170,71 +176,73 @@ export function mountPlanPanel(host, { onJobStarted }) {
       : h("button", { class: "btn small quiet", type: "button", disabled: blocked, onClick: () => withBusy(v, "studio", () => openStudio(p.ref, v.id).then(() => loadPlan(p.ref))),
         title: "Opens the live composition in HyperFrames Studio (a new tab) to scrub and tweak it. Free; starting it for another video stops this one." },
       busy && busyVideo.tier === "studio" ? spinner() : icon("layers", "sm"), "Open in Studio");
-    const actions = h("div", { class: "pv-actions" }, stillsBtn, draftBtn, voiceBtn, studioBtn, h("span", { class: "grow" }), rewriteBtn);
+    const rewriteBtn = h("button", { class: "btn small quiet", type: "button", disabled: blocked, onClick: () => withBusy(v, "rewrite", () => rewriteVideo(p.ref, v)) },
+      busy && busyVideo.tier === "rewrite" ? spinner() : icon("refresh", "sm"), "Rewrite script…");
+    const quickDraft = isOpen ? null : h("button", { class: "btn small", type: "button", disabled: blocked,
+      onClick: () => withBusy(v, "draft", () => startPreview(p.ref, v.id, "draft", false, { overrides: diffFromDefault(savedValue(v), defaultValue()), trial: true })) },
+    busy && busyVideo.tier === "draft" ? spinner() : icon("play", "sm"), "Preview this video", costTag("free · 30–60 s"));
+    const actions = h("div", { class: "pv-actions" }, toggle, quickDraft, studioBtn, h("span", { class: "grow" }), rewriteBtn);
 
     const progress = job ? h("div", { class: "pv-progress", role: "status" }, spinner(),
-      h("span", {}, h("strong", { text: job.kind === "preview" ? (job.meta.tier === "draft" ? "Rendering a draft clip" : "Capturing the storyboard")
-        : job.kind === "rewrite" ? "Rewriting the script" : "Rendering at full quality" }),
+      h("span", {}, h("strong", { text: job.kind === "preview" ? "Rendering a draft clip (about 30–60 s, free)" : job.kind === "rewrite" ? "Rewriting the script" : "Rendering at full quality" }),
       h("span", { class: "faint", text: ` · ${job.stage || "starting"}` }))) : null;
 
+    const editor = isOpen ? styleEditor(v, { blocked, busy }) : null;
     const previews = h("div", { class: "pv-previews" });
-    if (prev.stills) previews.append(stillsBlock(prev.stills));
-    if (prev.draft) previews.append(draftBlock(prev.draft));
-    if (!prev.stills && !prev.draft && !job) {
-      previews.append(h("p", { class: "help", text: "No preview yet. Storyboard captures one frame per scene in about 15 seconds; Draft clip renders the whole video small and fast. Neither costs anything." }));
-    }
-    append(card, [head, stories, scenes, lookRow, editor, actions, progress, previews]);
+    const pair = draftPair(v);
+    if (pair) previews.append(pair);
+    append(card, [head, stories, actions, editor, progress, previews]);
     return card;
   }
 
-  function lookEditor(v) {
-    const d = state.plan.default_look;
-    const draft = { ...v.look };
-    const seg = (name, options, key, defaultLabel) => h("div", { class: "seg", role: "radiogroup", "aria-label": name },
-      [["", defaultLabel], ...options].map(([val, label]) => h("label", {},
-        h("input", { type: "radio", name: `${v.id}-${key}`, value: val, checked: (draft[key] ?? "") === val,
-          onChange: () => { if (val === "") delete draft[key]; else draft[key] = val; refreshVisibility(); } }),
-        h("span", { class: "opt", text: label }))));
-    const styleSeg = seg("Style", [["avatar", "Avatar"], ["explainer", "Explainer"]], "style", `Default (${STYLE_LABEL[d.style]})`);
-    const charSel = h("select", { class: "select", "aria-label": "Narrator", onChange: () => {
-      const val = charSel.value; if (val === "\u0000") delete draft.character; else draft.character = val;
-    } }, h("option", { value: "\u0000", text: `Default (${characterName(d.character)})` }),
-    ...state.characters.map((c) => h("option", { value: c.slug, text: c.slug ? c.name : "Default narrator" })));
-    charSel.value = draft.character !== undefined ? draft.character : "\u0000";
-    const themeSeg = seg("Theme", [["light", "Light"], ["dark", "Dark"], ["cinematic", "Cinematic"]], "theme", `Default (${THEME_LABEL[d.theme]})`);
-    const bgSeg = seg("Background", [["gameplay", "Gameplay"], ["none", "Plain"]], "background", `Default (${BG_LABEL[d.background]})`);
-    const presetPick = presetSelect({
-      value: draft.preset ?? "", defaultLabel: `Default look (${presetName(d.preset)})`,
-      onChange: (val) => { if (val === "") delete draft.preset; else draft.preset = val; delete draft.theme; refreshVisibility(); },
-    });
-    const presetRow = row("Look preset", presetPick, "From the look library. Sets the theme and the motion of the scenes without a writer call; try them side by side in the Look workbench.");
-    const themeRow = row("Theme", themeSeg, "Explainer videos only. A preset brings its own theme; pick one here to override it.");
-    const bgRow = row("Background", bgSeg, "Avatar videos only.");
-    function refreshVisibility() {
-      const style = draft.style || d.style;
-      themeRow.hidden = style !== "explainer";
-      presetRow.hidden = style !== "explainer";
-      bgRow.hidden = style !== "avatar";
-      for (const input of themeSeg.querySelectorAll("input")) input.checked = (draft.theme ?? "") === input.value;
-    }
-    refreshVisibility();
-    return h("div", { class: "pv-editor" },
-      row("Style", styleSeg, "Avatar shows the narrator over footage; Explainer is clean graphics."),
-      presetRow,
-      row("Narrator", charSel, "Their voice comes with them."),
-      themeRow, bgRow,
-      h("div", { class: "form-actions" },
-        h("button", { class: "btn small primary", type: "button", onClick: () => withBusy(v, "look", async () => {
-          await saveLook(plan().ref, v.id, draft);
-          open.delete(v.id);
-          toast("Look saved for this video. Preview it to see the change; nothing was rendered.");
-        }) }, "Save look"),
-        h("button", { class: "btn small quiet", type: "button", onClick: () => { open.delete(v.id); renderedKey = ""; render(); } }, "Cancel"),
-        h("span", { class: "help", text: "\"Default\" follows your saved settings, so changing the defaults later changes this video too." })));
+  // The draft beside the default-style result, when both exist.
+  function draftPair(v) {
+    const prev = v.preview || {};
+    if (!prev.draft) return null;
+    // a trial is compared with the saved style's kept draft; a saved draft with the previous style's
+    const left = (prev.looks || []).find((e) => e.draft && (prev.draft.trial ? e.key === v.look_key : e.key !== v.look_key));
+    const right = h("figure", { class: "cmp" },
+      h("video", { src: `${prev.draft.url}?t=${Math.round(prev.draft.at || 0)}`, controls: true, preload: "metadata", playsinline: true, "aria-label": "Draft with this style" }),
+      h("figcaption", {}, h("strong", { text: prev.draft.trial ? "This style (trial, not saved)" : "Now" }),
+        h("span", { class: "small faint", text: `${Math.round(prev.draft.seconds || 0)} s to render · ${prev.draft.timing === "estimated timing" ? "silent, estimated timing" : "with voice"}${prev.draft.at ? ` · ${ago(prev.draft.at)}` : ""}` })));
+    if (!left) return h("div", { class: "cmp-one" }, right,
+      h("p", { class: "help", text: prev.draft.trial ? "Motion and timing are right; the final render is sharper, 30 fps and fully voiced. Preview the saved style too to see the two side by side." : "Motion and timing are right; the final render is sharper, 30 fps and fully voiced. Change the style above and press Preview this video to see the two side by side." }));
+    return h("div", { class: "cmp-grid" },
+      h("figure", { class: "cmp" },
+        h("video", { src: left.draft.url, controls: true, preload: "metadata", playsinline: true, "aria-label": "Draft with the earlier style" }),
+        h("figcaption", {}, h("strong", { text: prev.draft.trial ? "Saved style" : "Before" }), h("span", { class: "small faint", text: `${describeValue(valueFromLook(left.look || {}))} · ${ago(left.draft.at || left.at)}` }))),
+      right);
   }
 
-  function row(label, control, help) {
-    return h("div", { class: "pv-row" }, h("div", {}, h("span", { class: "label", text: label }), h("p", { class: "help", text: help })), h("div", { class: "control" }, control));
+  function styleEditor(v, { blocked, busy }) {
+    const def = defaultValue();
+    const saved = savedValue(v);
+    const picker = stylePicker({ value: editValue(v), onChange: (val) => { edits.set(v.id, val); refreshButtons(); } });
+    const diff = () => diffFromDefault(editValue(v), def);
+    const preview = h("button", { class: "btn primary", type: "button", disabled: blocked, onClick: () => withBusy(v, "draft", () => startPreview(plan().ref, v.id, "draft", false, { overrides: diff(), trial: true })) },
+      busy && busyVideo.tier === "draft" ? spinner() : icon("play", "sm"), "Preview this video", costTag("free · 30–60 s"));
+    const use = h("button", { class: "btn", type: "button", disabled: blocked, onClick: () => withBusy(v, "look", async () => {
+      await saveLook(plan().ref, v.id, diff());
+      edits.delete(v.id);
+      toast(Object.keys(diff()).length ? "This video will use that style. Nothing was rendered." : "This video follows the default style.");
+    }) }, icon("check", "sm"), "Use this style for this video");
+    const reset = h("button", { class: "btn quiet", type: "button", disabled: blocked || !isCustom(v) && !edits.has(v.id), onClick: () => withBusy(v, "look", async () => {
+      await saveLook(plan().ref, v.id, {});
+      edits.delete(v.id);
+      toast("Back to the default style for this video.");
+    }) }, "Reset to default");
+    const state_ = h("p", { class: "help sp-state", "aria-live": "polite" });
+    function refreshButtons() {
+      const same = sameValue(editValue(v), saved);
+      use.disabled = blocked || same;
+      state_.textContent = same ? (isCustom(v) ? "This video has its own style. Change it, then preview or use it." : "This video follows the default style. Change anything below to try another.")
+        : "Not saved yet: preview it to see how it looks, then use it if you like it.";
+    }
+    refreshButtons();
+    return h("div", { class: "pv-editor sp-editor" },
+      h("h4", { text: "Style for this video" }), picker,
+      h("div", { class: "form-actions" }, preview, use, reset),
+      state_);
   }
 
   function renderFooter() {
@@ -258,6 +266,8 @@ export function mountPlanPanel(host, { onJobStarted }) {
   render();
   return () => { cleanup.forEach((fn) => fn()); section.remove(); };
 }
+
+const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
 export function formatDate(iso) {
   if (!iso) return "";

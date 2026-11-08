@@ -45,7 +45,8 @@ class Preset:
     thumbnail: str = ""
     default: bool = False
     good_for: str = ""  # one line for the panel's library: the stories a preset suits
-    world: str = ""  # a 3D look: "hero" | "metrics" (world3d.py); every scene is drawn in 3D
+    colors: dict[str, Any] = field(default_factory=dict)  # default bg / accent and the panel's swatches (colors.py)
+    world: str = ""  # a 3D look: "hero" (world3d.py); every scene is drawn in 3D
 
     @property
     def threed(self) -> bool:
@@ -71,7 +72,29 @@ class Preset:
         return {"id": self.id, "name": self.name, "description": self.description, "default": self.default,
                 "look": dict(self.look), "recipe": self.recipe_id, "knobs": dict(self.knobs), "emphasis": list(self.emphasis),
                 "registry": list(self.registry), "thumbnail": self.thumbnail, "cinematic": self.cinematic,
-                "good_for": self.good_for, "threed": self.threed, "world": self.world}
+                "good_for": self.good_for, "threed": self.threed, "world": self.world, "colors": dict(self.colors)}
+
+
+def _colors(pid: str, raw: Any) -> dict[str, Any]:
+    from ..colors import HEX
+
+    if not raw:
+        return {}
+    if not isinstance(raw, dict):
+        raise PresetError(f"preset {pid!r}: colors must be an object")
+    out: dict[str, Any] = {}
+    for key in ("bg", "accent"):
+        if raw.get(key):
+            if not HEX.match(str(raw[key])):
+                raise PresetError(f"preset {pid!r}: colors.{key} must be #rrggbb")
+            out[key] = str(raw[key]).lower()
+        swatches = []
+        for sw in raw.get(f"{key}_swatches") or []:
+            if not isinstance(sw, dict) or not HEX.match(str(sw.get("hex", ""))) or not sw.get("name"):
+                raise PresetError(f"preset {pid!r}: bad {key} swatch {sw!r}")
+            swatches.append({"name": str(sw["name"]), "hex": str(sw["hex"]).lower()})
+        out[f"{key}_swatches"] = swatches
+    return out
 
 
 def _validate(raw: Any) -> Preset:
@@ -100,7 +123,7 @@ def _validate(raw: Any) -> Preset:
                                                                      if k != "recipe" and v not in (None, "", [], "default", 1.0)},
         emphasis=[str(t) for t in raw.get("emphasis") or []], registry=[str(r) for r in raw.get("registry") or []],
         thumbnail=str(raw.get("thumbnail") or ""), default=bool(raw.get("default")), world=str(raw.get("world") or ""),
-        good_for=str(raw.get("good_for") or "")[:160],
+        good_for=str(raw.get("good_for") or "")[:160], colors=_colors(pid, raw.get("colors")),
     )
 
 

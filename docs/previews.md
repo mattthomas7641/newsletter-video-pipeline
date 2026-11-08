@@ -85,11 +85,11 @@ counts as covering a story and never changes what the unattended 7:00 AM job doe
 
 ## Look layering
 
-A look is `{style, character, theme, background, recipe, preset}` (`newsletter_video/look.py`,
+A look is `{style, character, theme, background, recipe, preset, bg, accent}` (`newsletter_video/look.py`,
 versioned, validated: an unknown value is an error, never a silent default).
 
 ```
-default look   .env: VIDEO_STYLE, CHARACTER, VIDEO_THEME, BACKGROUND_STYLE, LOOK_PRESET (STYLE_RECIPE for the daily job)
+default look   .env: VIDEO_STYLE, CHARACTER, VIDEO_THEME, BACKGROUND_STYLE, LOOK_PRESET, LOOK_BG, LOOK_ACCENT (STYLE_RECIPE for the daily job)
    < run overrides   what a panel action or a CLI --style/--character/... asked for
    < video look      the `look` stored on a plan entry (only the fields you set)
 ```
@@ -106,36 +106,35 @@ changing the narrator afterwards changes the voice and avatar, not the wording.
 `none` strips them, and a recipe id applies that recipe to the middle scenes with no
 model call.
 
+`bg` and `accent` are the two colours of the look (`#rrggbb`, blank = the look's own): the ground, and the colour of the animations (paper: strokes, highlights, bars; glass: the glow palette is derived from it). `colors.fit_colors` keeps text readable: paper needs a light ground, glass a dark one, and an accent must keep 3:1 contrast against its ground; an adjusted colour is reported (`color_notes`) and the panel says so. A preset change starts from the new preset's own colours. They travel as `--bg` / `--accent`, `LOOK_BG` / `LOOK_ACCENT`, and reach the composition as `story.colors` (and `story.palette` for glass).
+
 `preset` names a look preset (`newsletter_video/looks/presets.json`, `--preset <id>` on
 the CLIs, `LOOK_PRESET` in `.env`): it resolves into a theme and a `look-<id>` recipe
 wherever the look did not set those by hand. The `cinematic` theme and the rich scene
 types it unlocks are described in `docs/cinematic-look.md`.
 
-## The Look workbench: library, test video, tweak and compare
+## The Videos page and the Design lab
 
-The panel's second page turns the pieces above into one loop for trying a look
-(`newsletter_video/ui/static/js/views/workbench.js`). Reference-video upload and analysis are
-not part of the panel any more (they remain in `newsletter_video.styles`, the CLI); the page is
-built on the look preset library.
+`#/` (Videos, `views/videos.js` + `views/plan.js` + `stylepicker.js`) is the daily routine; `#/lab`
+(Design lab, `views/workbench.js`) is for new designs. Both sit on the API described above; the old
+`#/workbench` and `#/styles` routes redirect to the lab.
 
-1. **Look library.** `GET /api/looks` lists the presets of `newsletter_video/looks/presets.json`
-   (`id`, `name`, `description`, `good_for`, `theme`, `recipe`, `thumbnail`, `default`); the
-   thumbnails are `static/looks/<id>.jpg`, served by the guarded static handler. Picking a card
-   is client state until a test video exists, then it saves the preset on that video.
-2. **Test video.** *Make a test video* is `POST /api/plans {ref: null, overrides}` with
-   `{preset, style: explainer}` as run overrides (`--preset`); `plan_day` stores them on the
-   entry's `look`.
-3. **Tweak and compare.** Every control change is `PUT .../look` (the `preset` field is
-   validated against the library; an empty one drops it) followed by `POST .../preview
-   {tier: stills}`. The fingerprint change hides the old storyboard, so before a new capture
-   replaces it the server keeps it under `_preview/<vid>/looks/<look-key>/` (newest eight, with a
-   `looks.json` index, served at `/media/plan/<ref>/<vid>/looks/<key>/...`) and lists them as
-   `preview.looks`. The page shows the current storyboard on the right and any kept look on the
-   left, row by row. *Try another look* saves the next preset in library order and re-captures.
-   Rewrite and final render go through the same confirmed endpoints as the daily page.
+- **Default style.** `PUT /api/settings` with `VIDEO_STYLE`, `LOOK_PRESET`, `LOOK_BG`, `LOOK_ACCENT`,
+  `CHARACTER`; the 7:00 run reads them from `.env` like any look default. `GET /api/looks` lists the
+  two presets with their default colours and swatches (`presets.json` `colors`).
+- **Trial previews.** *Preview this video* is `POST .../preview {tier: draft, trial: true, overrides}`:
+  the CLI's `--trial` previews the given look INSTEAD of the saved one without saving it, and writes
+  `trial_look` into `preview.json`; the fingerprint is that of the video with that look saved, so the
+  draft is shown (flagged `trial`) and stays valid after *Use this style for this video* saves exactly
+  that look. Before a preview starts, the current fresh storyboard and draft are kept under
+  `_preview/<vid>/looks/<look-key>/` (newest eight, `looks.json`, served at
+  `/media/plan/<ref>/<vid>/looks/<key>/draft.mp4`), which is how the tile shows the saved style's draft
+  beside the trial.
+- **Design lab.** `GET /api/looks` library, a test plan, storyboards per look kept the same way, a
+  side-by-side compare, *Try another look* re-capturing stills. Never part of the Videos flow.
 
 The default look preset (Settings, `LOOK_PRESET`) is validated against the library file and is
-what a planned video uses until it picks its own in *Change look*. 
+what a planned video uses until it picks its own. 
 
 The rail at the top is computed from the same state (a look picked, a test plan loaded,
 a storyboard present, a running job) and names the next free or paid step. Costs shown

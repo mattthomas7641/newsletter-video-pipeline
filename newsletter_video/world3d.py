@@ -10,9 +10,6 @@ template needs no per-type logic for the three worlds:
               ring, shards, an icon on a glass plate) next to the sentence set
               as glowing type on a plate, over a grid floor with reflections;
               a different layout and camera move for each scene
-    metrics   data-focus: columns / rings for every beat; the numbers found in
-              the scene's own words become the bars, with no number in the text
-              the scene gets abstract (decorative, no figures) columns
 
 Pure data in, no model and no clock: the same plan always gives the same blocks.
 """
@@ -21,7 +18,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-WORLDS = ("hero", "metrics")
+WORLDS = ("hero",)
 
 _NUM = re.compile(r"(?<![\w.])(\$?\d[\d,]*(?:\.\d+)?)\s*(%|x|k|m|b|t|bn|million|billion|trillion|thousand)?(?![\w])", re.I)
 _MULT = {"k": 1e3, "thousand": 1e3, "m": 1e6, "million": 1e6, "b": 1e9, "bn": 1e9, "billion": 1e9, "t": 1e12, "trillion": 1e12}
@@ -185,29 +182,13 @@ def _figures_on_screen(c: dict) -> list[dict]:
 
 def compose(c: dict, world: str) -> str:
     """The 3D composition built from THIS scene's own content, or 'flat' (a 2D scene on the 3D backdrop).
-    Each world has its OWN vocabulary and staging:
-      hero      one subject per scene, close up: the scene's pictogram extruded, or the object its text names
-      metrics   a dashboard in 3D: everything is measurable geometry on a grid (bars, ladders, ranked columns...)
+    The hero world: one subject per scene, close up: the scene's pictogram extruded, or the object its text names.
     """
     kind, items, nums = c["kind"], c["items"], _figures_on_screen(c)
     text = scene_text(c)
     pct = len(nums) == 1 and nums[0]["shown"].endswith("%") and 0 < nums[0]["value"] <= 100
     if kind == "outro":
         return "object:ring" if world == "hero" and LOOP.search(text) else "flat"
-    if world == "metrics":
-        if len(nums) >= 2 and kind in ("stat", "chart", "comparison", "object3d", "statement"):
-            return "bars"
-        if kind == "comparison" and len(items) == 2:
-            return "duel"
-        if len(nums) == 1 and kind == "stat":
-            return "gauge" if pct else "monolith"
-        if kind in ("timeline", "diagram") and len(items) >= 2:
-            return "ladder"
-        if kind in ("list", "device", "glass", "depth", "object3d") and len(items) >= 2:
-            return "ranked"
-        if kind in ("title", "statement", "quote", "stat"):
-            return "typogrid"
-        return "flat"
     if len(nums) >= 2 and kind in ("stat", "chart", "comparison", "object3d", "statement"):
         return "bars"
     if kind == "comparison" and len(items) == 2:
@@ -241,8 +222,8 @@ def choose_compositions(contents: list[dict], world: str) -> list[str]:
         if chosen and pick == chosen[-1]:
             if pick.startswith(("object:", "extrude:")):
                 pick = "typo3d"
-            elif pick in ("fan", "ranked"):
-                pick = "ladder" if world == "metrics" else "path"
+            elif pick == "fan":
+                pick = "path"
         chosen.append(pick)
     return chosen
 
@@ -257,7 +238,7 @@ def annotate(contents: list[dict], world: str) -> None:
         c["icon3d"] = comp.split(":", 1)[1] if comp.startswith("extrude:") else ""
         c["chunks"] = []
         words = []
-        if comp in ("typo3d", "typogrid") or comp.startswith(("object:", "extrude:")):
+        if comp == "typo3d" or comp.startswith(("object:", "extrude:")):
             emph = sorted((c.get("emph") or "").split(), key=len, reverse=True)
             key = emph[0] if emph else next(iter(keywords_of(c["title"] + " " + " ".join(c["lines"]), 1)), "") or next(iter(keywords_of(c["say"], 1)), "")
             words = [key] if key else []

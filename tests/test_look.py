@@ -19,7 +19,7 @@ def test_default_look_comes_from_the_environment(monkeypatch):
     monkeypatch.delenv("STYLE_RECIPE", raising=False)
     monkeypatch.delenv("LOOK_PRESET", raising=False)
     assert looks.look_from_env() == {"style": "avatar", "character": "gizmo", "theme": "dark",
-                                     "background": "gameplay", "recipe": "auto", "preset": ""}
+                                     "background": "gameplay", "recipe": "auto", "preset": "", "bg": "", "accent": ""}
 
 
 def test_layers_fill_only_unset_fields(monkeypatch):
@@ -28,7 +28,7 @@ def test_layers_fill_only_unset_fields(monkeypatch):
     video = {"style": "avatar", "character": "gizmo"}
     resolved = looks.resolve_look(run, video, environ=env)
     assert resolved == {"style": "avatar", "character": "gizmo", "theme": "dark", "background": "gameplay", "recipe": "auto",
-                        "preset": ""}
+                        "preset": "", "bg": "", "accent": ""}
     # a later layer wins over an earlier one; an unset later field keeps the earlier value
     assert looks.resolve_look({"theme": "dark"}, {"theme": "light"}, environ=env)["theme"] == "light"
     assert looks.resolve_look({"theme": "dark"}, {"theme": None}, environ=env)["theme"] == "dark"
@@ -106,3 +106,62 @@ def test_describe_reads_naturally():
     assert looks.describe({"style": "explainer", "character": "", "theme": "dark", "recipe": "none"}) == \
         "explainer, default narrator, dark theme, no recipes"
     assert "gameplay background" in looks.describe({"style": "avatar", "character": "gizmo", "background": "gameplay"})
+
+
+def test_colours_are_validated_layered_and_blankable():
+    env = {"VIDEO_STYLE": "explainer", "LOOK_BG": "#E3ECDF", "LOOK_ACCENT": "0e8a7d"}
+    default = looks.look_from_env(env)
+    assert default["bg"] == "#e3ecdf" and default["accent"] == "#0e8a7d"  # normalised from the env
+    assert looks.resolve_look({"accent": "#ff00aa"}, environ=env)["accent"] == "#ff00aa" and looks.resolve_look({"accent": "#ff00aa"}, environ=env)["bg"] == "#e3ecdf"
+    assert looks.resolve_look({"bg": ""}, environ=env)["bg"] == ""  # a video can go back to the look's own colour
+    assert looks.compact({"bg": "", "accent": "#aabbcc"}) == {"version": 1, "bg": "", "accent": "#aabbcc"}  # "" is kept: "the look's own colour"
+    for bad in ("red", "#12", "#gggggg", "javascript:1"):
+        with pytest.raises(looks.LookError):
+            looks.validate_look({"accent": bad})
+    assert looks.validate_look({"bg": "#FFF"})["bg"] == "#ffffff"
+    assert looks.look_env({"bg": "#ffffff", "accent": ""}) == {"LOOK_BG": "#ffffff", "LOOK_ACCENT": ""}
+
+
+def test_colour_guard_keeps_text_readable():
+    from newsletter_video.colors import contrast, fit_colors, luminance, palette_from_accent
+
+    ok = fit_colors("light", "#e3ecdf", "#0e8a7d")
+    assert ok == {"bg": "#e3ecdf", "accent": "#0e8a7d", "notes": []}
+    pale = fit_colors("light", "#e3ecdf", "#e8f0e5")  # an accent that vanishes on the ground
+    assert contrast(pale["accent"], pale["bg"]) >= 3.0 and "darkened" in pale["notes"][0]
+    dark_paper = fit_colors("light", "#202020", None)  # paper needs a light ground
+    assert luminance(dark_paper["bg"]) >= 0.55 and "lightened" in dark_paper["notes"][0]
+    bright_glass = fit_colors("cinematic", "#88aaff", "#ff3d8a")  # glass needs a dark ground
+    assert luminance(bright_glass["bg"]) <= 0.06 and "darkened" in bright_glass["notes"][0]
+    dim = fit_colors("cinematic", "#04140d", "#1a1a40")
+    assert contrast(dim["accent"], dim["bg"]) >= 3.0
+    pal = palette_from_accent("#ff3d8a")
+    assert len(pal) == 4 and pal[0] == "#ff3d8a" and len(set(pal)) == 4
+
+
+def test_colours_reach_the_story_the_composition_reads(monkeypatch):
+    from newsletter_video.explainer_builder import story_payload
+    from tests.test_worlds import per_line_of, statements_only
+    from newsletter_video.scene_plan import validate_plan
+
+    plan = validate_plan(statements_only())
+    for key in ("LOOK_BG", "LOOK_ACCENT"):
+        monkeypatch.delenv(key, raising=False)
+    assert "colors" not in story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0)  # the shipped look is untouched
+    with looks.applied({"bg": "#e3ecdf", "accent": "#0e8a7d", "theme": "light"}):
+        paper = story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0, "light")
+    assert paper["colors"] == {"bg": "#e3ecdf", "accent": "#0e8a7d"} and "palette" not in paper
+    with looks.applied({"bg": "#04140d", "accent": "#ff3d8a"}):
+        glass = story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0, "cinematic")
+    assert glass["colors"] == {"bg": "#04140d", "accent": "#ff3d8a"} and glass["palette"][0] == "#ff3d8a" and len(glass["palette"]) == 4
+    assert "LOOK_BG" not in __import__("os").environ  # applied() restores the environment
+
+
+def test_another_preset_starts_from_its_own_colours_not_the_defaults():
+    env = {"VIDEO_STYLE": "explainer", "LOOK_PRESET": "cinematic-glass", "LOOK_BG": "#04140d", "LOOK_ACCENT": "#ff3d8a"}
+    assert looks.resolve_look({}, environ=env)["accent"] == "#ff3d8a"
+    paper = looks.resolve_look({"preset": "paper"}, environ=env)
+    assert paper["preset"] == "paper" and paper["bg"] == "" and paper["accent"] == "" and paper["theme"] == "light"
+    mixed = looks.resolve_look({"preset": "paper", "accent": "#0e8a7d"}, environ=env)
+    assert mixed["accent"] == "#0e8a7d" and mixed["bg"] == ""
+    assert looks.resolve_look({"preset": "cinematic-glass"}, environ=env)["bg"] == "#04140d"  # the same look keeps its colours

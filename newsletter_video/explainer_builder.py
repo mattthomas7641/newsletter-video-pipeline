@@ -359,7 +359,16 @@ def story_payload(plan: ScenePlan, per_line: list[list[tuple[str, float]]], spee
     out = {"theme": theme, "kicker": kicker, "duration": duration, "scenes": scenes, "captions": captions}
     if world:
         out["world"] = world
-    if palette:
+    from .look import colors_for
+
+    colors = colors_for(theme)
+    if colors:  # the look's own ground / accent (look.py `bg`, `accent`); a shipped look has none
+        out["colors"] = colors
+        if colors.get("accent") and theme == "cinematic":
+            from .colors import palette_from_accent
+
+            out["palette"] = palette_from_accent(colors["accent"])
+    if palette and "palette" not in out:
         out["palette"] = palette
     return out
 

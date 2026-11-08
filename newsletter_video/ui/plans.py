@@ -34,7 +34,7 @@ from .runs import RunBlocked, RunService
 REF = re.compile(r"^(\d{4}-\d{2}-\d{2}|[a-z0-9]{6,40})$")
 VID = re.compile(r"^(v\d{2,3}|\d{2,}_[A-Za-z0-9._-]{0,150})$")
 _FRAME = r"frames/\d{2}_\d{3}\.\d{1}s\.png"
-PREVIEW_FILE = re.compile(rf"^(storyboard\.jpg|draft\.mp4|{_FRAME}|looks/[a-z0-9-]{{1,60}}/(storyboard\.jpg|{_FRAME}))$")
+PREVIEW_FILE = re.compile(rf"^(storyboard\.jpg|draft\.mp4|{_FRAME}|looks/[a-z0-9-]{{1,60}}/(storyboard\.jpg|draft\.mp4|{_FRAME}))$")
 TIERS = ("stills", "draft")
 MAX_PLAN_VIDEOS = 20
 # Storyboards of earlier looks on the same video, kept so two looks can be
@@ -135,10 +135,11 @@ class PlanService:
                 "scenes": [s.get("type") for s in plan.get("scenes", [])] if plan else None,
                 "writer": entry.get("writer", ""), "status": entry.get("status", "planned"), "error": entry.get("error"),
                 "rendered": entry.get("rendered"), "look": {k: v for k, v in overrides.items() if k != "version"},
-                "resolved": resolved, "look_key": look_key(resolved), "preview": self.preview_state(ref, entry["id"]),
+                "resolved": resolved, "color_notes": color_notes(resolved), "look_key": look_key(resolved), "preview": self.preview_state(ref, entry["id"]),
             })
         return {"ref": ref, "kind": data.get("kind", "day"), "date": data.get("date"), "created": data.get("created"),
                 "updated": data.get("updated"), "writer": data.get("writer", ""), "default_look": defaults,
+                "default_color_notes": color_notes(defaults),
                 "videos": videos, "is_test": self.is_test(ref), "studio": self.studio_state()}
 
     def _environ(self) -> dict:
@@ -169,7 +170,9 @@ class PlanService:
         current = self._fingerprint(folder, vid)
         for tier in TIERS:
             info = data.get(tier)
-            if isinstance(info, dict) and info.get("fingerprint") != current:
+            trial = info.get("trial_look") if isinstance(info, dict) else None
+            if isinstance(info, dict) and info.get("fingerprint") != current and not (
+                    isinstance(trial, dict) and info.get("fingerprint") == self._trial_fingerprint(folder, vid, trial)):
                 continue  # made from an earlier script or look: stale, hidden
             if isinstance(info, dict) and (out_dir / str(info.get("file", ""))).is_file():
                 state[tier] = {
@@ -180,14 +183,18 @@ class PlanService:
                                 "url": f"/media/plan/{ref}/{vid}/frames/{f.get('file')}"} for f in info.get("frames", [])]
                     if tier == "stills" else None,
                     "look": data.get("look"),
+                    "trial": bool(trial) and info.get("fingerprint") != current,
                 }
         kept = self._kept_looks(out_dir)
         if kept:
+            base = f"/media/plan/{ref}/{vid}/{LOOKS_DIRNAME}"
             state["looks"] = [{
                 "key": e["key"], "look": e.get("look"), "at": e.get("at"), "duration": e.get("duration"),
-                "timing": e.get("timing"), "url": f"/media/plan/{ref}/{vid}/{LOOKS_DIRNAME}/{e['key']}/storyboard.jpg",
-                "frames": [{"label": f.get("label"), "at": f.get("at"),
-                            "url": f"/media/plan/{ref}/{vid}/{LOOKS_DIRNAME}/{e['key']}/frames/{f.get('file')}"}
+                "timing": e.get("timing"),
+                "url": f"{base}/{e['key']}/storyboard.jpg" if (out_dir / LOOKS_DIRNAME / e["key"] / "storyboard.jpg").is_file() else None,
+                "draft": {**e["draft"], "url": f"{base}/{e['key']}/draft.mp4"} if isinstance(e.get("draft"), dict)
+                and (out_dir / LOOKS_DIRNAME / e["key"] / "draft.mp4").is_file() else None,
+                "frames": [{"label": f.get("label"), "at": f.get("at"), "url": f"{base}/{e['key']}/frames/{f.get('file')}"}
                            for f in e.get("frames", [])],
             } for e in kept]
         return state
@@ -201,13 +208,14 @@ class PlanService:
             return []
         entries = data.get("entries") if isinstance(data, dict) else None
         return [e for e in entries or [] if isinstance(e, dict) and re.fullmatch(r"[a-z0-9-]{1,60}", str(e.get("key", "")))
-                and (out_dir / LOOKS_DIRNAME / e["key"] / "storyboard.jpg").is_file()]
+                and any((out_dir / LOOKS_DIRNAME / e["key"] / name).is_file() for name in ("storyboard.jpg", "draft.mp4"))]
 
     def keep_stills(self, ref: str, vid: str) -> dict | None:
-        """Copies the video's current, fresh storyboard (frames included) under
-        `_preview/<vid>/looks/<key>/`, keyed by the look it shows, so the next
-        look can be compared against it. Nothing is rendered; a stale or missing
-        storyboard keeps nothing. Returns the index entry, or None."""
+        """Copies the video's current, fresh storyboard (frames included) and
+        draft clip under `_preview/<vid>/looks/<key>/`, keyed by the look they
+        show, so the next look can be compared against them. Nothing is
+        rendered; a stale or missing preview keeps nothing. Returns the index
+        entry, or None."""
         folder = self.folder(ref)
         if not VID.match(vid or ""):
             raise KeyError(vid)
@@ -216,11 +224,13 @@ class PlanService:
             data = json.loads((out_dir / "preview.json").read_text())
         except (OSError, ValueError):
             return None
-        info = data.get("stills")
-        if not isinstance(info, dict) or info.get("fingerprint") != self._fingerprint(folder, vid):
-            return None
-        sheet = out_dir / str(info.get("file") or "storyboard.jpg")
-        if not sheet.is_file():
+        fp = self._fingerprint(folder, vid)
+        info, dinfo = data.get("stills"), data.get("draft")
+        sheet = out_dir / str((info or {}).get("file") or "storyboard.jpg") if isinstance(info, dict) and info.get("fingerprint") == fp else None
+        clip = out_dir / str(dinfo.get("file") or "draft.mp4") if isinstance(dinfo, dict) and dinfo.get("fingerprint") == fp else None
+        sheet = sheet if sheet is not None and sheet.is_file() else None
+        clip = clip if clip is not None and clip.is_file() else None
+        if sheet is None and clip is None:
             return None
         try:
             resolved = looks.resolve_look(self._stored_look(folder, vid), environ=self._environ())
@@ -228,18 +238,26 @@ class PlanService:
             return None
         key = look_key(resolved)
         target = out_dir / LOOKS_DIRNAME / key
-        shutil.rmtree(target, ignore_errors=True)
-        (target / "frames").mkdir(parents=True)
-        shutil.copy2(sheet, target / "storyboard.jpg")
-        frames = []
-        for f in info.get("frames", []):
-            name = str((f or {}).get("file") or "")
-            src = out_dir / "frames" / name
-            if re.fullmatch(_FRAME[len("frames/"):], name) and src.is_file():
-                shutil.copy2(src, target / "frames" / name)
-                frames.append({"label": f.get("label"), "at": f.get("at"), "detail": f.get("detail"), "file": name})
-        entry = {"key": key, "look": resolved, "at": info.get("at"), "duration": info.get("duration"),
-                 "timing": info.get("timing"), "frames": frames}
+        entry = next((e for e in self._kept_looks(out_dir) if e["key"] == key), {"key": key})
+        entry["look"] = resolved
+        target.mkdir(parents=True, exist_ok=True)
+        if sheet is not None:
+            shutil.rmtree(target / "frames", ignore_errors=True)
+            (target / "frames").mkdir(parents=True)
+            shutil.copy2(sheet, target / "storyboard.jpg")
+            frames = []
+            for f in info.get("frames", []):
+                name = str((f or {}).get("file") or "")
+                src = out_dir / "frames" / name
+                if re.fullmatch(_FRAME[len("frames/"):], name) and src.is_file():
+                    shutil.copy2(src, target / "frames" / name)
+                    frames.append({"label": f.get("label"), "at": f.get("at"), "detail": f.get("detail"), "file": name})
+            entry.update({"at": info.get("at"), "duration": info.get("duration"), "timing": info.get("timing"), "frames": frames})
+        if clip is not None:
+            shutil.copy2(clip, target / "draft.mp4")
+            entry["draft"] = {"at": dinfo.get("at"), "duration": dinfo.get("duration"), "timing": dinfo.get("timing"),
+                              "fps": dinfo.get("fps"), "size": dinfo.get("size")}
+            entry.setdefault("at", dinfo.get("at"))
         kept = [e for e in self._kept_looks(out_dir) if e["key"] != key]
         kept.insert(0, entry)
         for old in kept[MAX_KEPT_LOOKS:]:
@@ -255,6 +273,19 @@ class PlanService:
             return pm._overrides_from_sidecar_look(json.loads((folder / f"{vid}.json").read_text()).get("look"))
         except (OSError, ValueError):
             return {}
+
+    def _trial_fingerprint(self, folder: Path, vid: str, trial_look: dict) -> str | None:
+        """The fingerprint the video would have if `trial_look` were its saved look (a trial preview's)."""
+        if not vid.startswith("v"):
+            return None
+        data = pm.read_manifest(folder)
+        if not data:
+            return None
+        try:
+            entry = pm.get_entry(data, vid)
+        except KeyError:
+            return None
+        return pm.fingerprint(entry.get("script"), entry.get("scene_plan"), trial_look)
 
     def _fingerprint(self, folder: Path, vid: str) -> str | None:
         if vid.startswith("v"):
@@ -333,7 +364,7 @@ class PlanService:
             argv.insert(3, ref)
         return self.jobs.create("rewrite", argv, self._env({"NOTIFY_WEBHOOK_URL": ""}), {"ref": ref, "video": vid})
 
-    def start_preview(self, ref: str, vid: str, tier: str, voice: bool = False, overrides: dict | None = None) -> JobView:
+    def start_preview(self, ref: str, vid: str, tier: str, voice: bool = False, overrides: dict | None = None, trial: bool = False) -> JobView:
         folder = self.folder(ref)
         if not VID.match(vid or ""):
             raise KeyError(vid)
@@ -350,9 +381,10 @@ class PlanService:
                 raise KeyError(vid)
             source = [str(sidecar)]
         self.runs.guard()
-        if tier == "stills":
-            self.keep_stills(ref, vid)  # a re-capture overwrites the frames; the current look stays comparable
+        self.keep_stills(ref, vid)  # a re-capture overwrites the frames and clip; the current look stays comparable
         argv = [sys.executable, "-m", "newsletter_video.preview", *source, "--preview", tier, *_look_args(clean)]
+        if trial and vid.startswith("v"):
+            argv.append("--trial")
         if voice:
             argv.append("--voice")
         return self.jobs.create("preview", argv, self._env(), {"ref": ref, "video": vid, "tier": tier, "voice": bool(voice)})
@@ -461,6 +493,15 @@ def _look_args(clean: dict) -> list[str]:
         if clean.get(key) is not None:
             args += [f"--{key}", clean[key]]
     return args
+
+
+def color_notes(resolved: dict) -> list[str]:
+    """Plain-words notes on any colour the guard (colors.fit_colors) would adjust for this look."""
+    from ..colors import fit_colors
+
+    if resolved.get("style") == "avatar" or not (resolved.get("bg") or resolved.get("accent")):
+        return []
+    return fit_colors(resolved.get("theme") or "light", resolved.get("bg") or None, resolved.get("accent") or None)["notes"]
 
 
 def look_key(resolved: dict) -> str:

@@ -1913,6 +1913,15 @@
         rootStyle.setProperty("--accent", inkSafe(GLOW[0]));
         rootStyle.setProperty("--accent-soft", hexToRgba(GLOW[0], 0.2));
       }
+      // ---- the look's own colours (look.py `bg` / `accent`, already guarded for
+      // contrast by colors.py): the ground and, outside the glass look (where the
+      // accent became the glow palette above), the accent colour itself.
+      const COLORS = story.colors || {};
+      if (hexToRgb(COLORS.bg)) document.documentElement.style.setProperty("--bg", COLORS.bg);
+      if (!CINEMATIC && hexToRgb(COLORS.accent)) {
+        document.documentElement.style.setProperty("--accent", COLORS.accent);
+        document.documentElement.style.setProperty("--accent-soft", hexToRgba(COLORS.accent, 0.14));
+      }
       function sceneAccent(hex) {
         return CINEMATIC ? inkSafe(hex) : hex;
       }
@@ -3949,7 +3958,7 @@
           b.renderAt(s.start + 1);
         });
         // ---- worlds: every scene of a 3D look drawn in 3D --------------------------
-        // story.world = "hero" | "metrics". world3d.py gives each scene a
+        // story.world = "hero". world3d.py gives each scene a
         // content block `w3` and picks its composition (`w3.comp`) from what the scene says:
         // an object that IS the thing discussed (chip, node network, coins, shield, speed
         // streaks, server grid, globe), figures as bars / a monolith / a gauge, a list or a
@@ -3957,7 +3966,6 @@
         // anything without a visual as typography in depth. One extra full-frame slot and one
         // scene graph for the whole video, drawn from t alone like everything else.
         //   hero      every composition; scenes dissolve; floor with reflections
-        //   metrics   figure- and typography-led compositions (no decorative objects)
         const WORLD = story.world || "";
         let worldDraw = null;
         if (WORLD) {
@@ -4324,10 +4332,6 @@
           // that reveal parts (a stack, a split, a path) steer the camera themselves
           function moveCamera(it, st) {
             const bs = it.cb, e = easeIO(st), v = it.index % 3;
-            if (WORLD === "metrics") { // a dashboard seen from above: isometric, the view alternates scene to scene
-              aim(wcam, [0.75, -0.7, 0.45][v] * (1 - 0.12 * e), [0.62, 0.8, 0.5][v], bs.dist * lerp(1.15, 0.95, e), 0, bs.ty + 0.9, 0);
-              return;
-            }
             // hero: a slow orbit in toward the single subject
             aim(wcam, bs.yaw + (1 - e) * (it.index % 2 ? 0.5 : -0.5), bs.pitch, bs.dist * lerp(1.25, 0.92, e), 0, bs.ty + 0.9, 0);
           }
@@ -4356,7 +4360,7 @@
             const accent = col(i), accent2 = col(i + 1), accent3 = col(i + 2);
             const head = (w) => { // the scene's own heading above its composition (a plate; flat text in the dashboard world)
               const hc = { label: c.label, title: c.title, icon: c.icon, emph: c.emph, lines: [] };
-              const pl = WORLD === "metrics" ? flatText(hc, accent, w || 4.2) : plate(hc, accent, w || 4.2);
+              const pl = plate(hc, accent, w || 4.2);
               g.add(pl); return pl;
             };
             if (comp.startsWith("object:") || comp.startsWith("extrude:")) {
@@ -4490,103 +4494,6 @@
                 aim(wcam, tubes ? -0.1 : -0.18, 0.06, 12.4 * lerp(1.08, 0.97, e), 0, 1.1, 0);
                 X.camDone = true;
               };
-            } else if (comp === "ladder") {
-              // a flow as a step ladder: one box per step, each a step higher; the spoken step lit
-              const its = c.items.slice(0, 5), n = its.length;
-              const boxes = its.map((x, k) => {
-                const hh = 0.7 + k * 0.55;
-                const bw0 = Math.min(1.3, Math.min(1.7, 4.0 / Math.max(1, n - 1)) * 0.8);
-                const cc = mix(cell(bw0, hh, bw0, col(k), 0.5 + 0.1 * k));
-                cc.userData.h = hh; cc.position.set((k - (n - 1) / 2) * Math.min(1.7, 4.0 / Math.max(1, n - 1)), 0, (k - (n - 1) / 2) * -0.5);
-                const t = tagSprite(x.label, x.text, col(k), Math.min(2.3, Math.min(1.7, 4.0 / Math.max(1, n - 1)) * 1.45), true);
-                g.add(cc, t);
-                return { cc, t, hh };
-              });
-              const hd = head(4.2);
-              it.upd = (X) => {
-                let cur = 0; for (let k = 0; k < n; k++) if (X.t >= cue(k, X.s0 + 0.4 + k * 0.7) - 0.1) cur = k;
-                boxes.forEach((o, k) => {
-                  const pk = X.p(cue(k, X.s0 + 0.4 + k * 0.7) - 0.2, 0.7), hh = Math.max(0.001, o.hh * pk);
-                  o.cc.scale.y = Math.max(0.001, pk); o.cc.position.y = FLOOR + hh / 2;
-                  o.t.position.set(o.cc.position.x, FLOOR + hh + 0.6 + (k % 3) * 0.75, o.cc.position.z);
-                  fade(o.cc, Math.min(1, pk * 2) * X.a * (k === cur ? 1 : 0.7)); fade(o.t, X.a * pk);
-                });
-                hd.position.set(0, FLOOR + 4.1, -1.4); hd.rotation.set(-0.1, 0, 0); fade(hd, X.a * X.p(X.s0 + 0.3, 0.8));
-              };
-              it.cb = { yaw: 0.6, pitch: 0.62, dist: 12.5, ty: -0.4 };
-            } else if (comp === "ranked") {
-              // a list as ranked columns: the first item the tallest; the height is the item's place in the list
-              const its = c.items.slice(0, 5), n = its.length;
-              const cols = its.map((x, k) => {
-                const hh = 0.9 + (n - 1 - k) * 0.6;
-                const bw0 = Math.min(1.1, Math.min(1.7, 4.0 / Math.max(1, n - 1)) * 0.8);
-                const cc = mix(cell(bw0, hh, bw0, col(k), 0.55));
-                cc.userData.h = hh; cc.position.set((k - (n - 1) / 2) * Math.min(1.7, 4.0 / Math.max(1, n - 1)), 0, 0);
-                const t = tagSprite("#" + (k + 1) + " " + x.label, x.text, col(k), Math.min(2.5, Math.min(1.7, 4.0 / Math.max(1, n - 1)) * 1.6), true);
-                g.add(cc, t);
-                return { cc, t, hh };
-              });
-              const hd = head(4.2);
-              it.upd = (X) => {
-                let cur = 0; for (let k = 0; k < n; k++) if (X.t >= cue(k, X.s0 + 0.4 + k * 0.7) - 0.1) cur = k;
-                cols.forEach((o, k) => {
-                  const pk = X.p(cue(k, X.s0 + 0.4 + k * 0.7) - 0.2, 0.7), hh = Math.max(0.001, o.hh * pk);
-                  o.cc.scale.y = Math.max(0.001, pk); o.cc.position.y = FLOOR + hh / 2;
-                  o.t.position.set(o.cc.position.x, FLOOR + hh + 0.6 + (k % 3) * 0.75, 0);
-                  fade(o.cc, Math.min(1, pk * 2) * X.a * (k === cur ? 1 : 0.7)); fade(o.t, X.a * pk);
-                });
-                hd.position.set(0, FLOOR + 4.1, -1.4); hd.rotation.set(-0.1, 0, 0); fade(hd, X.a * X.p(X.s0 + 0.3, 0.8));
-              };
-              it.cb = { yaw: -0.7, pitch: 0.8, dist: 11.5, ty: -0.4 };
-            } else if (comp === "duel") {
-              // a comparison as two columns with a labelled gap (heights from the figures when there are some)
-              const its = c.items.slice(0, 2);
-              const vals = c.numbers.length >= 2 ? c.numbers.slice(0, 2).map((x) => x.value) : [1, 1];
-              const mx = Math.max(...vals) || 1;
-              const cols = its.map((x, k) => {
-                const hh = 0.8 + (vals[k] / mx) * 2.3;
-                const cc = mix(cell(1.4, hh, 1.4, col(k), 0.7));
-                cc.userData.h = hh; cc.position.set(k ? 2.0 : -2.0, 0, 0);
-                const t = tagSprite(x.label, x.text, col(k), 2.6, true);
-                g.add(cc, t);
-                return { cc, t, hh };
-              });
-              const gap = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-1.2, 0, 0), new THREE.Vector3(1.2, 0, 0), new THREE.Vector3(-1.2, -0.18, 0), new THREE.Vector3(-1.2, 0.18, 0), new THREE.Vector3(1.2, -0.18, 0), new THREE.Vector3(1.2, 0.18, 0)]), new THREE.LineBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.8 }));
-              const vs = tagSprite("vs", "", accent3, 1.0, true);
-              g.add(gap, vs);
-              const hd = head(3.6);
-              it.upd = (X) => {
-                cols.forEach((o, k) => {
-                  const pk = X.p(cue(k, X.s0 + 0.4 + k * 0.8) - 0.2, 0.8), hh = Math.max(0.001, o.hh * pk);
-                  o.cc.scale.y = Math.max(0.001, pk); o.cc.position.y = FLOOR + hh / 2;
-                  o.t.position.set(o.cc.position.x, FLOOR + hh + 0.8, 0);
-                  fade(o.cc, Math.min(1, pk * 2) * X.a); fade(o.t, X.a * pk);
-                });
-                const gp = X.p(X.s0 + 1.2, 0.7), top = FLOOR + Math.max(cols[0].hh, cols[1].hh) * 0.5;
-                gap.position.set(0, top, 0); vs.position.set(0, top + 0.55, 0);
-                gap.material.opacity = 0.8 * X.a * gp; fade(vs, X.a * gp);
-                hd.position.set(0, FLOOR + 4.1, -1.4); hd.rotation.set(-0.1, 0, 0); fade(hd, X.a * X.p(X.s0 + 0.3, 0.8));
-              };
-              it.cb = { yaw: 0.5, pitch: 0.55, dist: 13, ty: 0.7 };
-            } else if (comp === "typogrid") {
-              // a statement as big extruded type standing on the grid; three stagings rotate scene to scene
-              const rawWord = (c.words && c.words[0]) || (c.title || "").split(" ").sort((a, b) => b.length - a.length)[0] || c.label || "";
-              const word = rawWord.replace(/[^\w$%'.-]/g, "").slice(0, 22) || "NOW";
-              const big = extrudedWord(word, accent, true);
-              const cap = flatText({ label: c.label, title: c.title, icon: "", emph: c.emph || rawWord, lines: [] }, accent2, 3.9);
-              const v = c.variant % 3;
-              g.add(big, cap);
-              it.upd = (X) => {
-                const p1 = X.p(X.s0 + 0.1, 0.9), p2 = X.p(X.s0 + 0.5, 0.9);
-                const pulse = Math.exp(-Math.pow((X.t - cue(0, X.s0 + 1.2)) * 2.0, 2));
-                const k = big.userData.k * (v === 2 ? 1.1 : 0.9) * (0.88 + 0.12 * p1) * (1 + 0.04 * pulse);
-                if (v === 0) { big.position.set(0, FLOOR + 1.3, -0.5); big.rotation.set(0, 0, 0); cap.position.set(0, FLOOR + 0.9, 2.6); cap.rotation.set(-0.2, 0, 0); }
-                else if (v === 1) { big.position.set(-0.8, FLOOR + 1.4, -1.0); big.rotation.set(0, 0.35, 0); cap.position.set(0.6, FLOOR + 0.9, 2.4); cap.rotation.set(-0.2, -0.2, 0.0); }
-                else { big.position.set(0, FLOOR + 1.2, -2.2); big.rotation.set(0, -0.25, 0); cap.position.set(0, FLOOR + 0.9, 2.2); cap.rotation.set(-0.2, 0, 0); }
-                big.scale.setScalar(k); big.position.y += (1 - p1) * -1.2;
-                fade(big, X.a * p1); fade(cap, X.a * p2);
-              };
-              it.cb = { yaw: 0.7, pitch: 0.62, dist: 12.5, ty: -0.5 };
             } else if (comp === "stack") {
               const its = c.items.slice(0, 5);
               const pls = its.map((x, k) => { const p = neonPlate(3.7, 2.4, col(k), 0.05, k + 2); p.rotation.x = -Math.PI / 2; mix(p); g.add(p); return p; });
@@ -4689,7 +4596,7 @@
               face.position.z = 0.27; slab.add(face);
               mix(slab);
               const sideC = { label: c.label, title: c.title || (c.lines || [])[0] || "", icon: c.icon, emph: c.emph, lines: [] };
-              const side = WORLD === "metrics" ? flatText(sideC, accent2, 3.6) : plate(sideC, accent2, 3.6);
+              const side = plate(sideC, accent2, 3.6);
               g.add(slab, side);
               it.upd = (X) => {
                 const p1 = X.p(X.s0 + 0.1, 1.0), p2 = X.p(X.s0 + 0.5, 0.9);

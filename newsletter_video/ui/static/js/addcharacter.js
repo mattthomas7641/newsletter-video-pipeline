@@ -13,7 +13,7 @@ const remember = (id) => { try { id ? sessionStorage.setItem(JOB_KEY, id) : sess
 const recall = () => { try { return sessionStorage.getItem(JOB_KEY); } catch { return null; } };
 
 /** Builds the "Add a character" panel. `onClose` is called when it should be hidden. */
-export function addCharacterPanel({ onClose, onAdded }) {
+export function addCharacterPanel({ onClose, onAdded, selectNew = true }) {
   const ids = { name: nextId("name"), persona: nextId("persona"), profile: nextId("profile") };
   const form = { avatar: null, avatarInfo: null, clips: [], mode: "clone", profiles: null, profilesLoading: false, busy: false };
   let pollTimer = null;
@@ -301,8 +301,8 @@ export function addCharacterPanel({ onClose, onAdded }) {
       const outcome = data.outcome;
       if (job.state === "done" && outcome?.ok) {
         await loadCharacters();
-        setDraft("CHARACTER", outcome.slug);
-        toast(`${name} added and selected. Save your changes to use them from the next run.`);
+        if (selectNew) setDraft("CHARACTER", outcome.slug);
+        toast(selectNew ? `${name} added and selected. Save your changes to use them from the next run.` : `${name} added.`);
         onAdded(outcome.slug);
         return;
       }

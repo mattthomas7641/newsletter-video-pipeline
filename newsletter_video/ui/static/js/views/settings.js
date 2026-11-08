@@ -1,7 +1,6 @@
 import { h, icon, spinner, nextId, formatClock } from "../dom.js";
 import { savePill, notYetNote } from "../components.js";
-import { state, subscribe, value, setDraft, loadSetup, defaultPresetId, presetInfo } from "../store.js";
-import { presetName, presetSelect } from "../presets.js";
+import { state, subscribe, value, setDraft, loadSetup } from "../store.js";
 import { mountLook } from "./look.js";
 
 const PRIVACY = [
@@ -19,28 +18,15 @@ export function mountSettings(root, ctx) {
       h("p", { class: "lede", text: "Defaults for every new video and the daily run. Nothing changes until you save, and saved changes apply from the next run." })),
     savePill(onCleanup));
 
-  // ---- default look and narrator ----
+  // ---- narrators and voices ----
+  // The default style (explainer or avatar, its look and colours) is set on the Videos page.
   const lookHost = h("div", { class: "look-defaults" });
   const lookSection = h("section", { class: "section", "aria-labelledby": "look-h" },
-    h("div", { class: "section-head" }, h("h2", { id: "look-h", text: "Default look and narrator" }),
-      h("p", { text: "What every video gets unless its own look says otherwise. Try looks on a test video in the Look workbench; set the defaults here." })),
+    h("div", { class: "section-head" }, h("h2", { id: "look-h", text: "Narrators and voices" }),
+      h("p", {}, "The avatars and the voice each one speaks with; hear a sample or add a new one. The default style for automatic videos is set on the ",
+        h("a", { class: "link", href: "#/", text: "Videos page" }), ".")),
     lookHost);
-  onCleanup(mountLook(lookHost, { embedded: true }));
-
-  // ---- default look preset ----
-  const presetId = nextId("preset");
-  // "" and the library's default preset render the same, so the picker shows one option for both.
-  const presetPick = presetSelect({ value: "", id: presetId, onChange: (v) => setDraft("LOOK_PRESET", v === defaultPresetId() ? "" : v) });
-  const presetHelp = h("p", { class: "help", id: `${presetId}-help` });
-  const presetNote = h("div");
-  const library = h("section", { class: "section", "aria-labelledby": "preset-h" },
-    h("div", { class: "section-head" }, h("h2", { id: "preset-h", text: "Default look preset" }),
-      h("p", { text: "The look every new explainer video starts from: theme, motion and the kinds of scenes the writer favours. A planned video can still pick its own." })),
-    h("div", { class: "panel rows" },
-      h("div", { class: "row", id: "preset-row" },
-        h("div", {}, h("label", { class: "label", for: presetId, text: "Look preset" }), presetHelp, presetNote,
-          h("p", { class: "help" }, h("a", { class: "link", href: "#/workbench", text: "Browse the library in the Look workbench" }), " to see each one on a real story.")),
-        h("div", { class: "control" }, presetPick))));
+  onCleanup(mountLook(lookHost, { embedded: true, narratorOnly: true }));
 
   // ---- videos per day ----
   const perDayId = nextId("perday");
@@ -140,19 +126,7 @@ export function mountSettings(root, ctx) {
       h("p", { text: "What this computer has ready. Only whether something is present is shown, never the secret itself." })),
     checksHost, h("div", { class: "form-actions" }, recheck));
 
-  root.append(head, lookSection, library, production, youtube, writer, setup);
-
-  function syncPreset() {
-    const chosen = value("LOOK_PRESET") || defaultPresetId();
-    if (document.activeElement !== presetPick.select) presetPick.sync(chosen);
-    const explainer = value("VIDEO_STYLE") === "explainer";
-    root.querySelector("#preset-row").toggleAttribute("data-off", !explainer);
-    const p = presetInfo(chosen);
-    presetHelp.textContent = !explainer ? "Only explainer videos have a look preset; avatar videos keep their footage and character."
-      : p?.default || !p ? `${presetName("")}: the template's own look, exactly today's daily video.`
-        : `${p.description.replace(/\s*\([^)]*\)\s*$/, "")}${p.good_for ? ` Good for ${p.good_for.charAt(0).toLowerCase()}${p.good_for.slice(1)}` : ""}`;
-    presetNote.replaceChildren(notYetNote(state.settings?.supported?.LOOK_PRESET) || "");
-  }
+  root.append(head, lookSection, production, youtube, writer, setup);
 
   async function runCheck() {
     recheck.disabled = true;
@@ -232,7 +206,6 @@ export function mountSettings(root, ctx) {
       chip.className = "chip";
       help.textContent = "No scheduled job was found. You can still run the batch by hand from the Today's videos page.";
     }
-    syncPreset();
     renderChecks();
   }
 

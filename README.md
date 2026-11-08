@@ -84,40 +84,34 @@ Everything above can be set up by clicking instead of editing files. Start the p
 It opens `http://127.0.0.1:8765` in your browser (another port is used if that one is busy)
 and needs nothing beyond the packages already in `requirements.txt`. The panel is always light. Press Ctrl+C in the terminal to stop it; anything already running keeps going.
 
-Three pages. Screenshots are in `docs/screenshots/control-panel/` (`workbench-library-light.png`, `workbench-compare-light.png`, `workbench-tweak-light.png`, `today-light.png`, `settings-preset-light.png`, and `mobile-*-light.png` at phone width).
+Three pages. Screenshots are in `docs/screenshots/panel-one-page/`.
 
-- **Today's videos** (the landing page). Plan first, render last. *Plan today's videos* picks
-  the stories and writes the scripts (one writer call, about 3 cents) and stops: nothing is
-  voiced or rendered. In [approval mode](#approval-mode) the scheduled job leaves the plan
-  here with a *Plan ready: review and render* banner. Each planned video shows its look (style,
-  narrator, look preset, theme or background), which you can change per video with *Change
-  look*; unset fields follow your defaults. *Storyboard* captures one frame per scene in about
-  10-15 s; *Draft clip* renders the whole video at 12 fps, draft quality, in about 30 s; *Open
-  in Studio* serves the live composition; none of these costs anything or touches the voice.
-  *Rewrite script…* is a separate, confirmed, paid writer call. *Render all…* / *Render
-  selected…* is the only step that makes real videos: full quality, voiced, with confirmation,
-  under the same lock, watchdog and status bookkeeping as the daily job, and uploading only if
-  uploads are on in Settings. Stories covered since planning are skipped. *Run the full daily
-  job now…* runs the unattended 7:00 AM job as before (no review step). Below the plan:
-  today's rendered videos and, folded away, the last two weeks. Only one job at a time.
-- **Look workbench.** One guided flow for trying a look, in three stages that stay on one page,
-  with a rail at the top saying where you are, what to do next, and what this session has spent.
-  1. *Look library*: the presets in `newsletter_video/looks/presets.json` as a grid (thumbnail,
-     name, one-line description, what it is good for). Picking one makes it the look of the test
-     video, or of the test video you are about to write.
-  2. *Test video*: *Make a test video* writes one throwaway video from today's newsletter
-     (one writer call, about 3 cents) in the chosen look. It lives in `output/_previews/<id>/`,
-     is never uploaded and never counts as a covered story.
-  3. *Tweak and compare*: the storyboard in the current look beside the same story in another
-     look (an earlier capture of this video; pick which one), scene by scene, with every look
-     control next to it (preset, style, narrator, theme or background). Any change is saved to
-     that test video only and re-captures the storyboard by itself (free, about 15 s) while the
-     look it replaces moves to the left; *Try another look* steps to the next preset in one
-     click, and earlier looks stay on the page. *Draft clip*, *Draft with voice* and *Open in
-     Studio* are there too. Only *Rewrite script…* (paid) and *Render final…* ask first.
-- **Settings.** The default look and narrator for new videos (*Avatar* or *Explainer*, the
-  character gallery with *Hear voice* and *Add a character*, gameplay/plain background,
-  light/dark), the default look preset (`LOOK_PRESET`),
+- **Videos** (the landing page): everything about the daily videos on one page.
+  1. *Default style for automatic videos*: **Explainer | Avatar**. Explainer offers two looks,
+     **Clean paper** and **Dark glass**, and for each two colours: the *background* and the
+     *animation colour* (swatches or any hex, with a live preview; a pair that would be unreadable
+     is adjusted and the page says so). Avatar offers the avatars you have (plus *Add avatar*) and
+     shows the one standard voice (changed in Settings). *Save as default* writes `VIDEO_STYLE`,
+     `LOOK_PRESET`, `LOOK_BG`, `LOOK_ACCENT`, `CHARACTER` to `.env`, which is what the 7:00 AM run
+     and every new plan use.
+  2. *Today's videos*: *Plan today's videos* picks the stories and writes the scripts (one writer
+     call, about 3 cents) and stops; in [approval mode](#approval-mode) the scheduled job leaves the
+     plan here with a *Plan ready: review and render* banner. Each video is a tile with its status
+     (planned / drafted / rendered / uploaded) and a *Default style* or *Custom style* chip.
+     *Style for this video* opens the same style control, prefilled; *Preview this video* renders
+     a draft clip of that style (free, about 30-60 s, nothing is saved), shown beside the saved
+     style's draft; *Use this style for this video* saves it for that video only, *Reset to
+     default* removes it. *Open in Studio* serves the live composition; *Rewrite script…* is a
+     separate, confirmed, paid writer call. *Render all…* / *Render selected…* is the only step
+     that makes real videos: full quality, voiced, with confirmation, under the same lock,
+     watchdog and status bookkeeping as the daily job, uploading only if uploads are on. Stories
+     covered since planning are skipped. *Run the full daily job now…* runs the unattended job as
+     before. Below: today's rendered videos and, folded away, the last two weeks.
+- **Design lab**: for trying new designs, or seeing how a render looks without drafting a video.
+  Pick a look, *Make a test video* (one throwaway video from today's newsletter, never uploaded),
+  then compare storyboards of the same story in two looks side by side; every look control is next
+  to it and each change re-captures the storyboard (free, about 15 s). Not part of the daily flow.
+- **Settings.** The narrators and their voices (*Hear voice*, *Add a character*),
   videos per day, what the scheduled run does (make everything, or plan and ask you), YouTube
   upload and privacy, what happens to videos made by the fallback writer, and a *Setup check*
   showing whether Voicebox, an API key and the YouTube sign-in are present (never their values).
@@ -128,7 +122,7 @@ See `docs/previews.md` for the preview tiers, timings and the look layering rule
 
 **Safety.** The panel listens on `127.0.0.1` only. It will only ever read or write these
 `.env` keys: `CHARACTER`, `VIDEO_STYLE`, `VIDEO_THEME`, `BACKGROUND_STYLE`, `VIDEOS_PER_DAY`,
-`DAILY_MODE`, `YOUTUBE_UPLOAD`, `YOUTUBE_PRIVACY`, `FALLBACK_UPLOAD`, `LOOK_PRESET`. Comments, other lines and the file's
+`DAILY_MODE`, `YOUTUBE_UPLOAD`, `YOUTUBE_PRIVACY`, `FALLBACK_UPLOAD`, `LOOK_PRESET`, `LOOK_BG`, `LOOK_ACCENT`. Comments, other lines and the file's
 permissions are left as they were. API keys and tokens are never sent to the browser or
 written to its logs; the panel only says whether one is set. Requests are checked for the
 loopback `Host`, a same-origin `Origin`, and a random per-launch token, so another web page
@@ -418,7 +412,7 @@ By default the scheduled run makes and posts everything on its own. Set `DAILY_M
 after the planning step: it fetches the newsletters, picks the stories (skipping any already
 covered), writes the scripts (one writer call, about 3 cents) into `output/<date>/plan.json`,
 and sends the usual notification ("Daily plan finished: 3 video(s) planned ... waiting for
-your review"). Nothing is voiced, rendered or uploaded. The Today's videos page then shows *Plan
+your review"). Nothing is voiced, rendered or uploaded. The Videos page then shows *Plan
 ready — review and render* until you have previewed, changed looks and pressed *Render all…*
 or *Render selected…* (or run `python -m newsletter_video.render_plan <date> --final`), which
 renders and uploads exactly as the full run would, under the same lock, watchdog and
