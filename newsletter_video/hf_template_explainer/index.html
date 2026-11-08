@@ -3952,7 +3952,7 @@
           const colors = glow.length ? glow : [new THREE.Color("#ff7a1a")];
           const col = (k) => colors[((k % colors.length) + colors.length) % colors.length];
           const scenesW = story.scenes;
-          built.forEach((b) => { b.root.style.display = "none"; });
+          built.forEach((b) => { if (b.scene.w3 && b.scene.w3.comp !== "flat") b.root.style.display = "none"; }); // 2D scenes stay as they are
           const slot = document.createElement("div");
           slot.className = "three-slot world-slot";
           slot.setAttribute("data-layout-allow-overflow", "");
@@ -4199,7 +4199,7 @@
               g.userData.streakLine = l;
             } else if (shape === "cubegrid") { // a data-centre: racks of cubes lighting up
               for (let x = 0; x < 4; x++) for (let y = 0; y < 3; y++) for (let z = 0; z < 3; z++) { const q = glassSolid(new THREE.BoxGeometry(0.5, 0.5, 0.5), (x + y + z) % 3 ? color : color2, 0.3); q.position.set((x - 1.5) * 0.7, (y - 1) * 0.7, (z - 1) * 0.7); q.userData.pulse = x + y * 2 + z * 3; g.add(q); }
-              g.add(glowSprite(color, 3.4));
+              g.add(glowSprite(color, 1.8));
             } else if (shape === "globe") { // the internet / the world: wire sphere with meridians
               g.add(new THREE.Mesh(new THREE.SphereGeometry(1.15, 36, 24), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false })));
               for (let k = 0; k < 6; k++) { const t = new THREE.Mesh(new THREE.TorusGeometry(1.17, 0.012, 6, 90), new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.55 })); t.rotation.y = (k / 6) * Math.PI; g.add(t); }
@@ -4220,17 +4220,11 @@
             return mix(g);
           }
           const sceneAt = (t) => { for (let i = scenesW.length - 1; i >= 0; i--) if (t >= scenesW[i].start) return i; return 0; };
-          const MOVES = ["dolly", "orbit", "crane", "tilt", "push"];
-          // camera moves differ scene to scene: dolly, orbit, crane, tilt, push-through
+          // camera moves are motivated: a slow push toward the thing being discussed; the compositions
+          // that reveal parts (a stack, a split, a path) steer the camera themselves
           function moveCamera(it, st) {
-            const b = it.cb, e = easeIO(st), m = MOVES[(it.index * 2 + 1) % 5], dir = it.index % 2 ? -1 : 1;
-            let yaw = b.yaw, pitch = b.pitch, dist = b.dist, ty = b.ty;
-            if (m === "orbit") yaw += dir * (e - 0.5) * 1.2;
-            else if (m === "dolly") dist *= lerp(1.3, 0.88, e);
-            else if (m === "crane") { pitch = lerp(b.pitch - 0.14, b.pitch + 0.3, e); ty += lerp(-0.4, 0.6, e); }
-            else if (m === "tilt") { pitch = lerp(0.5, b.pitch * 0.5, e); yaw += dir * 0.2 * (e - 0.5); }
-            else { dist *= lerp(1.6, 0.8, smooth(e * 1.2)); yaw += dir * 0.25 * (0.5 - e); }
-            aim(wcam, yaw, pitch, dist, 0, ty + 0.9, 0);
+            const bs = it.cb, e = easeIO(st);
+            aim(wcam, bs.yaw, bs.pitch, bs.dist * lerp(1.18, 0.92, e), 0, bs.ty + 0.9, 0);
           }
           const HERO_LAYOUTS = [
             { obj: [0, -0.9, 1.0], pl: [0, 2.3, -1.0], yaw: 0, pitch: -0.05, os: 1.0 },
@@ -4247,6 +4241,7 @@
           const items = [];
           scenesW.forEach((s, i) => {
             const c = s.w3 || { kind: s.type, comp: "type-plate", label: "", title: "", value: "", lines: [], items: [], numbers: [], icon: "", cues: [], chunks: [], words: [] };
+            if (c.comp === "flat" || !c.comp) { items.push(null); return; }
             const g = new THREE.Group();
             g.visible = false;
             const it = { s, c, g, index: i, upd: null, cb: CAM["type-plate"] };
@@ -4262,8 +4257,10 @@
             if (WORLD === "corridor") {
               const big = c.kind === "title" || c.kind === "outro";
               const pl = plate(c, col(i), big ? 4.3 : 3.9);
-              pl.position.set(i === 0 ? 0 : (i % 2 ? 0.95 : -0.95), ((i % 3) - 1) * 0.4 + 0.2, -i * CDS);
-              pl.userData.yaw = i === 0 || i === scenesW.length - 1 ? 0 : (i % 2 ? -0.3 : 0.3);
+              const rank = items.filter(Boolean).length;
+              pl.position.set(rank === 0 ? 0 : (rank % 2 ? 0.95 : -0.95), ((rank % 3) - 1) * 0.4 + 0.2, -rank * CDS);
+              pl.userData.yaw = rank === 0 || i === scenesW.length - 1 ? 0 : (rank % 2 ? -0.3 : 0.3);
+              it.rank = rank;
               pl.rotation.y = pl.userData.yaw;
               wrig.add(pl);
               it.pl = pl;
@@ -4285,7 +4282,7 @@
                 const y0 = L.obj[1];
                 obj.position.set(L.obj[0], y0 + (1 - p1) * -1.8 + Math.sin(lt * 1.5) * 0.09, L.obj[2]);
                 obj.scale.setScalar(Math.max(0.001, L.os * p1));
-                obj.rotation.set(shape === "chip" ? 0.5 : shape === "ring" ? 0.6 : 0.12 + Math.sin(lt * 0.6) * 0.1, shape === "ring" ? 0 : shape === "iconplate" || shape === "shield" ? Math.sin(lt * 0.7) * 0.5 : lt * (shape === "streaks" ? 0 : 0.55), shape === "ring" ? lt * 0.5 : 0);
+                obj.rotation.set(shape === "chip" ? 0.5 : shape === "ring" ? 0.6 : 0.12 + Math.sin(lt * 0.6) * 0.1, shape === "ring" ? 0 : shape === "globe" ? lt * 0.25 : Math.sin(lt * 0.5) * 0.35, shape === "ring" ? lt * 0.5 : 0);
                 obj.children.forEach((ch) => {
                   if (ch.userData.spin) { ch.rotation.y = lt * 1.3; ch.rotation.x = lt * 0.7; }
                   if (ch.userData.pulse !== undefined) { const k = 0.7 + 0.3 * Math.sin(lt * 2.4 + ch.userData.pulse); ch.scale.setScalar(k + 0.3); }
@@ -4333,20 +4330,21 @@
                   fade(t, X.a * pk);
                 });
               };
-            } else if (comp === "type-stack") {
-              const chunks = (c.chunks && c.chunks.length ? c.chunks : [c.title]).slice(0, 3);
-              const pls = chunks.map((ch, k) => { const p = plate({ label: k === 0 ? c.label : "", title: ch, emph: c.emph, icon: k === 0 ? c.icon : "", lines: [] }, col(k), 4.0); p.position.set(k % 2 ? 0.6 : -0.6, 0.8 - k * 0.25, -k * 3.0); p.userData.yaw = k % 2 ? -0.22 : 0.22; g.add(p); return p; });
+            } else if (comp === "path") {
+              // a real sequence of steps: one plane per step, the camera walks through them as each is spoken
+              const parts = c.items.slice(0, 4).map((x) => ({ label: x.label, title: x.text }));
+              const pls = parts.map((ch, k) => { const p = plate({ label: ch.label, title: ch.title, icon: "", emph: "", lines: [] }, col(k), 3.6); p.position.set(k % 2 ? 0.25 : -0.25, 0.8 - k * 0.25, -k * 3.0); p.userData.yaw = k % 2 ? -0.22 : 0.22; g.add(p); return p; });
               it.upd = (X) => {
                 const n = pls.length;
                 let adv = 0;
                 for (let k = 1; k < n; k++) adv += easeIO(clamp01((X.t - (cue(k, X.s0 + 0.5 + k * 0.7) - 0.6)) / 1.0));
                 const camZ = 9.2 - adv * 3.0;
-                wcam.position.set(Math.sin(X.lt * 0.4) * 0.35, 1.0, camZ);
+                wcam.position.set(0, 1.0, camZ);
                 wcam.lookAt(0, 0.8, camZ - 8);
                 pls.forEach((p, k) => {
                   const dist = camZ - p.position.z, pk = X.p(cue(k, X.s0 + 0.3 + k * 0.7), 0.7);
                   p.rotation.y = p.userData.yaw * (1 - 0.5 * clamp01(1 - Math.abs(dist - 9.2) / 4));
-                  fade(p, X.a * pk * lerp(0.25, 1, clamp01(1 - (dist - 9.2) / 8)) * clamp01((dist - 3.0) / 2.5));
+                  fade(p, X.a * pk * (1 - smooth(clamp01(adv - k)))); // a step is gone once the camera has moved on to the next: never two steps' text at once
                 });
                 X.camDone = true;
               };
@@ -4368,6 +4366,10 @@
                   fade(tags[k], X.a * pk);
                 });
                 if (hd) { hd.position.set(0, (n - 1) / 2 * 1.15 * spread + 2.3, 0); fade(hd, X.a * X.p(X.s0 + 0.2, 0.8)); }
+                let seen = 0; for (let k = 0; k < n; k++) seen += X.p(cue(k, X.s0 + 0.4 + k * 0.5), 0.9);
+                const r = n > 1 ? seen / n : 1; // the camera climbs with the layers as each is spoken
+                aim(wcam, -0.45, 0.42, 14 * lerp(1.12, 0.94, r), 0, it.cb.ty + 0.9 + lerp(-0.7, 0.4, r), 0);
+                X.camDone = true;
               };
               it.cb = { yaw: -0.45, pitch: 0.42, dist: 14, ty: 0.9 };
             } else if (comp === "hub") {
@@ -4408,6 +4410,9 @@
                   fade(p, X.a * pk);
                 });
                 vs.position.set(0, 0.9, 0.2); fade(vs, X.a * X.p(X.s0 + 0.5, 0.8));
+                const second = smooth((X.t - (cue(1, X.s0 + 1.2) - 0.3)) / 0.9); // the camera turns to the side being spoken
+                aim(wcam, lerp(0.3, -0.3, second), 0.16, 10.5 * lerp(1.15, 0.95, X.st), 0, it.cb.ty + 0.9, 0);
+                X.camDone = true;
                 if (hd) { hd.position.set(0, 3.3, 0); fade(hd, X.a * X.p(X.s0 + 0.2, 0.8)); }
               };
             } else if (comp === "bars") {
@@ -4448,8 +4453,8 @@
               g.add(slab, side);
               it.upd = (X) => {
                 const p1 = X.p(X.s0 + 0.1, 1.0), p2 = X.p(X.s0 + 0.5, 0.9);
-                slab.position.set(-0.9, FLOOR + 2.6 * p1, 0); slab.scale.set(1.3, 1.3 * Math.max(0.001, p1), 1.3); slab.rotation.y = 0.3 + Math.sin(X.lt * 0.5) * 0.1;
-                side.position.set(1.7 + (1 - p2) * 1.5, 1.0, 0.6); side.rotation.y = -0.4;
+                slab.position.set(-1.3, FLOOR + 2.6 * p1, 0); slab.scale.set(1.3, 1.3 * Math.max(0.001, p1), 1.3); slab.rotation.y = 0.3 + Math.sin(X.lt * 0.5) * 0.1;
+                side.position.set(2.0 + (1 - p2) * 1.5, 1.2, 0.8); side.rotation.y = -0.4;
                 fade(slab, X.a * p1); fade(side, X.a * p2);
               };
             } else if (comp === "gauge") {
@@ -4485,7 +4490,7 @@
           });
           // the corridor: dust, pylons and rails streaming past
           if (WORLD === "corridor") {
-            const n = scenesW.length;
+            const n = items.filter(Boolean).length;
             wscene.add(dust(260, [16, FLOOR + 0.2, 7, -CDS * (n + 1), CDS * (n + 3)], 777, col(1)));
             for (let k = 0; k <= n + 1; k++) {
               [-3.6, 3.6].forEach((x) => {
@@ -4508,43 +4513,42 @@
             const idx = sceneAt(t);
             let drawn = false;
             if (WORLD === "corridor") {
-              drawn = true;
-              const DS = CDS, STAND = CSTAND;
-              const posOf = (k) => { const p = items[k].pl.position; return new THREE.Vector3(p.x * 0.55, p.y + 0.45, p.z + STAND); };
-              const lookOf = (k) => { const p = items[k].pl.position; return new THREE.Vector3(p.x * 0.8, p.y, p.z - 1.0); };
-              const k = Math.max(0, idx);
-              const s = scenesW[k];
-              const fl = k === 0 ? 1 : smooth((t - (s.start - 0.2)) / 1.3);
-              const A = posOf(Math.max(0, k - 1)), B = posOf(k), LA = lookOf(Math.max(0, k - 1)), LB = lookOf(k);
-              if (k > 0) A.z -= 1.2; // the push-in the previous hold ended with
-              const hold = clamp01((t - s.start) / Math.max(1, s.end - s.start)) * 1.2;
-              const intro = k === 0 ? smooth(t / 1.6) : 1;
-              const sway = Math.sin(t * 0.55);
-              const e = k === 0 ? 1 : easeIO(fl);
-              wcam.position.lerpVectors(A, B, e);
-              wcam.position.z += (1 - intro) * 4.5 - hold * e;
-              wcam.position.x += sway * 0.28;
-              wcam.position.y += Math.sin(t * 0.4) * 0.1 + Math.sin(Math.PI * e) * (k === 0 ? 0 : 0.5);
-              const look = new THREE.Vector3().lerpVectors(LA, LB, e);
-              wcam.lookAt(look.x + sway * 0.1, look.y, look.z);
-              wcam.rotateZ((k === 0 ? 0 : Math.sin(Math.PI * e)) * (k % 2 ? -0.09 : 0.09));
-              floor.material.uniforms.uC.value.set(wcam.position.x, wcam.position.z - 6);
-              items.forEach((it, j) => {
-                const dist = wcam.position.z - it.pl.position.z;
-                const ahead = Math.pow(clamp01(1 - (dist - 7) / 14), 1.6);
-                const passed = clamp01((dist - 1.6) / 2.4);
-                const entry = j === 0 ? smooth(t / 0.8) : 1;
-                fade(it.pl, entry * lerp(0.05, 1, ahead) * passed);
-                it.pl.rotation.y = it.pl.userData.yaw + Math.sin(t * 0.5 + j) * 0.03;
-              });
+              const planes = items.filter(Boolean);
+              const cur = items[idx];
+              if (cur) {
+                drawn = true;
+                const STAND = CSTAND;
+                const posOf = (r) => { const p = planes[r].pl.position; return new THREE.Vector3(p.x * 0.55, p.y + 0.45, p.z + STAND); };
+                const lookOf = (r) => { const p = planes[r].pl.position; return new THREE.Vector3(p.x * 0.8, p.y, p.z - 1.0); };
+                const k = cur.rank, s = scenesW[idx];
+                const fl = k === 0 ? 1 : smooth((t - (s.start - 0.2)) / 1.3);
+                const A = posOf(Math.max(0, k - 1)), B = posOf(k), LA = lookOf(Math.max(0, k - 1)), LB = lookOf(k);
+                if (k > 0) A.z -= 1.2; // the push-in the previous hold ended with
+                const hold = clamp01((t - s.start) / Math.max(1, s.end - s.start)) * 1.2;
+                const intro = k === 0 ? smooth((t - s.start) / 1.6) : 1;
+                const e = k === 0 ? 1 : easeIO(fl);
+                wcam.position.lerpVectors(A, B, e);
+                wcam.position.z += (1 - intro) * 4.5 - hold * e;
+                wcam.position.y += Math.sin(Math.PI * e) * (k === 0 ? 0 : 0.5);
+                const look = new THREE.Vector3().lerpVectors(LA, LB, e);
+                wcam.lookAt(look.x, look.y, look.z);
+                wcam.rotateZ((k === 0 ? 0 : Math.sin(Math.PI * e)) * (k % 2 ? -0.09 : 0.09));
+                floor.material.uniforms.uC.value.set(wcam.position.x, wcam.position.z - 6);
+                // only the plane being spoken (and, during a flight, the one just left) is visible: never two planes' text at once
+                const out = 1 - smooth((t - (s.end - 0.25)) / 0.25) * (items[idx + 1] ? 0 : 1);
+                planes.forEach((it2, j) => {
+                  const vis = j === k ? (k === 0 ? smooth((t - s.start) / 0.8) : smooth(e * 1.4)) * out : j === k - 1 ? 1 - smooth(e * 1.6) : 0;
+                  fade(it2.pl, vis);
+                });
               wrig.children.forEach((o) => { if (o.userData.pylon) { const d = wcam.position.z - o.position.z; fade(o, clamp01(1 - (d - 4) / 22) * clamp01((d + 2) / 3) * 0.7); } });
-            } else {
+              }
+            } else if (items[idx]) {
               const it = items[idx];
               const s = it.s;
               const lt = t - s.start;
               const a = smooth(lt / 0.35) * (1 - smooth((t - (s.end - 0.3)) / 0.3));
               const st = clamp01(lt / Math.max(1, s.end - s.start));
-              items.forEach((o, j) => { o.g.visible = j === idx; });
+              items.forEach((o, j) => { if (o) o.g.visible = j === idx; });
               if (a > 0.003) {
                 drawn = true;
                 const X = { t, lt, st, a, s0: s.start, p: (at, dur) => prog(t, at, dur), camDone: false };
