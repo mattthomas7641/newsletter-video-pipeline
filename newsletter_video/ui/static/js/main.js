@@ -1,17 +1,17 @@
 import { h } from "./dom.js";
 import { mountSaveBar } from "./components.js";
 import { state, subscribe, loadAll, refreshRuns, isRunning, isDirty } from "./store.js";
-import { mountDaily } from "./views/daily.js";
+import { mountVideos } from "./views/videos.js";
 import { mountWorkbench } from "./views/workbench.js";
 import { mountSettings } from "./views/settings.js";
 
 const ROUTES = {
-  "/": { name: "daily", title: "Today's videos", mount: mountDaily },
-  "/workbench": { name: "workbench", title: "Look workbench", mount: mountWorkbench },
+  "/": { name: "videos", title: "Videos", mount: mountVideos },
+  "/lab": { name: "lab", title: "Design lab", mount: mountWorkbench },
   "/settings": { name: "settings", title: "Settings", mount: mountSettings },
 };
 // Older bookmarks and links keep working.
-const LEGACY = { "/styles": "/workbench", "/look": "/settings", "/videos": "/", "/daily": "/" };
+const LEGACY = { "/styles": "/lab", "/workbench": "/lab", "/look": "/settings", "/videos": "/", "/daily": "/" };
 
 const viewHost = document.getElementById("view");
 let disposeView = null;
@@ -61,7 +61,7 @@ function renderSideFoot() {
     title = { batch: "Daily batch running", test: "Test video running", plan: latest?.meta?.test ? "Planning a test video" : "Planning",
       preview: "Preview rendering", render: "Final render running", rewrite: "Rewriting a script" }[latest?.kind] || "A job is in progress";
     text = latest?.stage || "Working";
-    href = latest?.meta?.test ? "#/workbench" : "#/";
+    href = latest?.meta?.test ? "#/lab" : "#/";
   } else if (isDirty()) {
     kind = "warn"; title = "Unsaved changes"; text = "Save to use them in the next run."; href = "#/settings";
   } else if (state.setup && state.setup.checks.some((c) => !c.ok && !c.optional)) {

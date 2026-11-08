@@ -43,15 +43,20 @@ RECIPE_NONE = "none"
 # still override any field. "" means no preset: nothing added.
 # Presets that were removed from presets.json: a saved plan, sidecar or LOOK_PRESET that still names one
 # resolves to the default look instead of failing.
-RETIRED_PRESETS = frozenset({"depth-cards"})
+RETIRED_PRESETS = frozenset({"depth-cards", "data-focus", "glow-type", "quiet-editorial"})
 RETIRED_RECIPES = frozenset({"look-" + p for p in RETIRED_PRESETS})
-FIELDS = ("style", "character", "theme", "background", "recipe", "preset")
+# `bg` and `accent` are the two colours a look can change (colors.py): the
+# ground and the colour of the animations / highlights / neon. "" is "the
+# look's own colour"; anything else is a #rrggbb hex, checked on the way in.
+FIELDS = ("style", "character", "theme", "background", "recipe", "preset", "bg", "accent")
+BLANKABLE = ("character", "preset", "bg", "accent")
 ENV_KEYS = {"style": "VIDEO_STYLE", "character": "CHARACTER", "theme": "VIDEO_THEME",
-            "background": "BACKGROUND_STYLE", "recipe": "STYLE_RECIPE", "preset": "LOOK_PRESET"}
+            "background": "BACKGROUND_STYLE", "recipe": "STYLE_RECIPE", "preset": "LOOK_PRESET",
+            "bg": "LOOK_BG", "accent": "LOOK_ACCENT"}
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _RECIPE = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
 DEFAULTS = {"style": "explainer", "character": "", "theme": "light", "background": "gameplay", "recipe": RECIPE_AUTO,
-            "preset": ""}
+            "preset": "", "bg": "", "accent": ""}
 
 
 class LookError(ValueError):
@@ -85,6 +90,13 @@ def _check_field(key: str, value: Any) -> tuple[str | None, str | None]:
         if v in (RECIPE_AUTO, RECIPE_NONE) or _RECIPE.match(v):
             return v, None
         return None, f"look.recipe must be 'auto', 'none' or a recipe id, not {v!r}"
+    if key in ("bg", "accent"):
+        from .colors import normalise_hex
+
+        if v == "":
+            return "", None
+        hex_ = normalise_hex(v)
+        return (hex_, None) if hex_ else (None, f"look.{key} must be a #rrggbb colour, not {v!r}")
     if key == "preset":
         v = v.lower()
         if v == "" or v in RETIRED_PRESETS:
@@ -115,7 +127,7 @@ def validate_look(raw: Any, partial: bool = True) -> dict[str, str | None]:
         if key not in FIELDS:
             errors.append(f"look has an unknown field {key!r}")
             continue
-        if value == "" and key not in ("character", "preset"):
+        if value == "" and key not in BLANKABLE:
             value = None  # an empty choice in a form means "inherit"
         normalised, problem = _check_field(key, value)
         if problem:
@@ -144,16 +156,20 @@ def compact(look: Mapping[str, Any] | None) -> dict[str, Any]:
     return out
 
 
-def look_from_env(environ: Mapping[str, str] | None = None) -> dict[str, str]:
-    """The default look: what the environment says, with the pipeline's own
-    defaults for anything unset. Invalid values raise, exactly as the
-    builders' own readers (`video_style()`) would."""
+def _base_from_env(environ: Mapping[str, str] | None = None) -> dict[str, Any]:
     environ = os.environ if environ is None else environ
     raw = {}
     for key, env_key in ENV_KEYS.items():
         value = environ.get(env_key)
-        raw[key] = value if value is not None and (value.strip() or key in ("character", "preset")) else DEFAULTS[key]
-    return apply_preset(validate_look(raw, partial=False))  # type: ignore[arg-type]
+        raw[key] = value if value is not None and (value.strip() or key in BLANKABLE) else DEFAULTS[key]
+    return validate_look(raw, partial=False)  # type: ignore[return-value]
+
+
+def look_from_env(environ: Mapping[str, str] | None = None) -> dict[str, str]:
+    """The default look: what the environment says, with the pipeline's own
+    defaults for anything unset. Invalid values raise, exactly as the
+    builders' own readers (`video_style()`) would."""
+    return apply_preset(_base_from_env(environ))  # type: ignore[arg-type]
 
 
 def apply_preset(look: dict[str, Any], explicit: set[str] | None = None) -> dict[str, Any]:
@@ -174,15 +190,33 @@ def apply_preset(look: dict[str, Any], explicit: set[str] | None = None) -> dict
     return look
 
 
+def _effective_preset(pid: str) -> str:
+    """"" and the library's default preset render the same look."""
+    if pid:
+        return pid
+    from .looks import default_preset
+
+    d = default_preset()
+    return d.id if d else ""
+
+
 def resolve_look(*layers: Mapping[str, Any] | None, environ: Mapping[str, str] | None = None) -> dict[str, str]:
     """Default (environment) < preset < each layer in order; a layer's unset
     fields inherit. A preset named by the environment or any layer supplies
     its theme and recipe wherever no layer set them by hand, so a per-video
     look can still override any field. Every layer is validated."""
-    resolved: dict[str, Any] = dict(look_from_env(environ))
+    base = _base_from_env(environ)
+    resolved: dict[str, Any] = dict(apply_preset(dict(base)))
     explicit: set[str] = set()
     for layer in layers:
         clean = validate_look(layer, partial=True)
+        if clean["preset"] is not None and _effective_preset(clean["preset"]) != _effective_preset(resolved.get("preset", "")):
+            for key in ("bg", "accent"):  # the colours belong to a preset: another preset starts from its own
+                if clean[key] is None:
+                    resolved[key] = ""
+            for key in ("theme", "recipe"):  # so do the theme and recipe the previous preset supplied
+                if key not in explicit:
+                    resolved[key] = base[key]
         for key in FIELDS:
             if clean[key] is not None:
                 resolved[key] = clean[key]
@@ -251,6 +285,10 @@ def describe(look: Mapping[str, Any]) -> str:
     bits = [style]
     if look.get("preset"):
         bits.append(f"preset {look['preset']}")
+    if look.get("bg"):
+        bits.append(f"background {look['bg']}")
+    if look.get("accent"):
+        bits.append(f"accent {look['accent']}")
     bits.append(f"narrator {look['character']}" if look.get("character") else "default narrator")
     if style == "avatar":
         bits.append(f"{look.get('background', 'gameplay')} background")
@@ -262,7 +300,7 @@ def describe(look: Mapping[str, Any]) -> str:
 
 
 def world_of(look: Mapping[str, Any] | None = None, environ: Mapping[str, str] | None = None) -> str:
-    """The 3D world ("hero" | "metrics") of the look's preset, or
+    """The 3D world ("hero") of the look's preset, or
     "" for a flat look: with a world, every scene of the video is drawn in 3D
     (world3d.py). The preset comes from the look's `preset` or its
     `look-<preset>` recipe; the avatar style never has one."""
@@ -286,3 +324,18 @@ def world_of(look: Mapping[str, Any] | None = None, environ: Mapping[str, str] |
 def threed_requested(look: Mapping[str, Any] | None = None, environ: Mapping[str, str] | None = None) -> bool:
     """Whether the look has a 3D world: the writer is then told to prefer 3D scenes."""
     return bool(world_of(look, environ))
+
+
+def colors_for(theme: str, environ: Mapping[str, str] | None = None) -> dict[str, Any]:
+    """The look's ground and accent as the composition should draw them, from
+    LOOK_BG / LOOK_ACCENT (set by `applied()` for one video, or the daily
+    default from .env), fitted to the theme by colors.fit_colors. Empty when
+    neither is set, so the shipped look is untouched."""
+    from .colors import fit_colors, normalise_hex
+
+    environ = os.environ if environ is None else environ
+    bg, accent = (normalise_hex(environ.get(k, "")) for k in ("LOOK_BG", "LOOK_ACCENT"))
+    if not bg and not accent:
+        return {}
+    fitted = fit_colors(theme, bg, accent)
+    return {k: fitted[k] for k in ("bg", "accent") if fitted[k]}

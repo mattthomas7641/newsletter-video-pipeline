@@ -87,6 +87,7 @@ class Source:
     audio_hint: Path | None = None  # a known narration file for this exact script
     cached_timing: bool = False
     fingerprint: str = ""  # of script + plan + look overrides: a stale preview is hidden
+    trial_look: dict | None = None  # a trial: the look this preview shows INSTEAD of the saved one (not saved)
 
     @property
     def lines(self) -> list[str]:
@@ -122,7 +123,7 @@ def _saved_look(saved: dict | None, overrides: dict | None) -> dict | None:
         return saved
     out = dict(saved)
     if "preset" in overrides:
-        for key in ("preset", "theme", "recipe"):
+        for key in ("preset", "theme", "recipe", "bg", "accent"):
             if key not in overrides:
                 out.pop(key, None)
     return out
@@ -143,12 +144,26 @@ def source_from_sidecar(path: Path, overrides: dict | None = None) -> Source:
                   fingerprint=pm.sidecar_fingerprint(meta) if not overrides else "")
 
 
-def source_from_plan(folder: Path, vid: str, overrides: dict | None = None) -> Source:
+def source_from_plan(folder: Path, vid: str, overrides: dict | None = None, trial: bool = False) -> Source:
     data = pm.read_manifest(folder)
     if data is None:
         raise pm.ManifestError(f"No plan in {folder}")
     entry = pm.get_entry(data, vid)
     script = pm.script_from_entry(entry)
+    if trial:
+        # A trial look REPLACES the saved one for this preview and is not saved: the fingerprint is that of the
+        # video as it would be if the trial look were saved, so "use this style" keeps the preview valid.
+        from .look import compact, validate_look
+
+        trial_look = compact(validate_look(overrides or {}))
+        look = resolve_look(overrides)
+        script.look = dict(look)
+        try:
+            day = date.fromisoformat(data.get("date", ""))
+        except ValueError:
+            day = _day_of(folder)
+        return Source(script, look, Path(folder).resolve(), vid, day, "plan",
+                      fingerprint=pm.fingerprint(entry.get("script"), entry.get("scene_plan"), trial_look), trial_look=trial_look)
     look = resolve_look(_saved_look(entry.get("look"), overrides), overrides)
     script.look = dict(look)
     try:
@@ -233,8 +248,9 @@ def build_payload(source: Source, per_line, speech: float) -> dict:
         tail = min(eb.EXPLAINER_MAX_TAIL, max(vb.TAIL_SECONDS, vb.MIN_VIDEO_SECONDS + 0.2 - speech))
         from .look import world_of
 
-        return eb.story_payload(plan, per_line, speech, source.kicker, tail, source.look.get("theme", "light"),
-                                world=world_of(source.look) or None)
+        with applied(source.look):  # LOOK_BG / LOOK_ACCENT reach the payload the way the daily render sees them
+            return eb.story_payload(plan, per_line, speech, source.kicker, tail, source.look.get("theme", "light"),
+                                    world=world_of(source.look) or None)
     tail = min(vb.MAX_TAIL_SECONDS, max(vb.TAIL_SECONDS, vb.MIN_VIDEO_SECONDS + 0.2 - speech))
     return vb._story_payload(source.script, per_line, speech, source.kicker, tail)
 
@@ -454,6 +470,8 @@ def _write_result(source: Source, result: dict) -> Path:
         pass
     existing.update({"version": PREVIEW_VERSION, "key": source.key, "title": source.script.title, "look": source.look})
     result["fingerprint"] = source.fingerprint
+    if source.trial_look is not None:
+        result["trial_look"] = source.trial_look
     existing[result["tier"]] = result
     write_json_atomic(path, existing)
     return path
@@ -624,6 +642,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--studio", action="store_true",
                         help="serve the prepared composition with HyperFrames Studio (127.0.0.1) until stopped")
     parser.add_argument("--port", type=int, default=3002, help="--studio only: the port to serve on (default 3002)")
+    parser.add_argument("--trial", action="store_true",
+                        help="plan videos: preview the look given by the look flags INSTEAD of the saved one, without saving it")
     from .plan_day import _overrides_from_args, add_look_arguments
 
     add_look_arguments(parser)
@@ -641,7 +661,7 @@ def main(argv: list[str] | None = None) -> int:
                 data = pm.read_manifest(folder)
                 ids = [e["id"] for e in (data or {}).get("videos", [])]
                 sys.exit(f"Pick a planned video with --video: {', '.join(ids) or 'none planned'}")
-            source = source_from_plan(folder, args.video, overrides)
+            source = source_from_plan(folder, args.video, overrides, trial=args.trial)
         if args.final and args.studio:
             sys.exit("--studio and --final are different things: pick one")
         if args.final:

@@ -24,8 +24,8 @@ export async function attempt(fn) {
 
 // ---- free steps ----
 
-export async function startPreview(ref, vid, tier = "stills", voice = false) {
-  await api.post(`${videoPath(ref, vid)}/preview`, { tier, voice });
+export async function startPreview(ref, vid, tier = "stills", voice = false, { overrides, trial = false } = {}) {
+  await api.post(`${videoPath(ref, vid)}/preview`, { tier, voice, ...(overrides ? { overrides } : {}), ...(trial ? { trial: true } : {}) });
   noteSpend("previews");
   await refreshRuns();
 }

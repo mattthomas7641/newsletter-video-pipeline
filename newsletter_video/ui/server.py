@@ -97,7 +97,7 @@ def looks_payload() -> dict:
         thumb = p.thumbnail if p.thumbnail and (STATIC_DIR / p.thumbnail).is_file() else ""
         presets.append({"id": p.id, "name": p.name, "description": p.description, "good_for": p.good_for,
                         "default": p.default, "theme": p.look.get("theme") or "light", "recipe": p.recipe_id,
-                        "cinematic": p.cinematic, "emphasis": list(p.emphasis),
+                        "cinematic": p.cinematic, "emphasis": list(p.emphasis), "colors": dict(p.colors),
                         "thumbnail": f"/static/{thumb}" if thumb else None})
         if p.default:
             default = p.id
@@ -344,7 +344,7 @@ class App:
             if not isinstance(overrides, dict):
                 return error(400, "overrides must be an object.")
             job = self.plans.start_preview(m.group(1), unquote(m.group(2)), str(data.get("tier") or "stills"),
-                                           voice=data.get("voice") is True, overrides=overrides)
+                                           voice=data.get("voice") is True, overrides=overrides, trial=data.get("trial") is True)
             return json_response({"job": self.runs.describe(job)}, 201)
         m = re.fullmatch(r"/api/plans/([A-Za-z0-9-]+)/videos/([^/]+)/studio", path)
         if m and req.method == "POST":  # free and local: no confirmation, just the usual token guard

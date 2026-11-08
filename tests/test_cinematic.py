@@ -161,10 +161,10 @@ def test_recipe_policy_switches_the_payload_to_the_cinematic_theme():
 
 def test_default_look_and_payload_are_unchanged(monkeypatch):
     """The daily job: no preset, no recipe applied, light theme -> exactly the old payload shape."""
-    for key in ("VIDEO_STYLE", "VIDEO_THEME", "STYLE_RECIPE", "CHARACTER", "BACKGROUND_STYLE", "LOOK_PRESET"):
+    for key in ("VIDEO_STYLE", "VIDEO_THEME", "STYLE_RECIPE", "CHARACTER", "BACKGROUND_STYLE", "LOOK_PRESET", "LOOK_BG", "LOOK_ACCENT"):
         monkeypatch.delenv(key, raising=False)
     assert looks.look_from_env() == {"style": "explainer", "character": "", "theme": "light", "background": "gameplay",
-                                     "recipe": "auto", "preset": ""}
+                                     "recipe": "auto", "preset": "", "bg": "", "accent": ""}
     assert not looks.cinematic_requested()
     plan = validate_plan(rich_plan()[:1] + [
         {"type": "stat", "say": LINE, "value": "5.1x", "label": "Top cost multiplier", "trend": [1.8, 3.2, 5.1]},
@@ -208,15 +208,12 @@ def test_writer_prompt_offers_rich_scenes_only_for_the_cinematic_look(monkeypatc
     rich = ew._system_prompt()
     assert "renders in the cinematic look" in rich and "object3d" in rich and "glass" in rich and "At most 4 object3d" in rich
     monkeypatch.delenv("VIDEO_THEME", raising=False)
-    monkeypatch.setenv("LOOK_PRESET", "data-focus")
-    data = ew._system_prompt()
-    # data-focus is a 3D preset: it gets the rich scenes and the "prefer 3D" note
-    assert "Look preset: Data focus" in data and "chart, stat, comparison, object3d" in data and "This look is a 3D look" in data
-    monkeypatch.setenv("LOOK_PRESET", "quiet-editorial")
-    quiet = ew._system_prompt()
-    assert "Look preset: Quiet editorial" in quiet and "renders in the cinematic look" not in quiet and "3D look" not in quiet
-    monkeypatch.setenv("LOOK_PRESET", "glow-type")
-    assert "renders in the cinematic look" in ew._system_prompt()  # a cinematic preset switches the scenes on too
+    monkeypatch.setenv("LOOK_PRESET", "cinematic-glass")
+    glass = ew._system_prompt()
+    assert "Look preset: Dark glass" in glass and "renders in the cinematic look" in glass and "This look is a 3D look" in glass
+    monkeypatch.setenv("LOOK_PRESET", "paper")
+    paper = ew._system_prompt()
+    assert "renders in the cinematic look" not in paper and "3D look" not in paper
 
 
 # --- the preset library ----------------------------------------------------------------
@@ -224,7 +221,7 @@ def test_writer_prompt_offers_rich_scenes_only_for_the_cinematic_look(monkeypatc
 def test_presets_load_validate_and_map_to_recipes():
     presets = load_presets()
     ids = [p.id for p in presets]
-    assert len(presets) >= 5 and len(set(ids)) == len(ids) and PRESETS_PATH.is_file()
+    assert [p.id for p in presets] == ["paper", "cinematic-glass"] and len(set(ids)) == len(ids) and PRESETS_PATH.is_file()
     paper = get_preset("paper")
     assert paper.default and paper.look_fields() == {} and paper.recipe_id == "" and paper.registry == []
     glass = get_preset("cinematic-glass")
@@ -245,16 +242,16 @@ def test_preset_resolves_into_theme_and_recipe_but_explicit_fields_win():
     assert resolved["theme"] == "cinematic" and resolved["recipe"] == "look-cinematic-glass" and resolved["preset"] == "cinematic-glass"
     resolved = looks.resolve_look({"preset": "cinematic-glass", "theme": "dark"}, environ=env)
     assert resolved["theme"] == "dark" and resolved["recipe"] == "look-cinematic-glass"  # the hand-set theme wins
-    resolved = looks.resolve_look({"preset": "data-focus"}, {"recipe": "none"}, environ=env)
-    assert resolved["theme"] == "dark" and resolved["recipe"] == "none"  # a later layer overrides the preset's recipe
-    assert looks.look_from_env({**env, "LOOK_PRESET": "glow-type"})["recipe"] == "look-glow-type"
+    resolved = looks.resolve_look({"preset": "cinematic-glass"}, {"recipe": "none"}, environ=env)
+    assert resolved["theme"] == "cinematic" and resolved["recipe"] == "none"  # a later layer overrides the preset's recipe
+    assert looks.look_from_env({**env, "LOOK_PRESET": "cinematic-glass"})["recipe"] == "look-cinematic-glass"
     assert looks.resolve_look({"preset": ""}, environ=env)["theme"] == "light"
     assert looks.resolve_look({"preset": "paper"}, environ=env) == {**looks.look_from_env(env), "preset": "paper"}
     with pytest.raises(looks.LookError):
         looks.validate_look({"preset": "sepia-dream"})
     assert looks.compact({"preset": "", "style": "explainer"}) == {"version": 1, "style": "explainer"}
-    assert looks.compact({"preset": "glow-type"}) == {"version": 1, "preset": "glow-type"}
-    assert "preset glow-type" in looks.describe(looks.resolve_look({"preset": "glow-type"}, environ=env))
+    assert looks.compact({"preset": "cinematic-glass"}) == {"version": 1, "preset": "cinematic-glass"}
+    assert "preset cinematic-glass" in looks.describe(looks.resolve_look({"preset": "cinematic-glass"}, environ=env))
 
 
 def test_every_preset_recipe_switches_the_plan_and_the_default_does_not():

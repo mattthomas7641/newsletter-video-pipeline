@@ -1,4 +1,6 @@
-// The Look workbench: one guided flow in three stages.
+// The Design lab: for trying new designs, or seeing how a render looks without
+// drafting a video. Not part of the daily routine (that is the Videos page).
+// One guided flow in three stages.
 //   1. Look library: the presets, one card each. Picking one makes it the look
 //      of the test video (or of the test video about to be written).
 //   2. Test video: write one throwaway video from today's newsletter in that look.
@@ -28,8 +30,8 @@ export function mountWorkbench(root) {
   // ---- header + rail ----
   const ledger = h("p", { class: "ledger", "aria-live": "polite" });
   const head = h("header", { class: "page-head" },
-    h("div", {}, h("h1", { text: "Look workbench" }),
-      h("p", { class: "lede", text: "Pick a look from the library, write one throwaway test video with it, then compare looks on the same story until one wins. Only Render makes a real video." })),
+    h("div", {}, h("h1", { text: "Design lab" }),
+      h("p", { class: "lede" }, "For trying new designs, or seeing how a render looks without drafting a video: pick a look, write one throwaway test video, then compare looks on the same story with storyboards. Your daily videos are on the ", h("a", { class: "link", href: "#/", text: "Videos page" }), ". Only Render makes a real video.")),
     ledger);
   const rail = h("ol", { class: "rail", "aria-label": "Where you are" });
   const next = h("p", { class: "rail-next" });
@@ -80,7 +82,7 @@ export function mountWorkbench(root) {
     return job && p && job.meta?.ref === p.ref ? job : null;
   };
   const blocked = () => isRunning() || Boolean(busy);
-  const kept = () => { const v = video(); return (v?.preview?.looks || []).filter((e) => e.key !== v.look_key); };
+  const kept = () => { const v = video(); return (v?.preview?.looks || []).filter((e) => e.key !== v.look_key && e.url); };
   const compareWith = () => { const list = kept(); return list.find((e) => e.key === compareKey) || list[0] || null; };
 
   // ---- actions ----
