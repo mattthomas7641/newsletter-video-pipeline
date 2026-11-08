@@ -216,13 +216,14 @@ the value under 22 characters): a spec sheet, a routing table, a price list, a s
 """
 
 THREE_D_NOTE = """
-This look is a 3D look. The video is judged on how 3D it feels, so prefer the 3D scenes wherever the \
-content allows it: at least 3 of the middle scenes should be object3d (stack, bars, orbit, cards) or \
-depth, and at most one scene may be a plain statement. A tiered system or pipeline is an object3d \
-"stack"; numbers to compare are object3d "bars"; a hub with parts around it is an object3d "orbit"; a \
-sequence, a chain of causes or "behind this is this" is a "depth" scene. Use the story's real data \
-for every label and number. (Charts, comparisons, timelines and diagrams you do write are turned into \
-these 3D scenes automatically, so write them with real numbers and short labels.)
+This look is a 3D look: every scene, whatever its type, is drawn in 3D from its content. Give it real \
+content to draw. The icon you pick chooses the 3D object, so pick the icon that NAMES the thing the scene \
+is about (chip, brain, robot, dollar or money, lock or shield, cloud, database, globe, users, box); never \
+an icon just to decorate. Put the real figures in the words (a stat's value, a comparison's numbers, a \
+chart's series) because figures become 3D bars, towers and gauges; use lists, timelines and diagrams with \
+short real labels because they become exploded stacks and hubs; and keep statements short with an \
+emphasised phrase because they are set as glowing type in depth. Do not invent numbers or labels for the \
+sake of the visual.
 """
 
 _EXPLAINER_SCHEMA = {
