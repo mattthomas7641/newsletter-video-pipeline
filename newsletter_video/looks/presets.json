@@ -15,6 +15,7 @@
     },
     {
       "id": "cinematic-glass",
+      "threed": true,
       "name": "Cinematic dark glass",
       "description": "Near-black ground with drifting aurora fields, a grid floor, grain, glass panels, neon 3D stacks and bars; scenes dissolve and push in slowly. (The mesh-gradient shader background is installed and works in stills; set background 'mesh-gradient' on a scene to use it once the CLI renders WebGPU blocks.)",
       "look": {"theme": "cinematic"},
@@ -34,8 +35,9 @@
     },
     {
       "id": "depth-cards",
+      "threed": true,
       "name": "Depth cards",
-      "description": "Dark theme, layered cards the camera pushes through, glassy panels and device frames; scenes slide in from the right with a parallax hold.",
+      "description": "Dark theme: processes and timelines become glass planes the camera dollies through, stacks and hubs become 3D objects; scenes slide in from the right with a parallax hold.",
       "look": {"theme": "dark"},
       "knobs": {
         "transition": "push-left",
@@ -43,6 +45,7 @@
         "hold": "parallax",
         "ease": "out",
         "accent": "#7b96ff",
+        "palette": ["#7b96ff", "#22d3ee", "#8b5cff", "#ff5ca8"],
         "stagger": 0.1
       },
       "emphasis": ["depth", "glass", "device", "diagram"],
@@ -51,15 +54,17 @@
     },
     {
       "id": "data-focus",
+      "threed": true,
       "name": "Data focus",
-      "description": "Light paper with heavy sans headlines, hard wipes and popping bars: every scene is a number, a chart, a comparison or a 3D bar chart.",
-      "look": {"theme": "light"},
+      "description": "Dark ground with heavy sans headlines, hard wipes and popping bars: charts and comparisons become 3D columns standing on a grid floor, lit from inside.",
+      "look": {"theme": "dark"},
       "knobs": {
         "transition": "wipe-down",
         "entrance": "scale-pop",
         "ease": "out",
         "type_treatment": "sans-heavy",
-        "accent": "#1f49d6",
+        "accent": "#5b8cff",
+        "palette": ["#38e0a0", "#5b8cff", "#22d3ee", "#ffb020"],
         "speed": 1.15
       },
       "emphasis": ["chart", "stat", "comparison", "object3d"],
