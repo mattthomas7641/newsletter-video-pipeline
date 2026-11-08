@@ -48,24 +48,20 @@ resolved look is cinematic (`look.cinematic_requested`, `explainer_writer.CINEMA
 
 The 3D slot bleeds to the full 1080 px frame width (the stage is 820 px), so scene wipes use `OPEN`, an `inset` a little wider than the stage, instead of `inset(0)`; otherwise a wipe transition clips the 3D world to the stage box.
 
-## 3D worlds: 2D and 3D shots, each only where it is relevant
+## 3D worlds: three vocabularies, built from each scene's own content
 
-The 3D presets are defined by a **world** (`"world"` in `presets.json`: `hero`, `corridor`, `metrics`). Every scene is either a **3D shot** or its ordinary **2D scene** (the flat explainer scene of its kind, in the preset's theme and colours): a 3D composition appears in a scene only if it depicts something that scene's own words are about (`world3d.compose`, gate = the scene's narration, title, label and items, never an icon alone). The plan is never rewritten. `scene_content` turns a scene into a content block (`w3`) and `compose` decides `w3.comp`; `flat` means the 2D scene stays on screen and the world draws nothing. Rules:
+The 3D presets are defined by a **world** (`"world"` in `presets.json`). Each world has its OWN composition vocabulary, staging and camera language, so the three are told apart from a single still with the colours removed (`world3d.compose`; the plan is never rewritten; `tests/test_worlds.py::test_each_preset_has_its_own_composition_vocabulary`). 3D is built from THAT scene's content: the pictogram the 2D scene shows is rebuilt in 3D (each SVG path of `icons.js` swept into a glowing tube, assembled on a glass slab, lit when the keyword is spoken), items become depth, figures become geometry, a sentence becomes extruded type (three.js `TextGeometry`). Only the outro (and scenes with nothing to depict) stay their ordinary 2D scene, on the world's backdrop with a slight perspective tilt that settles as the scene lands.
 
-| Composition | Only when | Worlds |
-|---|---|---|
-| `object:chip` / `cubegrid` / `shield` / `streaks` / `globe` / `network` / `cube` | the scene text names it: chips, GPUs, semiconductors; data centre, servers, clusters; security, breach, encryption; faster, speed, latency; worldwide, global, countries, planet, satellite ("real-world" does not count); neural, LLM, AI model, machine learning; package, shipping | hero; title, statement, quote, stat scenes |
-| `object:coins` | a money amount ($21.5B, 3 million dollars) | hero |
-| `object:ring` | the outro is literally about a loop or cycle | hero |
-| `stack` | the items are layers / tiers / levels / a pipeline / stages (the scene says so) | hero, metrics |
-| `path` | a timeline or a flow diagram with 3-4 steps: one plane per step, the camera walks through as each is spoken, a step is gone before the next shows | hero |
-| `hub` | a hub diagram: a core with its labelled parts | hero |
-| `split` | a real two-way comparison | hero, metrics (with figures) |
-| `bars` | two or more figures of one unit in the scene's own on-screen text, or a chart / comparison series | hero, metrics |
-| `monolith` / `gauge` | a stat that is a money amount, a percentage or at least 100 (a small count like "3 cities" stays a 2D stat) | hero, metrics |
-| `plane` | title, statement, quote, outro scenes: set in depth in one continuous corridor, the camera flying plane to plane (2D scenes in between), only the plane being spoken visible | corridor |
+| | cinematic-glass (`hero`) | depth-cards (`corridor`) | data-focus (`metrics`) |
+|---|---|---|---|
+| Staging | one subject per scene, centred, close up; a small caption plate under or beside it; slow orbit-in camera | one continuous corridor: the camera flies forward through gates (big framed planes); a sequence is consecutive gates; three gate styles rotate (portal of nested frames, plane with foreground shards, plane between light strips); pylons, light strips, dust and floating shards give parallax; cooler blue/violet | a dashboard in 3D: isometric camera over a grid floor (the view alternates scene to scene), everything is measurable geometry, flat text with thin rules, no glowing plates, no hero objects; green/teal |
+| Pictogram / keyword | the scene's pictogram extruded (`extrude:<icon>`), or the object its text names (chip, cube rack, coins, shield, speed streaks, globe, node network, package) with a reflection | on the gate's plane | extruded keyword standing on the grid (`typogrid`, three stagings) |
+| Items | steps and lists as a staircase of slabs in depth, all visible, joined by light tubes (`path` / `fan`), a hub, layers as a `stack` | each item its own gate | steps as a step ladder of boxes (`ladder`), a list as ranked columns (`ranked`: the height is the item's place in the list, labelled #1, #2...) |
+| Comparison | two slabs facing each other (`split`) | two gates | two columns with a labelled gap (`duel`, heights from the figures when there are some) |
+| Figures | bars / monolith with the number on it / gauge | gate with the number | bars / monolith / gauge |
+| Camera | orbit-in toward the subject; stack climbs with its layers, split turns to the side spoken | forward flight, a bank between scenes, a slow push on each gate | isometric, slight push |
 
-Everything else is 2D: a generic list is never a stack, an icon the writer picked loosely never summons an object, an outro is a calm 2D scene. No two consecutive 3D shots are the same composition (the second falls back to 2D). A video with nothing to depict is mostly 2D, by design; a typical one is about half 3D. Camera moves are motivated: a slow push toward the thing discussed; the stack climbs with the layers as they are spoken, the split turns to the side being spoken, the path walks to the next step. Command-line flags win over a video's saved look (`preview._saved_look`). Tests: `tests/test_worlds.py`.
+Rules: no two consecutive identical object / pictogram shots (the second becomes extruded type, a repeated list becomes a path / ladder); the staging variant rotates with the scene's index; `choose_compositions` needs nothing but the plan. An outro is 2D unless it is about a loop. `layers` / `tiers` / `OSI` in the scene's text make a `stack`; a keyword (chips, money amount, data centre, security, speed, worldwide, neural...) makes its object; an icon alone makes its own extruded pictogram, never a decorative object. Command-line flags win over a video's saved look (`preview._saved_look`).
 
 ## Presets
 
