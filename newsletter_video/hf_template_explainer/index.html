@@ -115,7 +115,7 @@
       :root[data-theme="cinematic"] {
         --bg: #050509;
         --ink: #f4f3ff;
-        --ink-2: #9aa0b8;
+        --ink-2: #b4b9cf; /* light enough to clear AA over the mesh-gradient ground */
         --hair: rgba(190, 196, 230, 0.22);
         --dot: rgba(190, 196, 230, 0.08);
         --accent: #ff8a2a;
@@ -172,23 +172,105 @@
         mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 1) 22%, rgba(0, 0, 0, 0.5) 80%, rgba(0, 0, 0, 0) 100%);
       }
       #haze {
-        /* the accent's light pooling on the floor, and a cool counter-glow above */
+        /* the accent's light pooling on the floor, plus three drifting aurora
+           fields adapted from the registry's `aurora-drift` component (soft
+           blurred blobs in screen blend; their drift is a GSAP phase tween in
+           build(), one sine cycle over the video, so it is seek-safe) */
         inset: 0;
-        background:
-          radial-gradient(60% 24% at 50% 66%, rgba(var(--glow-rgb), 0.3), rgba(var(--glow-rgb), 0) 100%),
-          radial-gradient(70% 30% at 50% 8%, rgba(60, 70, 140, 0.35), rgba(60, 70, 140, 0) 100%);
+        overflow: hidden;
+        background: radial-gradient(60% 24% at 50% 66%, rgba(var(--glow-rgb), 0.3), rgba(var(--glow-rgb), 0) 100%);
+      }
+      #haze .ad-blob {
+        position: absolute;
+        display: block;
+        border-radius: 50%;
+        filter: blur(120px) saturate(0.85);
+        mix-blend-mode: screen;
+        opacity: 0.34;
+        will-change: transform;
+      }
+      #haze .ad-blob-a {
+        width: 900px;
+        height: 1100px;
+        left: -260px;
+        top: -420px;
+        background: radial-gradient(ellipse at center, rgba(var(--glow-rgb), 0.9) 0%, rgba(var(--glow-rgb), 0.35) 48%, transparent 76%);
+      }
+      #haze .ad-blob-b {
+        width: 980px;
+        height: 1200px;
+        right: -420px;
+        top: -80px;
+        opacity: 0.28;
+        background: radial-gradient(ellipse at center, var(--glow-3) 0%, transparent 70%);
+      }
+      #haze .ad-blob-c {
+        width: 860px;
+        height: 1100px;
+        left: 200px;
+        bottom: -600px;
+        opacity: 0.22;
+        background: radial-gradient(ellipse at center, var(--glow-2) 0%, transparent 70%);
+      }
+      #mesh {
+        /* the registry's `mesh-gradient` WebGPU shader block (compositions/
+           mesh-gradient.html), mounted as a 1920x1080 sub-composition and
+           scaled to cover the portrait frame; shown under a dark multiply
+           only for scenes whose background knob is "mesh-gradient" */
+        position: absolute;
+        left: -420px;
+        top: 0;
+        width: 1920px;
+        height: 1080px;
+        transform: scale(1.78);
+        transform-origin: 50% 0;
+        opacity: 0;
+        pointer-events: none;
+      }
+      #mesh-dim {
+        display: none;
+        position: absolute;
+        inset: 0;
+        background: rgba(5, 5, 9, 0.68);
+        pointer-events: none;
+      }
+      :root[data-theme="cinematic"] #mesh-dim {
+        display: block;
       }
       #vignette {
         inset: 0;
         background: radial-gradient(75% 60% at 50% 45%, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.55) 100%);
       }
       #grain {
-        /* static film grain: a fixed-seed turbulence tile (deterministic) */
+        /* film grain adapted from the registry's `grain-overlay` component:
+           a turbulence tile jumps between ten offsets in 0.5 s steps. The
+           registry loops it forever; here the iteration count is set from the
+           video's duration in build() so the animation is finite (seekable). */
         inset: 0;
+        overflow: hidden;
         opacity: 0.16;
         mix-blend-mode: overlay;
-        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='7' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='220' height='220' filter='url(%23g)'/></svg>");
-        background-size: 220px 220px;
+      }
+      @keyframes hf-grain-noise {
+        0%, 100% { transform: translate(0, 0); }
+        10% { transform: translate(-5%, -5%); }
+        20% { transform: translate(-10%, 5%); }
+        30% { transform: translate(5%, -10%); }
+        40% { transform: translate(-5%, 15%); }
+        50% { transform: translate(-10%, 5%); }
+        60% { transform: translate(15%, 0); }
+        70% { transform: translate(0, 10%); }
+        80% { transform: translate(-15%, 0); }
+        90% { transform: translate(10%, 5%); }
+      }
+      #grain .grain-texture {
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+        animation: hf-grain-noise 0.5s steps(1) 1 both;
       }
       /* type: the cinematic look sets headings in the heavy sans, like a motion-graphics title */
       :root[data-theme="cinematic"] .display,
@@ -1571,8 +1653,9 @@
         text-shadow: 0 0 30px rgba(244, 243, 255, 0.35);
       }
       :root[data-theme="cinematic"] .kinetic .line.lit {
+        /* the registry's caption-neon-glow stack: tight, mid and wide halos */
         color: var(--accent);
-        text-shadow: 0 0 36px rgba(var(--glow-rgb), 0.8);
+        text-shadow: 0 0 10px var(--glow-1), 0 0 35px var(--glow-1), 0 0 90px var(--glow-1);
       }
       .kinetic .line.lit {
         color: var(--accent);
@@ -1707,8 +1790,10 @@
   <body>
     <div id="root" data-composition-id="main" data-start="0" data-width="1080" data-height="1920">
       <div id="paper"></div>
+      <!-- #mesh (the mesh-gradient shader block) is inserted here by the script when a scene asks for it -->
+      <div id="mesh-dim"></div>
       <div id="floor"></div>
-      <div id="haze"></div>
+      <div id="haze"><div class="ad-blob ad-blob-a" data-layout-allow-overflow></div><div class="ad-blob ad-blob-b" data-layout-allow-overflow></div><div class="ad-blob ad-blob-c" data-layout-allow-overflow></div></div>
 
       <div id="chrome">
         <div id="kicker">TLDR</div>
@@ -1721,7 +1806,7 @@
 
       <div id="captions" data-layout-allow-caption-zone></div>
       <div id="vignette"></div>
-      <div id="grain"></div>
+      <div id="grain"><div class="grain-texture"></div></div>
       <div id="flash"></div>
 
       <audio id="voice" src="assets/voice.wav" data-start="0" data-track-index="1"></audio>
@@ -1816,6 +1901,24 @@
       }
 
       if (story.theme === "dark" || CINEMATIC) document.documentElement.setAttribute("data-theme", story.theme);
+      // The mesh-gradient shader block is only mounted (WebGPU) when a
+      // cinematic scene asks for it; otherwise it leaves the DOM now, before
+      // the runtime scans for sub-compositions, so the default costs nothing.
+      const MESH_SCENES = CINEMATIC ? story.scenes.filter((s) => knob(styleOf(s), "background") === "mesh-gradient") : [];
+      let meshEl = null;
+      if (MESH_SCENES.length) {
+        meshEl = document.createElement("div");
+        meshEl.id = "mesh";
+        meshEl.setAttribute("data-composition-id", "mesh-gradient");
+        meshEl.setAttribute("data-composition-src", "compositions/mesh-gradient.html");
+        meshEl.setAttribute("data-start", "0");
+        meshEl.setAttribute("data-duration", String(Math.ceil(story.duration + 1)));
+        meshEl.setAttribute("data-width", "1920");
+        meshEl.setAttribute("data-height", "1080");
+        document.getElementById("paper").after(meshEl);
+      }
+      // Film grain (registry grain-overlay): one 0.5 s step cycle per half second of video, then it holds.
+      if (CINEMATIC) document.querySelector("#grain .grain-texture").style.animationIterationCount = String(Math.ceil(story.duration / 0.5) + 1);
       document.getElementById("kicker").textContent = story.kicker || "";
 
       const stage = document.getElementById("stage");
@@ -2426,6 +2529,7 @@
           const planes = s.nodes.map((n, i) => {
             const plane = el("div", "plane");
             plane.style.zIndex = String(s.nodes.length - i); // the nearest plane paints on top
+            plane.setAttribute("data-layout-allow-overflow", ""); // the world clips the receding stack on purpose
             plane.append(el("div", "idx", pad2(i + 1) + " / " + pad2(s.nodes.length)), el("div", "label", n.label));
             if (n.text) plane.append(el("div", "body", n.text));
             world.append(plane);
@@ -2583,6 +2687,23 @@
 
         tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: total, ease: "none" }, 0);
         tl.fromTo("#chrome", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.5, ease: EASE_OUT }, 0.05);
+        if (CINEMATIC) {
+          // aurora-drift: the three fields complete exactly one sine cycle over
+          // the video; the pose is a function of the tweened phase alone.
+          const TAU = Math.PI * 2;
+          const blobs = [
+            { el: document.querySelector("#haze .ad-blob-a"), offset: 0, x: 50, y: 60 },
+            { el: document.querySelector("#haze .ad-blob-b"), offset: TAU / 3, x: 44, y: 72 },
+            { el: document.querySelector("#haze .ad-blob-c"), offset: (TAU * 2) / 3, x: 40, y: 56 },
+          ];
+          const phase = { p: 0 };
+          const pose = () => {
+            const ph = phase.p === TAU ? 0 : phase.p;
+            blobs.forEach((b) => gsap.set(b.el, { x: Math.sin(ph + b.offset) * b.x, y: Math.sin(ph + b.offset + Math.PI / 2) * b.y }));
+          };
+          tl.to(phase, { p: TAU, duration: total, ease: "none", onUpdate: pose }, 0);
+          pose();
+        }
 
         // Every revealed element is hidden from t=0 (a set, so seeking to any
         // earlier time shows nothing) and arrives at its cue.
@@ -2681,6 +2802,14 @@
           if (bgK === "solid") {
             tl.set("#paper", { opacity: 0 }, start);
             if (!last) tl.set("#paper", { opacity: 1 }, end + T);
+          }
+          if (bgK === "mesh-gradient" && MESH_SCENES.length) {
+            // The shader block drifts under a dark multiply for this scene,
+            // arriving with its transition and leaving with the next one.
+            tl.fromTo(meshEl, { opacity: 0 }, { opacity: 1, duration: 0.6 / speed, ease: "power1.inOut", immediateRender: false }, start);
+            if (!last && knob(styleOf(story.scenes[i + 1]), "background") !== "mesh-gradient") {
+              tl.to(meshEl, { opacity: 0, duration: 0.5, ease: "power1.inOut" }, Math.max(start + 0.8, end - 0.3));
+            }
           }
           // --- hold: what keeps moving while the scene is up ------------------
           if (!holdK) {
@@ -3084,9 +3213,11 @@
               // Every plane is in the world from the start, deeper ones dim and
               // peeking out above the one in front (a receding stack); each
               // comes to full opacity and an accent edge when it is spoken.
-              tl.set(plane, { autoAlpha: 0, y: -190 * k - 40, z: FRONT - k * STEP, rotationX: 12 }, 0);
+              // (camera-rig-depth-stack: each card starts turned away, rotateY
+              // -16deg / rotateX 12deg, and squares up as the rig reaches it)
+              tl.set(plane, { autoAlpha: 0, y: -190 * k - 40, z: FRONT - k * STEP, rotationX: 12, rotationY: k ? -16 : 0 }, 0);
               tl.to(plane, { autoAlpha: k ? 0.5 : 1, duration: 0.6 / speed, ease: sceneEase || EASE_OUT }, start + 0.2 + k * 0.12);
-              if (k) tl.to(plane, { autoAlpha: 1, duration: 0.4, ease: "power2.out" }, ats[k] - 0.3);
+              if (k) tl.to(plane, { autoAlpha: 1, rotationY: 0, rotationX: 4, duration: 0.6, ease: "power2.out" }, ats[k] - 0.4);
               tl.to(plane, { borderColor: accentS, duration: 0.3 }, ats[k]);
               if (k) tl.to(b.planes[k - 1], { borderColor: css.getPropertyValue("--hair").trim(), duration: 0.3 }, ats[k]);
             });
@@ -3194,12 +3325,24 @@
           }
         });
 
+        // caption-neon-glow: in the cinematic look the word being spoken
+        // carries the registry's three-layer neon text-shadow in the accent.
+        const neon = (c) => "0 0 10px " + c + ", 0 0 35px " + c + ", 0 0 90px " + c;
         (story.captions || []).forEach((chunk, c) => {
           const { node, spans } = caps[c];
           tl.set(node, { opacity: 1 }, chunk.start);
           tl.fromTo(node, { y: 10 }, { y: 0, duration: 0.2, ease: EASE_OUT, immediateRender: false }, chunk.start);
           tl.set(node, { opacity: 0 }, chunk.end);
-          chunk.at.forEach((at, w) => tl.set(spans[w], { color: ink }, at));
+          chunk.at.forEach((at, w) => {
+            if (CINEMATIC) {
+              // the word stays ink (contrast) and wears the glow in the accent while it is said
+              tl.set(spans[w], { color: ink, textShadow: neon(GLOW[0]) }, at);
+              const next = w + 1 < chunk.at.length ? chunk.at[w + 1] : chunk.end;
+              tl.set(spans[w], { textShadow: "none" }, Math.max(at + 0.05, next));
+            } else {
+              tl.set(spans[w], { color: ink }, at);
+            }
+          });
           tl.set(spans, { color: ink2 }, 0);
         });
 

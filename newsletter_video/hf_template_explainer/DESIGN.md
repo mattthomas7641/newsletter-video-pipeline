@@ -35,7 +35,8 @@ only element allowed to run under the safe zones.
 ## Colour tokens
 
 Defined once on `:root`; the dark set overrides them under `[data-theme="dark"]`
-(`VIDEO_THEME=light|dark`, default light). Contrast is WCAG AA at every size
+(`VIDEO_THEME=light|dark|cinematic`, default light; the cinematic set is
+described under "Cinematic look" below). Contrast is WCAG AA at every size
 used (`npx hyperframes check` audits it; 0 findings in both themes).
 
 | Token | Light | Dark | Role |
@@ -196,6 +197,41 @@ band (`#field`, the stage rows only, so chrome and captions keep their ground)
 behind the scene; `--accent` can be set per scene. Reveal cues still come from
 the voice. With no `style` on any scene the timeline is built exactly as
 before.
+
+## Cinematic look
+
+The second look family (`:root[data-theme="cinematic"]`, `docs/cinematic-look.md`):
+a near-black ground with a line grid above and a perspective grid floor below
+the stage, three drifting aurora fields (registry `aurora-drift`, adapted), an
+optional `mesh-gradient` shader block behind a scene (registry block, WebGPU,
+only mounted when asked for), a vignette and stepping film grain (registry
+`grain-overlay`, adapted, finite). The palette comes from the recipe
+(`story.palette`, up to four colours -> `--glow-1..4`); `--accent` is the first
+colour lifted to a text-safe tone so every accent text still clears AA, while
+`--glow-rgb` keeps it raw for halos. Headings switch to the heavy sans with a
+soft glow; the pictograms, lead bars, discs, rails and markers get halos; nodes,
+device frames and tiles become glass. The light default is untouched: without
+`theme: cinematic` or a cinematic recipe none of these rules apply.
+
+### Rich scenes (the cinematic look's own, valid in every theme)
+
+| Type | Head | Hero | Motion |
+|---|---|---|---|
+| object3d | title | Three.js canvas 820x560: `stack` (neon layer plates, bottom to top), `bars` (3D columns, highlight in accent), `orbit` (satellites on a tilted ring round a glowing core), `cards` (floating glass plates); legend / value row under it | drawn from the seek time (`hf-seek`): layers rise, bars grow, nodes scale in on their cues; the rig turns slowly, the camera pushes in; legend rows follow the same cues |
+| depth | label, title | 2-4 glass planes in a CSS 3D world, deeper ones dim and peeking out above | the camera dollies plane to plane on the cues (one tween sequence on `z`), passed planes fade before the lens, the spoken plane squares up and takes the accent edge |
+| kinetic | label | big numeral (420 px, glow) and 1-3 heavy caps lines | words land from below with scale on the line's cue; the spoken line glows (neon stack), an underline draws and sweeps |
+| glass | title | HUD panel: header with status dot, 2-4 key/value rows, scan | panel rises, rows arrive on cues, dot blinks, scan sweeps, accent walks the values |
+
+Limits that keep it fast and safe: at most 2 object3d scenes per video (each is
+a WebGL context), labels are HTML under hard caps (never inside the canvas), and
+the draft clip of a 44 s video with two Three.js scenes renders in ~35 s.
+
+## Look presets
+
+`newsletter_video/looks/presets.json` names five-plus looks (paper, cinematic
+dark glass, depth cards, data focus, glow type, quiet editorial) as data: the
+theme, the knobs for the middle scenes, the scene types to prefer, the registry
+items used and a thumbnail. `look.preset` resolves one into `theme` + `recipe`.
 
 ## Why one file
 

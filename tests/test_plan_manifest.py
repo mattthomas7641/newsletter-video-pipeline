@@ -45,7 +45,7 @@ def test_manifest_round_trip_keeps_scripts_plans_stories_and_looks(tmp_path):
     one = pm.script_from_entry(back["videos"][0])
     two = pm.script_from_entry(back["videos"][1])
     assert one.title == "Classic one" and one.beats[0].card == "Card text" and one.look == {
-        "style": None, "character": None, "theme": "dark", "background": None, "recipe": None}
+        "style": None, "character": None, "theme": "dark", "background": None, "recipe": None, "preset": None}
     assert two.plan is not None and two.plan.scenes[1].type == "stat" and two.hook.startswith("Agent teams")
 
 
@@ -84,7 +84,7 @@ def test_sidecar_records_the_resolved_look_and_round_trips(tmp_path, monkeypatch
     path = write_metadata(script, tmp_path / "01_x.mp4")
     meta = json.loads(path.read_text())
     assert meta["look"] == {"version": 1, "style": "explainer", "character": "", "theme": "dark",
-                            "background": "none", "recipe": "auto"}
+                            "background": "none", "recipe": "auto", "preset": ""}
     back = pm.script_from_sidecar(meta)
     assert back.plan is not None and back.look["theme"] == "dark" and back.look["style"] == "explainer"
 

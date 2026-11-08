@@ -16,7 +16,7 @@
     {
       "id": "cinematic-glass",
       "name": "Cinematic dark glass",
-      "description": "Near-black ground with a drifting mesh-gradient shader, grid floor, glass panels, neon 3D stacks and bars; scenes dissolve and push in slowly.",
+      "description": "Near-black ground with drifting aurora fields, a grid floor, grain, glass panels, neon 3D stacks and bars; scenes dissolve and push in slowly. (The mesh-gradient shader background is installed and works in stills; set background 'mesh-gradient' on a scene to use it once the CLI renders WebGPU blocks.)",
       "look": {"theme": "cinematic"},
       "knobs": {
         "look": "cinematic",
@@ -24,7 +24,6 @@
         "entrance": "fade-up",
         "hold": "slow-push",
         "ease": "inOut",
-        "background": "mesh-gradient",
         "accent": "#ff7a1a",
         "palette": ["#ff7a1a", "#ff3d8a", "#8b5cff", "#22d3ee"],
         "speed": 0.9
