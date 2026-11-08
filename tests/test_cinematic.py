@@ -245,7 +245,7 @@ def test_preset_resolves_into_theme_and_recipe_but_explicit_fields_win():
     assert resolved["theme"] == "cinematic" and resolved["recipe"] == "look-cinematic-glass" and resolved["preset"] == "cinematic-glass"
     resolved = looks.resolve_look({"preset": "cinematic-glass", "theme": "dark"}, environ=env)
     assert resolved["theme"] == "dark" and resolved["recipe"] == "look-cinematic-glass"  # the hand-set theme wins
-    resolved = looks.resolve_look({"preset": "depth-cards"}, {"recipe": "none"}, environ=env)
+    resolved = looks.resolve_look({"preset": "data-focus"}, {"recipe": "none"}, environ=env)
     assert resolved["theme"] == "dark" and resolved["recipe"] == "none"  # a later layer overrides the preset's recipe
     assert looks.look_from_env({**env, "LOOK_PRESET": "glow-type"})["recipe"] == "look-glow-type"
     assert looks.resolve_look({"preset": ""}, environ=env)["theme"] == "light"

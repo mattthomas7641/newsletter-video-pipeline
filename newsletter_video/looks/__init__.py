@@ -45,7 +45,7 @@ class Preset:
     thumbnail: str = ""
     default: bool = False
     good_for: str = ""  # one line for the panel's library: the stories a preset suits
-    world: str = ""  # a 3D look: "hero" | "corridor" | "metrics" (world3d.py); every scene is drawn in 3D
+    world: str = ""  # a 3D look: "hero" | "metrics" (world3d.py); every scene is drawn in 3D
 
     @property
     def threed(self) -> bool:

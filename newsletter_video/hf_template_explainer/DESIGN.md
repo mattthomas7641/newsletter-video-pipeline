@@ -229,8 +229,8 @@ draft clip of a 38 s video with four 3D scenes renders in ~35 s.
 
 ## Look presets
 
-`newsletter_video/looks/presets.json` names five-plus looks (paper, cinematic
-dark glass, depth cards, data focus, glow type, quiet editorial) as data: the
+`newsletter_video/looks/presets.json` names five looks (paper, cinematic
+dark glass, data focus, glow type, quiet editorial) as data: the
 theme, the knobs for the middle scenes, the scene types to prefer, the registry
 items used and a thumbnail. `look.preset` resolves one into `theme` + `recipe`.
 

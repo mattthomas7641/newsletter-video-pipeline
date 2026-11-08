@@ -41,6 +41,10 @@ RECIPE_NONE = "none"
 # resolves into a theme and a recipe (`look-<preset>`) that sit between the
 # environment defaults and a layer's explicit fields, so a per-video look can
 # still override any field. "" means no preset: nothing added.
+# Presets that were removed from presets.json: a saved plan, sidecar or LOOK_PRESET that still names one
+# resolves to the default look instead of failing.
+RETIRED_PRESETS = frozenset({"depth-cards"})
+RETIRED_RECIPES = frozenset({"look-" + p for p in RETIRED_PRESETS})
 FIELDS = ("style", "character", "theme", "background", "recipe", "preset")
 ENV_KEYS = {"style": "VIDEO_STYLE", "character": "CHARACTER", "theme": "VIDEO_THEME",
             "background": "BACKGROUND_STYLE", "recipe": "STYLE_RECIPE", "preset": "LOOK_PRESET"}
@@ -76,13 +80,15 @@ def _check_field(key: str, value: Any) -> tuple[str | None, str | None]:
         return (v, None) if v == "" or _SLUG.match(v) else (None, f"look.character {v!r} is not a character folder name")
     if key == "recipe":
         v = v.lower()
+        if v in RETIRED_RECIPES:
+            return RECIPE_AUTO, None  # a saved look that named a retired preset's recipe: the default policy
         if v in (RECIPE_AUTO, RECIPE_NONE) or _RECIPE.match(v):
             return v, None
         return None, f"look.recipe must be 'auto', 'none' or a recipe id, not {v!r}"
     if key == "preset":
         v = v.lower()
-        if v == "":
-            return v, None
+        if v == "" or v in RETIRED_PRESETS:
+            return "", None  # no preset: a saved look or LOOK_PRESET naming a retired one falls back to the default look
         from .looks import preset_ids
 
         ids = preset_ids()
@@ -256,7 +262,7 @@ def describe(look: Mapping[str, Any]) -> str:
 
 
 def world_of(look: Mapping[str, Any] | None = None, environ: Mapping[str, str] | None = None) -> str:
-    """The 3D world ("hero" | "corridor" | "metrics") of the look's preset, or
+    """The 3D world ("hero" | "metrics") of the look's preset, or
     "" for a flat look: with a world, every scene of the video is drawn in 3D
     (world3d.py). The preset comes from the look's `preset` or its
     `look-<preset>` recipe; the avatar style never has one."""

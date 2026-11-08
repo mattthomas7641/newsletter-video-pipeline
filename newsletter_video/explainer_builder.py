@@ -329,9 +329,9 @@ def story_payload(plan: ScenePlan, per_line: list[list[tuple[str, float]]], spee
             words, start, end = e.pop("_words")
             c = e["w3"]
             # when each part of the composition lands: its words are spoken
-            if c["items"] and c["comp"] in ("gate", "stack", "hub", "split", "path", "fan", "ladder", "ranked", "duel") and not (c["comp"] == "gate" and len(c["items"]) < 2):
+            if c["items"] and c["comp"] in ("stack", "hub", "split", "path", "fan", "ladder", "ranked", "duel"):
                 parts = [(i["label"] + " " + i["text"]).strip() for i in c["items"]]
-            elif c["comp"] in ("typo3d", "typogrid", "gate") or c["comp"].startswith(("object:", "extrude:")):
+            elif c["comp"] in ("typo3d", "typogrid") or c["comp"].startswith(("object:", "extrude:")):
                 parts = c["words"]  # the keyword the narration lands on: the highlight sweep
             elif c["comp"] == "type-orbit":
                 parts = c["words"]

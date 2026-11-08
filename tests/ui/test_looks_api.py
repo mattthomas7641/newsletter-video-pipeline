@@ -64,8 +64,8 @@ def test_preset_travels_as_a_run_override_to_plan_preview_and_studio(client, spa
     assert client.send_json("POST", "/api/plans", {"ref": None, "overrides": {"preset": "nope"}})[0] == 400
     (paths.state_dir / "jobs" / spawner.calls[-1]["job_dir"].name / "result.json").write_text(json.dumps({"exit_code": 0, "finished_at": 1}))
     app.plans.studio_wait = 0.05
-    status, _ = client.send_json("POST", f"/api/plans/{ref}/videos/v02/studio", {"overrides": {"preset": "depth-cards"}})
-    assert status == 201 and spawner.calls[-1]["argv"][spawner.calls[-1]["argv"].index("--preset") + 1] == "depth-cards"
+    status, _ = client.send_json("POST", f"/api/plans/{ref}/videos/v02/studio", {"overrides": {"preset": "data-focus"}})
+    assert status == 201 and spawner.calls[-1]["argv"][spawner.calls[-1]["argv"].index("--preset") + 1] == "data-focus"
 
 
 def test_default_preset_setting_is_validated_and_shapes_the_default_look(client, paths):
@@ -75,12 +75,12 @@ def test_default_preset_setting_is_validated_and_shapes_the_default_look(client,
     for bad in ("not-a-preset", "../x", "PAPER"):
         status, data = client.send_json("PUT", "/api/settings", {"updates": {"LOOK_PRESET": bad}})
         assert status == 400 and "LOOK_PRESET" in data["fields"], bad
-    assert client.send_json("PUT", "/api/settings", {"updates": {"LOOK_PRESET": "depth-cards"}})[0] == 200
-    assert EnvStore(paths.env_path).read()["values"]["LOOK_PRESET"] == "depth-cards"
+    assert client.send_json("PUT", "/api/settings", {"updates": {"LOOK_PRESET": "data-focus"}})[0] == 200
+    assert EnvStore(paths.env_path).read()["values"]["LOOK_PRESET"] == "data-focus"
     _, plan = client.get_json(f"/api/plans/{DAY.isoformat()}")
-    assert plan["default_look"]["preset"] == "depth-cards" and plan["default_look"]["theme"] == "dark"
+    assert plan["default_look"]["preset"] == "data-focus" and plan["default_look"]["theme"] == "dark"
     v = plan["videos"][0]
-    assert v["look"] == {} and v["resolved"]["preset"] == "depth-cards" and v["resolved"]["recipe"] == "look-depth-cards"
+    assert v["look"] == {} and v["resolved"]["preset"] == "data-focus" and v["resolved"]["recipe"] == "look-data-focus"
     # the old style-library keys are no longer the panel's to write
     for key in ("STYLE_LIBRARY", "STYLE_RECIPE", "STYLE_MAX_SECONDS"):
         assert client.send_json("PUT", "/api/settings", {"updates": {key: "off"}})[0] == 400, key

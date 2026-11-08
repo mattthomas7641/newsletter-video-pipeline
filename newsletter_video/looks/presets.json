@@ -20,7 +20,9 @@
       "name": "Cinematic dark glass",
       "description": "Near-black ground with drifting aurora fields, a grid floor, grain, glass panels, neon 3D stacks and bars; scenes dissolve and push in slowly. (The mesh-gradient shader background is installed and works in stills; set background 'mesh-gradient' on a scene to use it once the CLI renders WebGPU blocks.)",
       "good_for": "Big launches, hardware and AI model news that want drama and depth.",
-      "look": {"theme": "cinematic"},
+      "look": {
+        "theme": "cinematic"
+      },
       "knobs": {
         "look": "cinematic",
         "transition": "fade",
@@ -28,32 +30,26 @@
         "hold": "slow-push",
         "ease": "inOut",
         "accent": "#ff7a1a",
-        "palette": ["#ff7a1a", "#ff3d8a", "#8b5cff", "#22d3ee"],
+        "palette": [
+          "#ff7a1a",
+          "#ff3d8a",
+          "#8b5cff",
+          "#22d3ee"
+        ],
         "speed": 0.9
       },
-      "emphasis": ["object3d", "glass", "depth", "kinetic"],
-      "registry": ["mesh-gradient", "grain-overlay", "aurora-drift"],
+      "emphasis": [
+        "object3d",
+        "glass",
+        "depth",
+        "kinetic"
+      ],
+      "registry": [
+        "mesh-gradient",
+        "grain-overlay",
+        "aurora-drift"
+      ],
       "thumbnail": "looks/cinematic-glass.jpg"
-    },
-    {
-      "id": "depth-cards",
-      "world": "corridor",
-      "name": "Depth cards",
-      "description": "Dark theme: processes and timelines become glass planes the camera dollies through, stacks and hubs become 3D objects; scenes slide in from the right with a parallax hold.",
-      "good_for": "Product and app stories with screens, diagrams and layered comparisons.",
-      "look": {"theme": "dark"},
-      "knobs": {
-        "transition": "push-left",
-        "entrance": "line-slide",
-        "hold": "parallax",
-        "ease": "out",
-        "accent": "#7b96ff",
-        "palette": ["#7b96ff", "#22d3ee", "#8b5cff", "#ff5ca8"],
-        "stagger": 0.1
-      },
-      "emphasis": ["depth", "glass", "device", "diagram"],
-      "registry": ["camera-rig-depth-stack"],
-      "thumbnail": "looks/depth-cards.jpg"
     },
     {
       "id": "data-focus",
@@ -61,18 +57,32 @@
       "name": "Data focus",
       "description": "Dark ground with heavy sans headlines, hard wipes and popping bars: charts and comparisons become 3D columns standing on a grid floor, lit from inside.",
       "good_for": "Numbers: funding rounds, benchmarks, market shares, anything with a chart.",
-      "look": {"theme": "dark"},
+      "look": {
+        "theme": "dark"
+      },
       "knobs": {
         "transition": "wipe-down",
         "entrance": "scale-pop",
         "ease": "out",
         "type_treatment": "sans-heavy",
         "accent": "#5b8cff",
-        "palette": ["#38e0a0", "#5b8cff", "#22d3ee", "#ffb020"],
+        "palette": [
+          "#38e0a0",
+          "#5b8cff",
+          "#22d3ee",
+          "#ffb020"
+        ],
         "speed": 1.15
       },
-      "emphasis": ["chart", "stat", "comparison", "object3d"],
-      "registry": ["animated-bar-chart"],
+      "emphasis": [
+        "chart",
+        "stat",
+        "comparison",
+        "object3d"
+      ],
+      "registry": [
+        "animated-bar-chart"
+      ],
       "thumbnail": "looks/data-focus.jpg"
     },
     {
@@ -80,7 +90,9 @@
       "name": "Glow type",
       "description": "Cinematic ground with magenta and cyan neon, letters stepping in, caps everywhere, a pulse on the hold: kinetic type carries the story.",
       "good_for": "Hot takes and one-line announcements where the words are the picture.",
-      "look": {"theme": "cinematic"},
+      "look": {
+        "theme": "cinematic"
+      },
       "knobs": {
         "look": "cinematic",
         "transition": "cut",
@@ -89,12 +101,25 @@
         "hold": "pulse",
         "ease": "out",
         "accent": "#ff3d8a",
-        "palette": ["#ff3d8a", "#22d3ee", "#8b5cff", "#ff7a1a"],
+        "palette": [
+          "#ff3d8a",
+          "#22d3ee",
+          "#8b5cff",
+          "#ff7a1a"
+        ],
         "speed": 1.2,
         "stagger": 0.04
       },
-      "emphasis": ["kinetic", "statement", "stat", "glass"],
-      "registry": ["grain-overlay", "caption-neon-glow"],
+      "emphasis": [
+        "kinetic",
+        "statement",
+        "stat",
+        "glass"
+      ],
+      "registry": [
+        "grain-overlay",
+        "caption-neon-glow"
+      ],
       "thumbnail": "looks/glow-type.jpg"
     },
     {
@@ -102,7 +127,9 @@
       "name": "Quiet editorial",
       "description": "The paper look slowed down: cross-fades, soft fade-ups and a floating hold for quotes, timelines and considered statements.",
       "good_for": "Opinion, interviews and timelines that read better slowly.",
-      "look": {"theme": "light"},
+      "look": {
+        "theme": "light"
+      },
       "knobs": {
         "transition": "fade",
         "entrance": "fade-up",
@@ -110,7 +137,12 @@
         "ease": "inOut",
         "speed": 0.8
       },
-      "emphasis": ["quote", "statement", "timeline", "list"],
+      "emphasis": [
+        "quote",
+        "statement",
+        "timeline",
+        "list"
+      ],
       "registry": [],
       "thumbnail": "looks/quiet-editorial.jpg"
     }
