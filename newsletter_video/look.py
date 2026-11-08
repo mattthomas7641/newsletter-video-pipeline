@@ -253,3 +253,25 @@ def describe(look: Mapping[str, Any]) -> str:
         recipe = look.get("recipe", RECIPE_AUTO)
         bits.append("planner recipes" if recipe == RECIPE_AUTO else "no recipes" if recipe == RECIPE_NONE else f"recipe {recipe}")
     return ", ".join(bits)
+
+
+def threed_requested(look: Mapping[str, Any] | None = None, environ: Mapping[str, str] | None = None) -> bool:
+    """Whether the look's preset is a 3D preset (presets.json "threed"): the
+    writer is then told to prefer 3D scenes and the plan is 3D-ified."""
+    try:
+        resolved = dict(look) if look else look_from_env(environ)
+    except LookError:
+        return False
+    if resolved.get("style") == "avatar":
+        return False
+    try:
+        from .looks import RECIPE_PREFIX, get_preset
+
+        pid = str(resolved.get("preset") or "")
+        if not pid:
+            recipe = str(resolved.get("recipe") or "")
+            pid = recipe[len(RECIPE_PREFIX):] if recipe.startswith(RECIPE_PREFIX) else ""
+        preset = get_preset(pid) if pid else None
+    except Exception:  # noqa: BLE001
+        return False
+    return bool(preset and preset.threed)
