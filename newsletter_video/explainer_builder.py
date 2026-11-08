@@ -271,7 +271,7 @@ def caption_chunks(words: list[tuple[str, float]]) -> list[list[tuple[str, float
 
 
 def story_payload(plan: ScenePlan, per_line: list[list[tuple[str, float]]], speech_duration: float,
-                  kicker: str, tail: float, theme: str = "light") -> dict:
+                  kicker: str, tail: float, theme: str = "light", world: str | None = None) -> dict:
     """The `story` composition variable: scenes with absolute start/end
     times and reveal cues, plus lower-third caption chunks. `per_line` holds
     the real word times of each scene's spoken line, in order."""
@@ -314,8 +314,34 @@ def story_payload(plan: ScenePlan, per_line: list[list[tuple[str, float]]], spee
             entry["cues"] = cue_times([n["label"] + " " + n["text"] for n in f["nodes"]], words, start, end)
         elif scene.type == "kinetic":
             entry["cues"] = cue_times(f["lines"], words, start, end)
+        if world:
+            from .world3d import scene_content
+
+            entry["w3"] = scene_content(scene)
+            entry["_words"] = (words, start, end)
         scenes.append(entry)
 
+    if world:
+        from .world3d import annotate
+
+        annotate([e["w3"] for e in scenes], world)
+        for e in scenes:
+            words, start, end = e.pop("_words")
+            c = e["w3"]
+            # when each part of the composition lands: its words are spoken
+            if c["comp"] == "type-stack":
+                parts = c["chunks"]
+            elif c["comp"] == "type-orbit":
+                parts = c["words"]
+            elif c["comp"] in ("bars",):
+                parts = [n["label"] or n["shown"] for n in c["numbers"]]
+            elif c["items"] and c["comp"] in ("stack", "hub", "split"):
+                parts = [(i["label"] + " " + i["text"]).strip() for i in c["items"]]
+            else:
+                parts = []
+            c["cues"] = cue_times(parts, words, start, end) if parts else []
+            if c["cues"] and "cues" not in e:
+                e["cues"] = c["cues"]  # the preview times its stills by them
     theme, palette = resolve_theme(plan, theme)
     all_words = [(w, t) for words in per_line for w, t in words]
     chunks = caption_chunks(all_words)
@@ -329,6 +355,8 @@ def story_payload(plan: ScenePlan, per_line: list[list[tuple[str, float]]], spee
             "end": round(min(nxt, speech_duration), 3),
         })
     out = {"theme": theme, "kicker": kicker, "duration": duration, "scenes": scenes, "captions": captions}
+    if world:
+        out["world"] = world
     if palette:
         out["palette"] = palette
     return out
@@ -427,7 +455,9 @@ def render_plan(plan: ScenePlan, out_path: Path, audio_path: Path, work_dir: Pat
     assets = work_dir / "assets"
     _pad_audio(audio_path, assets / "voice.wav", tail)
 
-    payload = story_payload(plan, per_line, speech_duration, kicker, tail, theme)
+    from .look import world_of
+
+    payload = story_payload(plan, per_line, speech_duration, kicker, tail, theme, world=world_of() or None)
     return render_story(payload, out_path, work_dir)
 
 

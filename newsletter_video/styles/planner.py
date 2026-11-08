@@ -207,21 +207,6 @@ def apply_style_plan(plan, style_plan: StylePlan | None) -> int:
     return count
 
 
-def _threeify_for_preset(plan, policy: str) -> None:
-    """A 3D look preset (looks/presets.json "threed") turns suitable scenes
-    into object3d / depth scenes before its knobs are applied."""
-    try:
-        from ..looks import RECIPE_PREFIX, get_preset
-        from ..threed import threeify_plan
-
-        if policy.startswith(RECIPE_PREFIX):
-            preset = get_preset(policy[len(RECIPE_PREFIX):])
-            if preset is not None and preset.threed:
-                threeify_plan(plan)
-    except Exception as exc:  # noqa: BLE001 - a look never blocks a video
-        log.warning("3D-ification skipped (%s: %s)", type(exc).__name__, exc)
-
-
 def apply_recipe_policy(plan, policy: str, lib: Library | None = None) -> int:
     """Re-style a validated ScenePlan in place according to a look's recipe
     policy, with no model call: "auto" keeps whatever styles the plan
@@ -237,7 +222,6 @@ def apply_recipe_policy(plan, policy: str, lib: Library | None = None) -> int:
         scene.fields.pop("style", None)
     if policy == "none":
         return 0
-    _threeify_for_preset(plan, policy)
     lib = lib if lib is not None else open_library()
     recipes = lib.all_recipes() if lib is not None else builtin_recipes()
     recipe = recipes.get(policy)

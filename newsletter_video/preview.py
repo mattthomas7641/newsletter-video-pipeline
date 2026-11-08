@@ -113,10 +113,25 @@ def _day_of(folder: Path) -> date:
         return date.today()
 
 
+def _saved_look(saved: dict | None, overrides: dict | None) -> dict | None:
+    """A video's saved look with what an explicit override replaces taken out:
+    naming another preset (or a recipe or theme) on the command line must win
+    over the saved one, including the theme and recipe the saved preset had
+    pinned, so the new preset supplies its own."""
+    if not saved or not overrides:
+        return saved
+    out = dict(saved)
+    if "preset" in overrides:
+        for key in ("preset", "theme", "recipe"):
+            if key not in overrides:
+                out.pop(key, None)
+    return out
+
+
 def source_from_sidecar(path: Path, overrides: dict | None = None) -> Source:
     meta = json.loads(Path(path).read_text())
     script = pm.script_from_sidecar(meta)
-    look = resolve_look(script.look, overrides)
+    look = resolve_look(_saved_look(script.look, overrides), overrides)
     script.look = {k: v for k, v in look.items()}
     folder = Path(path).resolve().parent
     hint = None
@@ -134,7 +149,7 @@ def source_from_plan(folder: Path, vid: str, overrides: dict | None = None) -> S
         raise pm.ManifestError(f"No plan in {folder}")
     entry = pm.get_entry(data, vid)
     script = pm.script_from_entry(entry)
-    look = pm.resolved_look(entry, overrides)
+    look = resolve_look(_saved_look(entry.get("look"), overrides), overrides)
     script.look = dict(look)
     try:
         day = date.fromisoformat(data.get("date", ""))
@@ -216,7 +231,10 @@ def build_payload(source: Source, per_line, speech: float) -> dict:
     if style == "explainer":
         plan = eb.plan_for(source.script)
         tail = min(eb.EXPLAINER_MAX_TAIL, max(vb.TAIL_SECONDS, vb.MIN_VIDEO_SECONDS + 0.2 - speech))
-        return eb.story_payload(plan, per_line, speech, source.kicker, tail, source.look.get("theme", "light"))
+        from .look import world_of
+
+        return eb.story_payload(plan, per_line, speech, source.kicker, tail, source.look.get("theme", "light"),
+                                world=world_of(source.look) or None)
     tail = min(vb.MAX_TAIL_SECONDS, max(vb.TAIL_SECONDS, vb.MIN_VIDEO_SECONDS + 0.2 - speech))
     return vb._story_payload(source.script, per_line, speech, source.kicker, tail)
 
