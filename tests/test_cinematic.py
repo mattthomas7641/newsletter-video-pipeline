@@ -102,9 +102,10 @@ def test_rich_scene_caps_and_bounds():
     assert any("non-negative numeric value" in e for e in errors_of(raw))
 
 
-def test_at_most_two_object3d_scenes_per_video():
+def test_at_most_four_object3d_scenes_per_video():
     raw = rich_plan()
-    raw.insert(3, copy.deepcopy(raw[1]))
+    for at in (3, 5, 7):
+        raw.insert(at, copy.deepcopy(raw[1]))  # four more object3d: five in all
     errs = errors_of(raw, strict=False)
     assert any(f"at most {MAX_OBJECT3D}" in e for e in errs)
 
@@ -205,11 +206,15 @@ def test_writer_prompt_offers_rich_scenes_only_for_the_cinematic_look(monkeypatc
     assert "renders in the cinematic look" not in plain and "Use them only when" in plain and "Look preset:" not in plain
     monkeypatch.setenv("VIDEO_THEME", "cinematic")
     rich = ew._system_prompt()
-    assert "renders in the cinematic look" in rich and "object3d" in rich and "glass" in rich and "At most 2 object3d" in rich
+    assert "renders in the cinematic look" in rich and "object3d" in rich and "glass" in rich and "At most 4 object3d" in rich
     monkeypatch.delenv("VIDEO_THEME", raising=False)
     monkeypatch.setenv("LOOK_PRESET", "data-focus")
     data = ew._system_prompt()
-    assert "Look preset: Data focus" in data and "chart, stat, comparison, object3d" in data and "renders in the cinematic look" not in data
+    # data-focus is a 3D preset: it gets the rich scenes and the "prefer 3D" note
+    assert "Look preset: Data focus" in data and "chart, stat, comparison, object3d" in data and "This look is a 3D look" in data
+    monkeypatch.setenv("LOOK_PRESET", "quiet-editorial")
+    quiet = ew._system_prompt()
+    assert "Look preset: Quiet editorial" in quiet and "renders in the cinematic look" not in quiet and "3D look" not in quiet
     monkeypatch.setenv("LOOK_PRESET", "glow-type")
     assert "renders in the cinematic look" in ew._system_prompt()  # a cinematic preset switches the scenes on too
 

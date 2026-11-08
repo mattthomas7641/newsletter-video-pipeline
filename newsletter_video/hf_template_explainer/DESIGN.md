@@ -217,14 +217,15 @@ device frames and tiles become glass. The light default is untouched: without
 
 | Type | Head | Hero | Motion |
 |---|---|---|---|
-| object3d | title | Three.js canvas 820x560: `stack` (neon layer plates, bottom to top), `bars` (3D columns, highlight in accent), `orbit` (satellites on a tilted ring round a glowing core), `cards` (floating glass plates); legend / value row under it | drawn from the seek time (`hf-seek`): layers rise, bars grow, nodes scale in on their cues; the rig turns slowly, the camera pushes in; legend rows follow the same cues |
-| depth | label, title | 2-4 glass planes in a CSS 3D world, deeper ones dim and peeking out above | the camera dollies plane to plane on the cues (one tween sequence on `z`), passed planes fade before the lens, the spoken plane squares up and takes the accent edge |
+| object3d | title | Three.js, full-frame-width slot: `stack` (neon glass plates over a shader grid floor, reflections, a cube lifting out of the top plate), `bars` (dark-glass columns with lit caps), `orbit` (core cube, neon ring, satellites with beams), `cards`; labels are HTML pins projected from 3D anchors | drawn from the seek time (`hf-seek`) by one shared renderer: layers rise and spread, bars grow, nodes scale in on their cues; the camera orbits, climbs and dollies; a blurred copy of the canvas is screen-blended over it as bloom |
+| depth | label, title | Three.js: 2-4 glass planes at increasing distance with their text drawn on them, dust and grid floor for parallax | the camera dollies plane to plane on the cues with a lateral sway, passed planes dissolve before the lens, deeper ones sink into the dark |
 | kinetic | label | big numeral (420 px, glow) and 1-3 heavy caps lines | words land from below with scale on the line's cue; the spoken line glows (neon stack), an underline draws and sweeps |
 | glass | title | HUD panel: header with status dot, 2-4 key/value rows, scan | panel rises, rows arrive on cues, dot blinks, scan sweeps, accent walks the values |
 
-Limits that keep it fast and safe: at most 2 object3d scenes per video (each is
-a WebGL context), labels are HTML under hard caps (never inside the canvas), and
-the draft clip of a 44 s video with two Three.js scenes renders in ~35 s.
+Limits that keep it fast and safe: at most 4 object3d scenes per video (they share one WebGL renderer),
+labels are HTML under hard caps, pinned to the 3D anchors (never inside the
+canvas; the depth scene's plane text is the exception, it is a texture), and the
+draft clip of a 38 s video with four 3D scenes renders in ~35 s.
 
 ## Look presets
 

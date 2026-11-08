@@ -205,7 +205,7 @@ explainer about infrastructure, networks, hardware or security. The rich scenes 
 `label` and short `text`: tiers, versions, protocol layers, a pipeline), "bars" (2-5 3D columns from \
 `series` numbers, a `unit`, a `highlight`), "orbit" (a `center` with 3-5 `nodes` circling it: an \
 ecosystem, dependencies, a platform and its users) or "cards" (2-4 floating cards: products, teams, \
-options). At most 2 object3d scenes per video. Use the data from the stories, never decoration.
+options). At most 4 object3d scenes per video. Use the data from the stories, never decoration.
 - depth: 2-4 layered planes the camera pushes through, front to back, each with a `label` and \
 `text`: a chain of causes, a sequence of steps, "behind this is this". Deepest layer is the point.
 - kinetic: glowing kinetic type: 1-3 `lines` under 24 characters that land one by one, an optional \
@@ -213,6 +213,16 @@ big `value` (a numeral or a short word under 4 characters, e.g. "5", "3x", "OSI"
 A chapter title, a punchline, the single phrase to remember.
 - glass: a glassy HUD panel with a header `label` and 2-4 rows (`nodes`: label is the key, text is \
 the value under 22 characters): a spec sheet, a routing table, a price list, a status readout.
+"""
+
+THREE_D_NOTE = """
+This look is a 3D look. The video is judged on how 3D it feels, so prefer the 3D scenes wherever the \
+content allows it: at least 3 of the middle scenes should be object3d (stack, bars, orbit, cards) or \
+depth, and at most one scene may be a plain statement. A tiered system or pipeline is an object3d \
+"stack"; numbers to compare are object3d "bars"; a hub with parts around it is an object3d "orbit"; a \
+sequence, a chain of causes or "behind this is this" is a "depth" scene. Use the story's real data \
+for every label and number. (Charts, comparisons, timelines and diagrams you do write are turned into \
+these 3D scenes automatically, so write them with real numbers and short labels.)
 """
 
 _EXPLAINER_SCHEMA = {
@@ -260,12 +270,15 @@ def _system_prompt() -> str:
             "still apply.\n"
         )
     try:
-        from .look import cinematic_requested, look_from_env
+        from .look import cinematic_requested, look_from_env, threed_requested
         from .looks import get_preset
 
-        if cinematic_requested():
+        three_d = threed_requested()
+        if cinematic_requested() or three_d:
             prompt += CINEMATIC_NOTE
-            log.info("Explainer writer: offering the cinematic scenes (the look is cinematic)")
+            log.info("Explainer writer: offering the rich 3D scenes (the look is cinematic or 3D)")
+        if three_d:
+            prompt += THREE_D_NOTE
         preset = get_preset(look_from_env().get("preset") or "")
         if preset and preset.emphasis:
             prompt += (f"\nLook preset: {preset.name}\n- {preset.description} Prefer these scene types where "
