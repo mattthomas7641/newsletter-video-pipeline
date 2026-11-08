@@ -22,6 +22,7 @@ the voice (Voicebox or Kokoro), and only when you click it.
 ./venv/bin/python -m newsletter_video.preview output/2026-11-07/10_x.json                  # stills
 ./venv/bin/python -m newsletter_video.preview output/2026-11-07 --video v02 --preview draft
 ./venv/bin/python -m newsletter_video.preview output/2026-11-07/10_x.json --style avatar --theme dark
+./venv/bin/python -m newsletter_video.preview output/2026-11-07/10_x.json --preset cinematic-glass   # a look preset
 ./venv/bin/python -m newsletter_video.preview output/2026-11-07/10_x.json --final --out /tmp/x.mp4
 ```
 
@@ -104,6 +105,11 @@ changing the narrator afterwards changes the voice and avatar, not the wording.
 `recipe` is the style-library policy: `auto` keeps the recipes the writer's planner chose,
 `none` strips them, and a recipe id applies that recipe to the middle scenes with no
 model call.
+
+`preset` names a look preset (`newsletter_video/looks/presets.json`, `--preset <id>` on
+the CLIs, `LOOK_PRESET` in `.env`): it resolves into a theme and a `look-<id>` recipe
+wherever the look did not set those by hand. The `cinematic` theme and the rich scene
+types it unlocks are described in `docs/cinematic-look.md`.
 
 ## The Look workbench: reference, test video, tweak
 
