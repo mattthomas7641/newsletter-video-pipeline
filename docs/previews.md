@@ -85,11 +85,11 @@ counts as covering a story and never changes what the unattended 7:00 AM job doe
 
 ## Look layering
 
-A look is `{style, character, theme, background, recipe}` (`newsletter_video/look.py`,
+A look is `{style, character, theme, background, recipe, preset}` (`newsletter_video/look.py`,
 versioned, validated: an unknown value is an error, never a silent default).
 
 ```
-default look   .env: VIDEO_STYLE, CHARACTER, VIDEO_THEME, BACKGROUND_STYLE, STYLE_RECIPE
+default look   .env: VIDEO_STYLE, CHARACTER, VIDEO_THEME, BACKGROUND_STYLE, LOOK_PRESET (STYLE_RECIPE for the daily job)
    < run overrides   what a panel action or a CLI --style/--character/... asked for
    < video look      the `look` stored on a plan entry (only the fields you set)
 ```
@@ -102,7 +102,7 @@ unchanged). Rendered sidecars record the resolved look under `look`, so a previe
 re-render replays it exactly. The character's writing persona is applied at plan time;
 changing the narrator afterwards changes the voice and avatar, not the wording.
 
-`recipe` is the style-library policy: `auto` keeps the recipes the writer's planner chose,
+`recipe` is the style-library policy (the daily job's `STYLE_RECIPE`; the panel shows its effect but no longer edits it): `auto` keeps the recipes the writer's planner chose,
 `none` strips them, and a recipe id applies that recipe to the middle scenes with no
 model call.
 
@@ -111,29 +111,33 @@ the CLIs, `LOOK_PRESET` in `.env`): it resolves into a theme and a `look-<id>` r
 wherever the look did not set those by hand. The `cinematic` theme and the rich scene
 types it unlocks are described in `docs/cinematic-look.md`.
 
-## The Look workbench: reference, test video, tweak
+## The Look workbench: library, test video, tweak and compare
 
 The panel's second page turns the pieces above into one loop for trying a look
-(`newsletter_video/ui/static/js/views/workbench.js`). Everything on it is a thin layer over
-the API already described; nothing new runs on the backend except one listing field.
+(`newsletter_video/ui/static/js/views/workbench.js`). Reference-video upload and analysis are
+not part of the panel any more (they remain in `newsletter_video.styles`, the CLI); the page is
+built on the look preset library.
 
-1. **References.** `GET /api/styles` lists each reference with its contact sheet, recipes and
-   `frames`: one served keyframe per detected scene (`keyframes/sNN_mid.jpg`, else the first
-   keyframe), read from the entry's `analysis.json` and only when the file exists inside the
-   keyframes folder. Adding a reference is the same background `style-add` job as before.
-2. **Test video.** *Make a test video* is `POST /api/plans {ref: null, overrides}` with the
-   chosen recipe (and `style: explainer`) as run overrides. `plan_day` stores run overrides on
-   the entry's `look`, so the test video's resolved recipe names the reference it was styled
-   by, and the page draws that link from the recipe's `source` rather than remembering it.
-3. **Tweak and compare.** The reference's scene keyframes sit beside the storyboard's frames
-   (`preview.stills.frames`), row by row. Every control change is `PUT .../look` followed by
-   `POST .../preview {tier: stills}`: the fingerprint change hides the old storyboard, so the
-   page keeps the last storyboard in `sessionStorage` and shows it dimmed as "previous look"
-   until the new capture lands, and lists earlier looks below for comparison. *Try another
-   recipe* steps through `GET /api/plans` → `recipes` (library recipes first). Rewrite and
-   final render go through the same confirmed endpoints as the daily page.
+1. **Look library.** `GET /api/looks` lists the presets of `newsletter_video/looks/presets.json`
+   (`id`, `name`, `description`, `good_for`, `theme`, `recipe`, `thumbnail`, `default`); the
+   thumbnails are `static/looks/<id>.jpg`, served by the guarded static handler. Picking a card
+   is client state until a test video exists, then it saves the preset on that video.
+2. **Test video.** *Make a test video* is `POST /api/plans {ref: null, overrides}` with
+   `{preset, style: explainer}` as run overrides (`--preset`); `plan_day` stores them on the
+   entry's `look`.
+3. **Tweak and compare.** Every control change is `PUT .../look` (the `preset` field is
+   validated against the library; an empty one drops it) followed by `POST .../preview
+   {tier: stills}`. The fingerprint change hides the old storyboard, so before a new capture
+   replaces it the server keeps it under `_preview/<vid>/looks/<look-key>/` (newest eight, with a
+   `looks.json` index, served at `/media/plan/<ref>/<vid>/looks/<key>/...`) and lists them as
+   `preview.looks`. The page shows the current storyboard on the right and any kept look on the
+   left, row by row. *Try another look* saves the next preset in library order and re-captures.
+   Rewrite and final render go through the same confirmed endpoints as the daily page.
 
-The rail at the top is computed from the same state (references present, a test plan loaded,
+The default look preset (Settings, `LOOK_PRESET`) is validated against the library file and is
+what a planned video uses until it picks its own in *Change look*. 
+
+The rail at the top is computed from the same state (a look picked, a test plan loaded,
 a storyboard present, a running job) and names the next free or paid step. Costs shown
 on buttons are the fixed estimates from this document; the session ledger counts writer
 calls, previews and renders started from this browser session.

@@ -18,12 +18,12 @@ export const state = {
   log: { jobId: null, text: "", next: 0 },
   setup: null,
   videos: null,
-  plans: null, // {plans: [...], recipes: [...]}
+  plans: null, // {plans: [...]}
   plan: null, // the plan being reviewed: {ref, kind, videos: [...]}
   planRef: null,
-  styles: null, // the style library: {enabled, references, builtin_recipes, keys, root, adding}
-  bench: readJson(localStorage, BENCH_KEY, { reference: null, planRef: null }),
-  ledger: readJson(sessionStorage, LEDGER_KEY, { writer: 0, previews: 0, renders: 0, references: 0 }),
+  looks: null, // the look library: {presets: [{id, name, description, good_for, thumbnail, ...}], default}
+  bench: readJson(localStorage, BENCH_KEY, { preset: null, planRef: null }),
+  ledger: readJson(sessionStorage, LEDGER_KEY, { writer: 0, previews: 0, renders: 0 }),
   saving: false,
   saveError: null,
   justSaved: false,
@@ -32,7 +32,7 @@ export const state = {
 // ---- the look as the panel's settings describe it (for run overrides) ----
 // A plan or preview started with unsaved look changes uses them as run
 // overrides, so what you see on screen is what gets planned.
-const LOOK_KEYS = { VIDEO_STYLE: "style", CHARACTER: "character", VIDEO_THEME: "theme", BACKGROUND_STYLE: "background", STYLE_RECIPE: "recipe" };
+const LOOK_KEYS = { VIDEO_STYLE: "style", CHARACTER: "character", VIDEO_THEME: "theme", BACKGROUND_STYLE: "background", LOOK_PRESET: "preset" };
 export function draftLook() {
   const out = {};
   for (const [env, field] of Object.entries(LOOK_KEYS)) if (env in state.draft) out[field] = state.draft[env];
@@ -55,14 +55,18 @@ export function noteSpend(kind) {
   notify();
 }
 
-// ---- recipes and the references they came from ----
-export const recipes = () => state.plans?.recipes || [];
-export const recipeInfo = (id) => recipes().find((r) => r.id === id) || null;
-export function referenceForRecipe(id) {
-  if (!id || id === "auto" || id === "none") return null;
-  return (state.styles?.references || []).find((r) => (r.recipes || []).some((x) => x.id === id)) || null;
+// ---- the look library (newsletter_video/looks/presets.json, via GET /api/looks) ----
+export const presets = () => state.looks?.presets || [];
+export const presetInfo = (id) => presets().find((p) => p.id === id) || null;
+// "" in a look means no preset, which renders exactly like the library's default one.
+export const defaultPresetId = () => state.looks?.default || "";
+export const effectivePresetId = (id) => id || defaultPresetId();
+
+export async function loadLooks() {
+  state.looks = await api.get("/api/looks");
+  notify();
+  return state.looks;
 }
-export const referenceByName = (name) => (state.styles?.references || []).find((r) => r.name === name) || null;
 
 export async function loadPlans() {
   state.plans = await api.get("/api/plans");
@@ -81,12 +85,6 @@ export async function loadPlan(ref) {
   }
   notify();
   return state.plan;
-}
-
-export async function loadStyles(query = "") {
-  state.styles = await api.get(`/api/styles${query ? `?q=${encodeURIComponent(query)}` : ""}`);
-  notify();
-  return state.styles;
 }
 
 export function subscribe(fn) {
@@ -168,7 +166,7 @@ export async function loadSetup() {
 
 export async function loadAll() {
   try {
-    await Promise.all([loadSettings(), loadCharacters(), refreshRuns()]);
+    await Promise.all([loadSettings(), loadCharacters(), loadLooks(), refreshRuns()]);
     state.loaded = true;
     state.loadError = null;
   } catch (err) {

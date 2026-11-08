@@ -6,6 +6,7 @@
       "id": "paper",
       "name": "Clean paper",
       "description": "The default editorial look: warm paper, one cobalt accent, serif headlines, dot grid. Exactly today's daily video.",
+      "good_for": "Every story. The daily default: clean, readable, no surprises.",
       "default": true,
       "look": {},
       "knobs": {},
@@ -17,6 +18,7 @@
       "id": "cinematic-glass",
       "name": "Cinematic dark glass",
       "description": "Near-black ground with drifting aurora fields, a grid floor, grain, glass panels, neon 3D stacks and bars; scenes dissolve and push in slowly. (The mesh-gradient shader background is installed and works in stills; set background 'mesh-gradient' on a scene to use it once the CLI renders WebGPU blocks.)",
+      "good_for": "Big launches, hardware and AI model news that want drama and depth.",
       "look": {"theme": "cinematic"},
       "knobs": {
         "look": "cinematic",
@@ -36,6 +38,7 @@
       "id": "depth-cards",
       "name": "Depth cards",
       "description": "Dark theme, layered cards the camera pushes through, glassy panels and device frames; scenes slide in from the right with a parallax hold.",
+      "good_for": "Product and app stories with screens, diagrams and layered comparisons.",
       "look": {"theme": "dark"},
       "knobs": {
         "transition": "push-left",
@@ -53,6 +56,7 @@
       "id": "data-focus",
       "name": "Data focus",
       "description": "Light paper with heavy sans headlines, hard wipes and popping bars: every scene is a number, a chart, a comparison or a 3D bar chart.",
+      "good_for": "Numbers: funding rounds, benchmarks, market shares, anything with a chart.",
       "look": {"theme": "light"},
       "knobs": {
         "transition": "wipe-down",
@@ -70,6 +74,7 @@
       "id": "glow-type",
       "name": "Glow type",
       "description": "Cinematic ground with magenta and cyan neon, letters stepping in, caps everywhere, a pulse on the hold: kinetic type carries the story.",
+      "good_for": "Hot takes and one-line announcements where the words are the picture.",
       "look": {"theme": "cinematic"},
       "knobs": {
         "look": "cinematic",
@@ -91,6 +96,7 @@
       "id": "quiet-editorial",
       "name": "Quiet editorial",
       "description": "The paper look slowed down: cross-fades, soft fade-ups and a floating hold for quotes, timelines and considered statements.",
+      "good_for": "Opinion, interviews and timelines that read better slowly.",
       "look": {"theme": "light"},
       "knobs": {
         "transition": "fade",

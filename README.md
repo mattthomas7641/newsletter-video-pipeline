@@ -82,16 +82,15 @@ Everything above can be set up by clicking instead of editing files. Start the p
 ```
 
 It opens `http://127.0.0.1:8765` in your browser (another port is used if that one is busy)
-and needs nothing beyond the packages already in `requirements.txt`. Light or dark follows
-your system. Press Ctrl+C in the terminal to stop it; anything already running keeps going.
+and needs nothing beyond the packages already in `requirements.txt`. The panel is always light. Press Ctrl+C in the terminal to stop it; anything already running keeps going.
 
-Three pages. Screenshots are in `docs/screenshots/control-panel/`.
+Three pages. Screenshots are in `docs/screenshots/control-panel/` (`workbench-library-light.png`, `workbench-compare-light.png`, `workbench-tweak-light.png`, `today-light.png`, `settings-preset-light.png`, and `mobile-*-light.png` at phone width).
 
 - **Today's videos** (the landing page). Plan first, render last. *Plan today's videos* picks
   the stories and writes the scripts (one writer call, about 3 cents) and stops: nothing is
   voiced or rendered. In [approval mode](#approval-mode) the scheduled job leaves the plan
   here with a *Plan ready: review and render* banner. Each planned video shows its look (style,
-  narrator, theme or background, style recipe), which you can change per video with *Change
+  narrator, look preset, theme or background), which you can change per video with *Change
   look*; unset fields follow your defaults. *Storyboard* captures one frame per scene in about
   10-15 s; *Draft clip* renders the whole video at 12 fps, draft quality, in about 30 s; *Open
   in Studio* serves the live composition; none of these costs anything or touches the voice.
@@ -103,23 +102,22 @@ Three pages. Screenshots are in `docs/screenshots/control-panel/`.
   today's rendered videos and, folded away, the last two weeks. Only one job at a time.
 - **Look workbench.** One guided flow for trying a look, in three stages that stay on one page,
   with a rail at the top saying where you are, what to do next, and what this session has spent.
-  1. *References*: drop in a video you like (checked by content, 300 MB cap, stored under a
-     generated name in `style_library/inbox/`, analysed in the background with the cost shown).
-     Each reference shows its contact sheet, tags, notes, measured match and the recipes made
-     from it. Pick one to style the test video by.
+  1. *Look library*: the presets in `newsletter_video/looks/presets.json` as a grid (thumbnail,
+     name, one-line description, what it is good for). Picking one makes it the look of the test
+     video, or of the test video you are about to write.
   2. *Test video*: *Make a test video* writes one throwaway video from today's newsletter
-     (one writer call, about 3 cents) with the chosen reference's recipe set on it, so the
-     video stays visibly linked to the reference. It lives in `output/_previews/<id>/`, is never
-     uploaded and never counts as a covered story.
-  3. *Tweak and compare*: the reference's keyframes beside the test video's storyboard, scene
-     by scene, with every look control next to it (recipe, style, narrator, theme or
-     background). Any change is saved to that test video only and re-captures the storyboard by
-     itself (free, about 15 s); *Try another recipe* steps through the library in one click, and
-     earlier looks stay on the page to compare. *Draft clip*, *Draft with voice* and *Open in
+     (one writer call, about 3 cents) in the chosen look. It lives in `output/_previews/<id>/`,
+     is never uploaded and never counts as a covered story.
+  3. *Tweak and compare*: the storyboard in the current look beside the same story in another
+     look (an earlier capture of this video; pick which one), scene by scene, with every look
+     control next to it (preset, style, narrator, theme or background). Any change is saved to
+     that test video only and re-captures the storyboard by itself (free, about 15 s) while the
+     look it replaces moves to the left; *Try another look* steps to the next preset in one
+     click, and earlier looks stay on the page. *Draft clip*, *Draft with voice* and *Open in
      Studio* are there too. Only *Rewrite script…* (paid) and *Render final…* ask first.
 - **Settings.** The default look and narrator for new videos (*Avatar* or *Explainer*, the
   character gallery with *Hear voice* and *Add a character*, gameplay/plain background,
-  light/dark), the style library on/off switch and default recipe policy (`STYLE_RECIPE`),
+  light/dark), the default look preset (`LOOK_PRESET`),
   videos per day, what the scheduled run does (make everything, or plan and ask you), YouTube
   upload and privacy, what happens to videos made by the fallback writer, and a *Setup check*
   showing whether Voicebox, an API key and the YouTube sign-in are present (never their values).
@@ -130,11 +128,11 @@ See `docs/previews.md` for the preview tiers, timings and the look layering rule
 
 **Safety.** The panel listens on `127.0.0.1` only. It will only ever read or write these
 `.env` keys: `CHARACTER`, `VIDEO_STYLE`, `VIDEO_THEME`, `BACKGROUND_STYLE`, `VIDEOS_PER_DAY`,
-`DAILY_MODE`, `YOUTUBE_UPLOAD`, `YOUTUBE_PRIVACY`, `FALLBACK_UPLOAD`, `STYLE_LIBRARY`, `STYLE_RECIPE`. Comments, other lines and the file's
+`DAILY_MODE`, `YOUTUBE_UPLOAD`, `YOUTUBE_PRIVACY`, `FALLBACK_UPLOAD`, `LOOK_PRESET`. Comments, other lines and the file's
 permissions are left as they were. API keys and tokens are never sent to the browser or
 written to its logs; the panel only says whether one is set. Requests are checked for the
 loopback `Host`, a same-origin `Origin`, and a random per-launch token, so another web page
-can't drive it. Uploaded pictures and recordings are checked by content, size-capped and
+can't drive it. The reference-video style library is a command-line feature only (see *Style library* below); the panel no longer uploads or analyses reference videos. Uploaded pictures and recordings are checked by content, size-capped and
 stored under generated names.
 
 ## Configuration (`.env`)

@@ -193,7 +193,7 @@ def test_cross_site_post_is_refused_before_the_body_is_read(client):
     import http.client
 
     conn = http.client.HTTPConnection("127.0.0.1", client.port, timeout=5)
-    conn.putrequest("POST", "/api/styles", skip_host=True)
+    conn.putrequest("POST", "/api/characters", skip_host=True)
     conn.putheader("Host", f"127.0.0.1:{client.port}")
     conn.putheader("Origin", "https://evil.example")
     conn.putheader("X-UI-Token", client.token)

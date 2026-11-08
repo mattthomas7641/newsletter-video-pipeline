@@ -10,9 +10,11 @@ too. Both are validated by regex before they touch a path.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
+import shutil
 import socket
 import sys
 import time
@@ -21,6 +23,7 @@ from pathlib import Path
 
 from newsletter_video import look as looks
 from newsletter_video import plan_manifest as pm
+from newsletter_video.runstate import write_json_atomic
 
 from . import security
 from .config import UIPaths
@@ -30,9 +33,14 @@ from .runs import RunBlocked, RunService
 
 REF = re.compile(r"^(\d{4}-\d{2}-\d{2}|[a-z0-9]{6,40})$")
 VID = re.compile(r"^(v\d{2,3}|\d{2,}_[A-Za-z0-9._-]{0,150})$")
-PREVIEW_FILE = re.compile(r"^(storyboard\.jpg|draft\.mp4|frames/\d{2}_\d{3}\.\d{1}s\.png)$")
+_FRAME = r"frames/\d{2}_\d{3}\.\d{1}s\.png"
+PREVIEW_FILE = re.compile(rf"^(storyboard\.jpg|draft\.mp4|{_FRAME}|looks/[a-z0-9-]{{1,60}}/(storyboard\.jpg|{_FRAME}))$")
 TIERS = ("stills", "draft")
 MAX_PLAN_VIDEOS = 20
+# Storyboards of earlier looks on the same video, kept so two looks can be
+# compared side by side: _preview/<vid>/looks/<key>/ plus a looks.json index.
+LOOKS_DIRNAME = "looks"
+MAX_KEPT_LOOKS = 8
 STUDIO_KIND = "studio"  # one live HyperFrames Studio at a time; not a heavy run (previews may run beside it)
 STUDIO_HOST = "127.0.0.1"
 STUDIO_DIRNAME = "_studio"  # = preview.STUDIO_DIRNAME (not imported: the panel stays free of the render stack)
@@ -127,14 +135,18 @@ class PlanService:
                 "scenes": [s.get("type") for s in plan.get("scenes", [])] if plan else None,
                 "writer": entry.get("writer", ""), "status": entry.get("status", "planned"), "error": entry.get("error"),
                 "rendered": entry.get("rendered"), "look": {k: v for k, v in overrides.items() if k != "version"},
-                "resolved": resolved, "preview": self.preview_state(ref, entry["id"]),
+                "resolved": resolved, "look_key": look_key(resolved), "preview": self.preview_state(ref, entry["id"]),
             })
         return {"ref": ref, "kind": data.get("kind", "day"), "date": data.get("date"), "created": data.get("created"),
                 "updated": data.get("updated"), "writer": data.get("writer", ""), "default_look": defaults,
                 "videos": videos, "is_test": self.is_test(ref), "studio": self.studio_state()}
 
     def _environ(self) -> dict:
+        """The environment a look resolves in: the process environment, the
+        settings the panel manages and the read-only ones it only reflects
+        (the daily job's style-library policy)."""
         env = dict(os.environ)
+        env.update({k: v for k, v in self.store.read_only().items() if v})
         env.update(self.store.read()["values"])
         return env
 
@@ -169,7 +181,80 @@ class PlanService:
                     if tier == "stills" else None,
                     "look": data.get("look"),
                 }
+        kept = self._kept_looks(out_dir)
+        if kept:
+            state["looks"] = [{
+                "key": e["key"], "look": e.get("look"), "at": e.get("at"), "duration": e.get("duration"),
+                "timing": e.get("timing"), "url": f"/media/plan/{ref}/{vid}/{LOOKS_DIRNAME}/{e['key']}/storyboard.jpg",
+                "frames": [{"label": f.get("label"), "at": f.get("at"),
+                            "url": f"/media/plan/{ref}/{vid}/{LOOKS_DIRNAME}/{e['key']}/frames/{f.get('file')}"}
+                           for f in e.get("frames", [])],
+            } for e in kept]
         return state
+
+    # --- storyboards of earlier looks, kept for side-by-side comparison ---
+
+    def _kept_looks(self, out_dir: Path) -> list[dict]:
+        try:
+            data = json.loads((out_dir / "looks.json").read_text())
+        except (OSError, ValueError):
+            return []
+        entries = data.get("entries") if isinstance(data, dict) else None
+        return [e for e in entries or [] if isinstance(e, dict) and re.fullmatch(r"[a-z0-9-]{1,60}", str(e.get("key", "")))
+                and (out_dir / LOOKS_DIRNAME / e["key"] / "storyboard.jpg").is_file()]
+
+    def keep_stills(self, ref: str, vid: str) -> dict | None:
+        """Copies the video's current, fresh storyboard (frames included) under
+        `_preview/<vid>/looks/<key>/`, keyed by the look it shows, so the next
+        look can be compared against it. Nothing is rendered; a stale or missing
+        storyboard keeps nothing. Returns the index entry, or None."""
+        folder = self.folder(ref)
+        if not VID.match(vid or ""):
+            raise KeyError(vid)
+        out_dir = folder / "_preview" / vid
+        try:
+            data = json.loads((out_dir / "preview.json").read_text())
+        except (OSError, ValueError):
+            return None
+        info = data.get("stills")
+        if not isinstance(info, dict) or info.get("fingerprint") != self._fingerprint(folder, vid):
+            return None
+        sheet = out_dir / str(info.get("file") or "storyboard.jpg")
+        if not sheet.is_file():
+            return None
+        try:
+            resolved = looks.resolve_look(self._stored_look(folder, vid), environ=self._environ())
+        except looks.LookError:
+            return None
+        key = look_key(resolved)
+        target = out_dir / LOOKS_DIRNAME / key
+        shutil.rmtree(target, ignore_errors=True)
+        (target / "frames").mkdir(parents=True)
+        shutil.copy2(sheet, target / "storyboard.jpg")
+        frames = []
+        for f in info.get("frames", []):
+            name = str((f or {}).get("file") or "")
+            src = out_dir / "frames" / name
+            if re.fullmatch(_FRAME[len("frames/"):], name) and src.is_file():
+                shutil.copy2(src, target / "frames" / name)
+                frames.append({"label": f.get("label"), "at": f.get("at"), "detail": f.get("detail"), "file": name})
+        entry = {"key": key, "look": resolved, "at": info.get("at"), "duration": info.get("duration"),
+                 "timing": info.get("timing"), "frames": frames}
+        kept = [e for e in self._kept_looks(out_dir) if e["key"] != key]
+        kept.insert(0, entry)
+        for old in kept[MAX_KEPT_LOOKS:]:
+            shutil.rmtree(out_dir / LOOKS_DIRNAME / old["key"], ignore_errors=True)
+        write_json_atomic(out_dir / "looks.json", {"version": 1, "entries": kept[:MAX_KEPT_LOOKS]})
+        return entry
+
+    def _stored_look(self, folder: Path, vid: str) -> dict:
+        if vid.startswith("v"):
+            data = pm.read_manifest(folder)
+            return (pm.get_entry(data, vid).get("look") or {}) if data else {}
+        try:
+            return pm._overrides_from_sidecar_look(json.loads((folder / f"{vid}.json").read_text()).get("look"))
+        except (OSError, ValueError):
+            return {}
 
     def _fingerprint(self, folder: Path, vid: str) -> str | None:
         if vid.startswith("v"):
@@ -207,6 +292,7 @@ class PlanService:
         if clean.get("character") and self.characters is not None:
             if clean["character"] not in {c["slug"] for c in self.characters.list()}:
                 raise PlanError("That character doesn't exist.")
+        self.keep_stills(ref, vid)  # the storyboard of the look being replaced stays comparable
         try:
             pm.update_entry(folder, vid, look=clean)
         except pm.ManifestError as exc:
@@ -264,6 +350,8 @@ class PlanService:
                 raise KeyError(vid)
             source = [str(sidecar)]
         self.runs.guard()
+        if tier == "stills":
+            self.keep_stills(ref, vid)  # a re-capture overwrites the frames; the current look stays comparable
         argv = [sys.executable, "-m", "newsletter_video.preview", *source, "--preview", tier, *_look_args(clean)]
         if voice:
             argv.append("--voice")
@@ -375,4 +463,13 @@ def _look_args(clean: dict) -> list[str]:
     return args
 
 
-__all__ = ["PlanService", "PlanError", "RunBlocked", "SettingsError"]
+def look_key(resolved: dict) -> str:
+    """A short, path-safe name for a resolved look: its preset (or 'custom')
+    plus a hash of every field, so two looks compare equal exactly when they
+    render the same."""
+    fields = {k: resolved.get(k) for k in looks.FIELDS}
+    digest = hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()[:8]
+    return f"{resolved.get('preset') or 'custom'}-{digest}"
+
+
+__all__ = ["PlanService", "PlanError", "RunBlocked", "SettingsError", "look_key"]
