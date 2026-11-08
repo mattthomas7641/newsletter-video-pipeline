@@ -3949,7 +3949,7 @@
           b.renderAt(s.start + 1);
         });
         // ---- worlds: every scene of a 3D look drawn in 3D --------------------------
-        // story.world = "hero" | "corridor" | "metrics". world3d.py gives each scene a
+        // story.world = "hero" | "metrics". world3d.py gives each scene a
         // content block `w3` and picks its composition (`w3.comp`) from what the scene says:
         // an object that IS the thing discussed (chip, node network, coins, shield, speed
         // streaks, server grid, globe), figures as bars / a monolith / a gauge, a list or a
@@ -3958,10 +3958,7 @@
         // scene graph for the whole video, drawn from t alone like everything else.
         //   hero      every composition; scenes dissolve; floor with reflections
         //   metrics   figure- and typography-led compositions (no decorative objects)
-        //   corridor  every scene is a plane in ONE continuous space, scene changes are camera
-        //             flights (no cuts), parallax from dust, pylons and the floor
         const WORLD = story.world || "";
-        const CDS = 8, CSTAND = 7; // corridor: plane spacing and stand-off (the previous plane is always behind the lens)
         let worldDraw = null;
         if (WORLD) {
           const colors = glow.length ? glow : [new THREE.Color("#ff7a1a")];
@@ -3980,11 +3977,11 @@
           stage.prepend(slot);
           const wctx = wcanvas.getContext("2d"), wbctx = wbloom.getContext("2d");
           const wscene = new THREE.Scene();
-          const wcam = new THREE.PerspectiveCamera(WORLD === "corridor" ? 44 : 32, SW / SH, 0.1, 160);
+          const wcam = new THREE.PerspectiveCamera(32, SW / SH, 0.1, 160);
           const wrig = new THREE.Group();
           wscene.add(wrig);
-          const FLOOR = WORLD === "corridor" ? -2.0 : -2.3;
-          const floor = gridFloor(FLOOR, col(WORLD === "corridor" ? 3 : 0));
+          const FLOOR = -2.3;
+          const floor = gridFloor(FLOOR, col(0));
           floor.material.uniforms.uC = { value: new THREE.Vector2() };
           floor.material.fragmentShader = floor.material.fragmentShader.replace("uniform float uK;", "uniform float uK; uniform vec2 uC;").replace("length(vW.xz)", "length(vW.xz - uC)");
           floor.material.needsUpdate = true;
@@ -4335,9 +4332,9 @@
             aim(wcam, bs.yaw + (1 - e) * (it.index % 2 ? 0.5 : -0.5), bs.pitch, bs.dist * lerp(1.25, 0.92, e), 0, bs.ty + 0.9, 0);
           }
           const HERO_LAYOUTS = [ // single-subject staging: the subject centred and large, a small caption plate under or beside it
-            { obj: [0, 1.2, 0.6], pl: [0, -1.5, 2.0], yaw: 0, pitch: -0.2, os: 1.0 },
-            { obj: [-0.4, 1.2, 0.6], pl: [0.7, -1.5, 1.8], yaw: -0.2, pitch: -0.1, os: 1.0 },
-            { obj: [0.4, 1.2, 0.6], pl: [-0.7, -1.5, 1.8], yaw: 0.2, pitch: -0.1, os: 1.0 },
+            { obj: [0, 1.5, 0.6], pl: [0, -0.8, 2.0], yaw: 0, pitch: -0.2, os: 1.0 },
+            { obj: [-0.4, 1.5, 0.6], pl: [0.7, -0.8, 1.8], yaw: -0.2, pitch: -0.1, os: 1.0 },
+            { obj: [0.4, 1.5, 0.6], pl: [-0.7, -0.8, 1.8], yaw: 0.2, pitch: -0.1, os: 1.0 },
           ];
           const CAM = {
             object: { yaw: -0.3, pitch: 0.2, dist: 11, ty: 1.9 }, "type-plate": { yaw: 0.25, pitch: 0.14, dist: 10.5, ty: 1.1 }, "type-mono": { yaw: -0.3, pitch: 0.1, dist: 12, ty: 1.5 },
@@ -4346,7 +4343,6 @@
             gauge: { yaw: 0, pitch: 0.42, dist: 12.5, ty: 0.9 }, "type-stack": { yaw: 0, pitch: 0.12, dist: 8, ty: 0.9 },
           };
           const items = [];
-          let corridorZ = 0;
           scenesW.forEach((s, i) => {
             const c = s.w3 || { kind: s.type, comp: "type-plate", label: "", title: "", value: "", lines: [], items: [], numbers: [], icon: "", cues: [], chunks: [], words: [] };
             if (c.comp === "flat" || !c.comp) { items.push(null); return; }
@@ -4367,7 +4363,7 @@
               const shape = comp.startsWith("extrude:") ? "extrude" : comp.slice(7);
               const iconName = comp.startsWith("extrude:") ? comp.slice(8) : c.icon;
               const L = HERO_LAYOUTS[c.variant % HERO_LAYOUTS.length || 0];
-              it.cb = { ...CAM.object, dist: 11.5, ty: (L.pl[1] + L.obj[1]) / 2 + 0.2 }; // frame the subject and its caption together
+              it.cb = { ...CAM.object, dist: 11.5, ty: (L.pl[1] + L.obj[1]) / 2 - 0.6 }; // frame the subject and its caption together
               const obj = shapeObject(shape, accent2, accent3, iconName), mir = shapeObject(shape, accent2, accent3, iconName);
               const pl = plate(c, accent, 3.1);
               g.add(obj, mir, pl);
@@ -4494,54 +4490,15 @@
                 aim(wcam, tubes ? -0.1 : -0.18, 0.06, 12.4 * lerp(1.08, 0.97, e), 0, 1.1, 0);
                 X.camDone = true;
               };
-            } else if (comp === "gate") {
-              // the corridor: each scene is a gate (a big plane in a frame) the camera flies through; a sequence
-              // is consecutive gates; statements are huge planes; three gate styles rotate scene to scene
-              const multi = c.items.length >= 2 && c.kind !== "stat";
-              const parts = multi ? c.items.slice(0, 4).map((x) => ({ label: x.label, title: x.text, icon: "", emph: "", lines: [] }))
-                : [{ label: c.label, title: c.title, icon: c.icon, emph: c.emph, value: c.value, lines: c.lines }];
-              const style = c.variant % 3, huge = c.kind === "statement" || c.kind === "quote" || c.kind === "title";
-              const W = huge ? 4.5 : 4.1, GS = 5.5;
-              let sr = 31 + i * 17;
-              const srnd = () => ((sr = (sr * 1103515245 + 12345) % 2147483648) / 2147483648);
-              const gates = parts.map((pt, j) => {
-                const gg = new THREE.Group();
-                gg.add(plate(pt, col(c.variant + j), W));
-                if (style === 0) { // a portal: nested frames receding behind the plane
-                  [1.18, 1.42, 1.72].forEach((s2, k2) => { const nn = neonPlate(W * s2, W * 0.625 * s2, col(c.variant + j + k2 + 1), 0.05, 0); nn.position.z = -0.9 - k2 * 0.9; mix(nn); gg.add(nn); });
-                } else if (style === 1) { // foreground shards at the edges
-                  for (let q = 0; q < 8; q++) { const sh = glassSolid(new THREE.OctahedronGeometry(1, 0), col(q + j), 0.3); sh.scale.set(0.12 + srnd() * 0.14, 0.3 + srnd() * 0.5, 0.12 + srnd() * 0.14); sh.position.set((q % 2 ? 1 : -1) * (W / 2 + 0.2 + srnd() * 0.9), (srnd() - 0.5) * 3, 0.6 + srnd() * 1.6); sh.rotation.set(srnd() * 3, srnd() * 3, srnd() * 3); mix(sh); gg.add(sh); }
-                } else { // tall light strips either side
-                  [-1, 1].forEach((sd) => { const st2 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 5.2, 0.06), new THREE.MeshBasicMaterial({ color: col(c.variant + j + 1), transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false })); st2.position.set(sd * (W / 2 + 0.55), 0, 0.2); mix(st2); gg.add(st2); });
-                }
-                gg.position.set(0, 0.4, -j * GS);
-                if (style === 2) gg.rotation.y = (j % 2 ? -1 : 1) * 0.14;
-                mix(gg); g.add(gg);
-                return gg;
-              });
-              it.span = (gates.length - 1) * GS;
-              it.upd = (X) => {
-                const n = gates.length;
-                let adv = 0;
-                for (let k = 1; k < n; k++) adv += easeIO(clamp01((X.t - (cue(k, X.s0 + 0.6 + k * 0.9) - 0.7)) / 1.1));
-                const camZ = 6.6 - adv * GS - 0.9 * X.st; // forward through the gates, a slow push on each
-                wcam.position.set(0, 0.55, camZ);
-                wcam.lookAt(0, 0.45, camZ - 8);
-                gates.forEach((gg, k) => {
-                  const dist = camZ - gg.position.z;
-                  const pk = k === 0 ? 1 : X.p(cue(k, X.s0 + 0.6 + k * 0.9) - 0.6, 0.6);
-                  fade(gg, X.a * pk * clamp01((dist - 1.4) / 1.6)); // the gate dissolves as the camera passes through it
-                });
-                X.camDone = true;
-              };
             } else if (comp === "ladder") {
               // a flow as a step ladder: one box per step, each a step higher; the spoken step lit
               const its = c.items.slice(0, 5), n = its.length;
               const boxes = its.map((x, k) => {
                 const hh = 0.7 + k * 0.55;
-                const cc = mix(cell(1.3, hh, 1.3, col(k), 0.5 + 0.1 * k));
-                cc.userData.h = hh; cc.position.set((k - (n - 1) / 2) * 1.75, 0, (k - (n - 1) / 2) * -0.5);
-                const t = tagSprite(x.label, x.text, col(k), 2.2, true);
+                const bw0 = Math.min(1.3, Math.min(1.7, 4.0 / Math.max(1, n - 1)) * 0.8);
+                const cc = mix(cell(bw0, hh, bw0, col(k), 0.5 + 0.1 * k));
+                cc.userData.h = hh; cc.position.set((k - (n - 1) / 2) * Math.min(1.7, 4.0 / Math.max(1, n - 1)), 0, (k - (n - 1) / 2) * -0.5);
+                const t = tagSprite(x.label, x.text, col(k), Math.min(2.3, Math.min(1.7, 4.0 / Math.max(1, n - 1)) * 1.45), true);
                 g.add(cc, t);
                 return { cc, t, hh };
               });
@@ -4551,20 +4508,21 @@
                 boxes.forEach((o, k) => {
                   const pk = X.p(cue(k, X.s0 + 0.4 + k * 0.7) - 0.2, 0.7), hh = Math.max(0.001, o.hh * pk);
                   o.cc.scale.y = Math.max(0.001, pk); o.cc.position.y = FLOOR + hh / 2;
-                  o.t.position.set(o.cc.position.x, FLOOR + hh + 0.65 + (k % 2) * 0.7, o.cc.position.z);
+                  o.t.position.set(o.cc.position.x, FLOOR + hh + 0.6 + (k % 3) * 0.75, o.cc.position.z);
                   fade(o.cc, Math.min(1, pk * 2) * X.a * (k === cur ? 1 : 0.7)); fade(o.t, X.a * pk);
                 });
-                hd.position.set(0, FLOOR + 4.7, -1.4); hd.rotation.set(-0.1, 0, 0); fade(hd, X.a * X.p(X.s0 + 0.3, 0.8));
+                hd.position.set(0, FLOOR + 4.1, -1.4); hd.rotation.set(-0.1, 0, 0); fade(hd, X.a * X.p(X.s0 + 0.3, 0.8));
               };
-              it.cb = { yaw: 0.7, pitch: 0.62, dist: 11.5, ty: -0.4 };
+              it.cb = { yaw: 0.6, pitch: 0.62, dist: 12.5, ty: -0.4 };
             } else if (comp === "ranked") {
               // a list as ranked columns: the first item the tallest; the height is the item's place in the list
               const its = c.items.slice(0, 5), n = its.length;
               const cols = its.map((x, k) => {
                 const hh = 0.9 + (n - 1 - k) * 0.6;
-                const cc = mix(cell(1.1, hh, 1.1, col(k), 0.55));
-                cc.userData.h = hh; cc.position.set((k - (n - 1) / 2) * 1.75, 0, 0);
-                const t = tagSprite("#" + (k + 1) + " " + x.label, x.text, col(k), 2.2, true);
+                const bw0 = Math.min(1.1, Math.min(1.7, 4.0 / Math.max(1, n - 1)) * 0.8);
+                const cc = mix(cell(bw0, hh, bw0, col(k), 0.55));
+                cc.userData.h = hh; cc.position.set((k - (n - 1) / 2) * Math.min(1.7, 4.0 / Math.max(1, n - 1)), 0, 0);
+                const t = tagSprite("#" + (k + 1) + " " + x.label, x.text, col(k), Math.min(2.5, Math.min(1.7, 4.0 / Math.max(1, n - 1)) * 1.6), true);
                 g.add(cc, t);
                 return { cc, t, hh };
               });
@@ -4574,10 +4532,10 @@
                 cols.forEach((o, k) => {
                   const pk = X.p(cue(k, X.s0 + 0.4 + k * 0.7) - 0.2, 0.7), hh = Math.max(0.001, o.hh * pk);
                   o.cc.scale.y = Math.max(0.001, pk); o.cc.position.y = FLOOR + hh / 2;
-                  o.t.position.set(o.cc.position.x, FLOOR + hh + 0.65 + (k % 2) * 0.7, 0);
+                  o.t.position.set(o.cc.position.x, FLOOR + hh + 0.6 + (k % 3) * 0.75, 0);
                   fade(o.cc, Math.min(1, pk * 2) * X.a * (k === cur ? 1 : 0.7)); fade(o.t, X.a * pk);
                 });
-                hd.position.set(0, FLOOR + 4.7, -1.4); hd.rotation.set(-0.1, 0, 0); fade(hd, X.a * X.p(X.s0 + 0.3, 0.8));
+                hd.position.set(0, FLOOR + 4.1, -1.4); hd.rotation.set(-0.1, 0, 0); fade(hd, X.a * X.p(X.s0 + 0.3, 0.8));
               };
               it.cb = { yaw: -0.7, pitch: 0.8, dist: 11.5, ty: -0.4 };
             } else if (comp === "duel") {
@@ -4607,7 +4565,7 @@
                 const gp = X.p(X.s0 + 1.2, 0.7), top = FLOOR + Math.max(cols[0].hh, cols[1].hh) * 0.5;
                 gap.position.set(0, top, 0); vs.position.set(0, top + 0.55, 0);
                 gap.material.opacity = 0.8 * X.a * gp; fade(vs, X.a * gp);
-                hd.position.set(0, FLOOR + 4.7, -1.4); hd.rotation.set(-0.1, 0, 0); fade(hd, X.a * X.p(X.s0 + 0.3, 0.8));
+                hd.position.set(0, FLOOR + 4.1, -1.4); hd.rotation.set(-0.1, 0, 0); fade(hd, X.a * X.p(X.s0 + 0.3, 0.8));
               };
               it.cb = { yaw: 0.5, pitch: 0.55, dist: 13, ty: 0.7 };
             } else if (comp === "typogrid") {
@@ -4768,86 +4726,14 @@
               it.upd = (X) => { pl.position.set(0, 1.0, 0); fade(pl, X.a * X.p(X.s0 + 0.2, 0.9)); };
             }
             it.rank = items.filter(Boolean).length;
-            if (WORLD === "corridor") { it.gz = corridorZ; g.position.z = corridorZ; corridorZ -= (it.span || 0) + 9; } // scenes sit along the corridor; the camera flies between them
             if (it.g) wrig.add(g);
             items.push(it);
           });
-          // the corridor: dust, pylons, light strips and floating shards streaming past (parallax)
-          if (WORLD === "corridor") {
-            const len = -corridorZ + 14;
-            wscene.add(dust(300, [16, FLOOR + 0.2, 7, -len + 10, len + 6], 777, col(1)));
-            for (let z = 0; z > corridorZ - 9; z -= 9) {
-              [-3.8, 3.8].forEach((x) => {
-                const pcube = glowCube(col(Math.round(-z / 9) + 1), 0.28);
-                pcube.scale.set(1, 7, 1);
-                pcube.position.set(x, FLOOR + 1.6, z - 4.5);
-                wrig.add(mix(pcube));
-                pcube.userData.pylon = true;
-              });
-            }
-            [[-3.4, FLOOR + 0.04], [3.4, FLOOR + 0.04], [-3.4, 3.2], [3.4, 3.2]].forEach(([x, y], k) => {
-              const strip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, len), new THREE.MeshBasicMaterial({ color: col(k + 1), transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
-              strip.position.set(x, y, -len / 2 + 8);
-              wscene.add(strip);
-            });
-            let sr2 = 99;
-            const sd = () => ((sr2 = (sr2 * 1103515245 + 12345) % 2147483648) / 2147483648);
-            for (let q = 0; q < 70; q++) { // floating shards: foreground / background parallax
-              const sh = glassSolid(new THREE.OctahedronGeometry(1, 0), col(q), 0.25);
-              sh.scale.set(0.08 + sd() * 0.16, 0.2 + sd() * 0.4, 0.08 + sd() * 0.16);
-              sh.position.set((sd() < 0.5 ? -1 : 1) * (2.0 + sd() * 2.6), FLOOR + sd() * 5.5, 6 - sd() * len);
-              sh.rotation.set(sd() * 3, sd() * 3, sd() * 3);
-              wscene.add(sh);
-            }
-          }
-
           // ------------- the per-frame draw ----------------------------------------
           worldDraw = (t) => {
             const idx = sceneAt(t);
             let drawn = false;
-            if (WORLD === "corridor") {
-              const live = items.filter(Boolean);
-              const gzOf = (o) => o.gz;
-              // evaluate a scene's composition at tEval (alpha a) and return the camera pose it implies in the corridor
-              const run = (o, tEval, a) => {
-                const s = o.s, lt = tEval - s.start, st = clamp01(lt / Math.max(1, s.end - s.start));
-                o.g.visible = true;
-                const X = { t: tEval, lt, st, a, s0: s.start, p: (at, dur) => prog(tEval, at, dur), camDone: false };
-                o.upd(X);
-                if (!X.camDone) moveCamera(o, st);
-                wcam.position.z += gzOf(o);
-                wcam.updateMatrixWorld(true);
-                return { pos: wcam.position.clone(), quat: wcam.quaternion.clone() };
-              };
-              live.forEach((o) => { o.g.visible = false; });
-              const cur = items[idx];
-              let prevIt = null; for (let j = idx - 1; j >= 0; j--) if (items[j]) { prevIt = items[j]; break; }
-              if (cur) {
-                drawn = true;
-                const s = scenesW[idx];
-                const e = prevIt ? easeIO(clamp01((t - (s.start - 0.15)) / 1.3)) : 1; // the flight from the previous scene's shot
-                const out = 1 - smooth((t - (s.end - 0.25)) / 0.25) * (items[idx + 1] ? 0 : 1);
-                const P0 = prevIt ? run(prevIt, prevIt.s.end, Math.max(0, 1 - smooth(e * 2.2))) : null;
-                const P1 = run(cur, t, (prevIt ? smooth(e * 1.6) : smooth((t - s.start) / 0.6)) * out);
-                if (P0) {
-                  wcam.position.lerpVectors(P0.pos, P1.pos, e); wcam.quaternion.slerpQuaternions(P0.quat, P1.quat, e);
-                  wcam.rotateZ(Math.sin(Math.PI * e) * (idx % 2 ? -0.08 : 0.08)); wcam.position.y += Math.sin(Math.PI * e) * 0.4;
-                } else {
-                  wcam.position.copy(P1.pos); wcam.quaternion.copy(P1.quat); wcam.position.z += (1 - smooth((t - s.start) / 1.6)) * 4.5;
-                }
-                floor.material.uniforms.uC.value.set(wcam.position.x, wcam.position.z - 6);
-                wrig.children.forEach((o) => { if (o.userData.pylon) { const d = wcam.position.z - o.position.z; fade(o, clamp01(1 - (d - 4) / 22) * clamp01((d + 2) / 3) * 0.35 * (d > 6 ? 1 : 0)); } });
-              } else if (live.length) { // a 2D scene sits on the corridor's backdrop: floor and dust, the camera holding where the last shot ended
-                drawn = true;
-                const s = scenesW[idx], st = clamp01((t - s.start) / Math.max(1, s.end - s.start));
-                if (prevIt) {
-                  const P = run(prevIt, prevIt.s.end, 0); prevIt.g.visible = false;
-                  wcam.position.copy(P.pos); wcam.quaternion.copy(P.quat); wcam.position.z -= 0.6 * st;
-                } else aim(wcam, -0.25, 0.2, 13, 0, 1.9, 0);
-                floor.material.uniforms.uC.value.set(wcam.position.x, wcam.position.z - 6);
-                wrig.children.forEach((o) => { if (o.userData.pylon) fade(o, 0); });
-              }
-            } else if (!items[idx]) { // a 2D scene sits on the 3D backdrop: the grid floor, the camera drifting in slowly
+            if (!items[idx]) { // a 2D scene sits on the 3D backdrop: the grid floor, the camera drifting in slowly
               const s = scenesW[idx];
               drawn = true;
               items.forEach((o) => { if (o) o.g.visible = false; });

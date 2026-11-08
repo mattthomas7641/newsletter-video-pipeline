@@ -48,18 +48,20 @@ resolved look is cinematic (`look.cinematic_requested`, `explainer_writer.CINEMA
 
 The 3D slot bleeds to the full 1080 px frame width (the stage is 820 px), so scene wipes use `OPEN`, an `inset` a little wider than the stage, instead of `inset(0)`; otherwise a wipe transition clips the 3D world to the stage box.
 
-## 3D worlds: three vocabularies, built from each scene's own content
+## 3D worlds: two vocabularies, built from each scene's own content
 
-The 3D presets are defined by a **world** (`"world"` in `presets.json`). Each world has its OWN composition vocabulary, staging and camera language, so the three are told apart from a single still with the colours removed (`world3d.compose`; the plan is never rewritten; `tests/test_worlds.py::test_each_preset_has_its_own_composition_vocabulary`). 3D is built from THAT scene's content: the pictogram the 2D scene shows is rebuilt in 3D (each SVG path of `icons.js` swept into a glowing tube, assembled on a glass slab, lit when the keyword is spoken), items become depth, figures become geometry, a sentence becomes extruded type (three.js `TextGeometry`). Only the outro (and scenes with nothing to depict) stay their ordinary 2D scene, on the world's backdrop with a slight perspective tilt that settles as the scene lands.
+The 3D presets are defined by a **world** (`"world"` in `presets.json`). Each of the two worlds has its OWN composition vocabulary, staging and camera language, so the three are told apart from a single still with the colours removed (`world3d.compose`; the plan is never rewritten; `tests/test_worlds.py::test_each_preset_has_its_own_composition_vocabulary`). 3D is built from THAT scene's content: the pictogram the 2D scene shows is rebuilt in 3D (each SVG path of `icons.js` swept into a glowing tube, assembled on a glass slab, lit when the keyword is spoken), items become depth, figures become geometry, a sentence becomes extruded type (three.js `TextGeometry`). Only the outro (and scenes with nothing to depict) stay their ordinary 2D scene, on the world's backdrop with a slight perspective tilt that settles as the scene lands.
 
-| | cinematic-glass (`hero`) | depth-cards (`corridor`) | data-focus (`metrics`) |
-|---|---|---|---|
-| Staging | one subject per scene, centred, close up; a small caption plate under or beside it; slow orbit-in camera | one continuous corridor: the camera flies forward through gates (big framed planes); a sequence is consecutive gates; three gate styles rotate (portal of nested frames, plane with foreground shards, plane between light strips); pylons, light strips, dust and floating shards give parallax; cooler blue/violet | a dashboard in 3D: isometric camera over a grid floor (the view alternates scene to scene), everything is measurable geometry, flat text with thin rules, no glowing plates, no hero objects; green/teal |
-| Pictogram / keyword | the scene's pictogram extruded (`extrude:<icon>`), or the object its text names (chip, cube rack, coins, shield, speed streaks, globe, node network, package) with a reflection | on the gate's plane | extruded keyword standing on the grid (`typogrid`, three stagings) |
-| Items | steps and lists as a staircase of slabs in depth, all visible, joined by light tubes (`path` / `fan`), a hub, layers as a `stack` | each item its own gate | steps as a step ladder of boxes (`ladder`), a list as ranked columns (`ranked`: the height is the item's place in the list, labelled #1, #2...) |
-| Comparison | two slabs facing each other (`split`) | two gates | two columns with a labelled gap (`duel`, heights from the figures when there are some) |
-| Figures | bars / monolith with the number on it / gauge | gate with the number | bars / monolith / gauge |
-| Camera | orbit-in toward the subject; stack climbs with its layers, split turns to the side spoken | forward flight, a bank between scenes, a slow push on each gate | isometric, slight push |
+| | cinematic-glass (`hero`) | data-focus (`metrics`) |
+|---|---|---|
+| Staging | one subject per scene, centred, close up; a small caption plate under or beside it; slow orbit-in camera; dark glass, neon edge light, mirrored reflection | a dashboard in 3D: isometric camera over a grid floor (the view alternates scene to scene), everything is measurable geometry, flat text with thin rules, no glowing plates, no hero objects; green/teal |
+| Pictogram / keyword | the scene's pictogram extruded (`extrude:<icon>`), or the object its text names (chip, cube rack, coins, shield, speed streaks, globe, node network, package) | extruded keyword standing on the grid (`typogrid`, three stagings) |
+| Items | steps and lists as a staircase of slabs in depth, all visible, joined by light tubes (`path` / `fan`), a hub, layers as a `stack` | steps as a step ladder of boxes (`ladder`), a list as ranked columns (`ranked`: the height is the item's place in the list, labelled #1, #2...); labels staggered in height with room between columns |
+| Comparison | two slabs facing each other (`split`) | two columns with a labelled gap (`duel`, heights from the figures when there are some) |
+| Figures | bars / monolith with the number on it / gauge | bars / monolith / gauge |
+| Camera | orbit-in toward the subject; stack climbs with its layers, split turns to the side spoken | isometric, slight push |
+
+(A third world, a "corridor" flown through gate by gate for a `depth-cards` preset, was built and then removed by the owner's decision; a saved look or `LOOK_PRESET` that still names `depth-cards` resolves to the default look, `look.RETIRED_PRESETS`.)
 
 Rules: no two consecutive identical object / pictogram shots (the second becomes extruded type, a repeated list becomes a path / ladder); the staging variant rotates with the scene's index; `choose_compositions` needs nothing but the plan. An outro is 2D unless it is about a loop. `layers` / `tiers` / `OSI` in the scene's text make a `stack`; a keyword (chips, money amount, data centre, security, speed, worldwide, neural...) makes its object; an icon alone makes its own extruded pictogram, never a decorative object. Command-line flags win over a video's saved look (`preview._saved_look`).
 
@@ -73,7 +75,6 @@ name, description, look: {theme}, knobs, emphasis, registry, thumbnail}`:
 |---|---|---|---|---|
 | `paper` (default) | light | none | — | — |
 | `cinematic-glass` | cinematic, world `hero` | fade / fade-up / slow-push / inOut, neon palette, speed 0.9 | object3d, glass, depth, kinetic | grain-overlay, aurora-drift (mesh-gradient installed, see status above) |
-| `depth-cards` | dark, world `corridor` | accent `#7b96ff`, violet-cyan palette | depth, glass, device, diagram | every scene a plane the camera flies to |
 | `data-focus` | dark, world `metrics` | sans-heavy, mint-blue palette, speed 1.15 | chart, stat, comparison, object3d | columns, rings and towers for every beat |
 | `glow-type` | cinematic | cut / letter-stagger / caps / pulse, magenta-cyan palette, speed 1.2 | kinetic, statement, stat, glass | grain-overlay, caption-neon-glow |
 | `quiet-editorial` | light | fade / fade-up / float, speed 0.8 | quote, statement, timeline, list | — |
@@ -96,7 +97,7 @@ emphasis plus the cinematic scene notes.
 ./venv/bin/python -m newsletter_video.plan_day --test --videos 1 --preset cinematic-glass
 ```
 
-Thumbnails (`newsletter_video/ui/static/looks/<id>.jpg`, 482x282) are crops of the most 3D-looking frame of each preset: a free `stills` run of an ordinary diagram/chart/timeline/comparison story (`output/rich-3d/02_ordinary-story.json`, no writer call, no voice, estimated timing) for cinematic-glass (stack), data-focus (bars) and the flat presets, a `--preview draft` frame for depth-cards (the dolly, two glass planes nested), and the kinetic still of the showcase plan for glow-type. `docs/screenshots/rich-scenes/`: `presets-contact.jpg` (every preset over the same story), `filmstrip-draft.jpg` (the draft clip every 0.7 s: stack, depth dolly, orbit, bars), `showcase-vs-reference.jpg` (our draft frames above the owner's reference keyframes).
+Thumbnails (`newsletter_video/ui/static/looks/<id>.jpg`, 482x282) are crops of the most 3D-looking frame of each preset: a free `stills` run of an ordinary diagram/chart/timeline/comparison story (`output/rich-3d/02_ordinary-story.json`, no writer call, no voice, estimated timing) for cinematic-glass (stack), data-focus (bars) and the flat presets, and the kinetic still of the showcase plan for glow-type. `docs/screenshots/rich-scenes/`: `presets-contact.jpg` (every preset over the same story), `filmstrip-draft.jpg` (the draft clip every 0.7 s: stack, depth dolly, orbit, bars), `showcase-vs-reference.jpg` (our draft frames above the owner's reference keyframes).
 
 Registry items are installed with `npx hyperframes add` into
 `hf_template_explainer/compositions/` (recorded in `hyperframes.json`); the
@@ -135,7 +136,7 @@ library.
 ## Honest gaps
 
 - **Genuinely 3D**: in the three worlds every scene is real meshes under a perspective camera that moves (orbit, dolly, flight with a bank), over a shader grid floor; text and icons are textures on 3D plates and take the perspective. Shadows are blob textures and reflections are mirrored low-opacity copies, not rendered reflections.
-- **Faked or weak**: the bloom is a blurred copy of the frame; the hero objects are primitive shapes (cube, octahedron, sphere with rings, torus, shards), not modelled; the icon is a flat glow on a plate, not an extrusion; the metrics world's abstract forms (no figures in the words) are decoration, they carry no data and say so in the code; text on plates is static (it does not land word by word as in the flat scenes, only the plate and its object animate); depth-cards stills look like tilted cards, the structure (continuous flight, parallax) only shows in motion (draft filmstrips).
+- **Faked or weak**: the bloom is a blurred copy of the frame; the hero objects are primitive shapes (cube, octahedron, sphere with rings, torus, shards), not modelled; the extruded pictograms are tubes along the icon strokes, not solid extrusions; the metrics world's abstract forms (no figures in the words) are decoration, they carry no data and say so in the code; text on plates is static (it does not land word by word as in the flat scenes, only the plate and its object animate)
 - **Still differs from the reference**: it has big layered boards with a photo, a phone with a glowing bezel, a mascot, maps; ours has plain plates and primitive objects, no hero artwork, no mascot.
 - Figures for the metrics world are read from the scene's words with a regular expression (`world3d.numbers_in`); a number it misreads becomes a wrong bar label, so it only uses figures of one unit class and at most five.
 - Not run: a final voiced render; the draft clips are 12 fps with estimated timing. The writer is only told to prefer 3D scenes; the worlds do not depend on it.

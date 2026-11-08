@@ -29,13 +29,12 @@ def per_line_of(plan):
 
 def test_the_3d_presets_have_distinct_worlds_and_paper_has_none():
     worlds = {p.id: p.world for p in load_presets() if p.world}
-    assert worlds == {"cinematic-glass": "hero", "depth-cards": "corridor", "data-focus": "metrics"}
+    assert worlds == {"cinematic-glass": "hero", "data-focus": "metrics"}
     assert get_preset("paper").threed is False and get_preset("glow-type").world == ""
 
 
 def test_world_of_follows_the_preset():
     assert looks.world_of({"style": "explainer", "preset": "data-focus"}) == "metrics"
-    assert looks.world_of({"style": "explainer", "recipe": "look-depth-cards"}) == "corridor"
     assert looks.world_of({"style": "explainer", "preset": "cinematic-glass", "recipe": "look-data-focus"}) == "metrics"
     assert looks.world_of({"style": "explainer", "preset": "paper"}) == ""
     assert looks.world_of({"style": "avatar", "preset": "data-focus"}) == ""
@@ -52,7 +51,7 @@ def test_every_scene_of_any_story_gets_a_world_block_and_a_composition():
     plan = validate_plan(statements_only())
     flat = story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0)
     assert "world" not in flat and all("w3" not in s for s in flat["scenes"])  # a flat look's payload is untouched
-    for world in ("hero", "corridor", "metrics"):
+    for world in ("hero", "metrics"):
         payload = story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0, "dark", world=world)
         assert payload["world"] == world and all(s["w3"]["kind"] == s["type"] and s["w3"]["comp"] for s in payload["scenes"])
         assert not any("_words" in s for s in payload["scenes"])
@@ -69,27 +68,24 @@ def test_3d_is_built_from_the_scenes_own_content():
     assert hero == ["object:chip", "extrude:brain", "monolith", "typo3d", "fan", "object:chip", "flat"], hero
     metrics = [s["w3"]["comp"] for s in story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0, "dark", world="metrics")["scenes"]]
     assert metrics == ["typogrid", "typogrid", "monolith", "typogrid", "ranked", "typogrid", "flat"], metrics  # measurable geometry or extruded type on the grid
-    corridor = [s["w3"]["comp"] for s in story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0, "dark", world="corridor")["scenes"]]
-    assert corridor == ["gate"] * 6 + ["flat"], corridor  # gates in one continuous corridor
 
 
 def test_each_preset_has_its_own_composition_vocabulary():
     plan = validate_plan(statements_only())
     def comps(world):
         return {s["w3"]["comp"] for s in story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0, "dark", world=world)["scenes"]}
-    hero, corridor, metrics = comps("hero"), comps("corridor"), comps("metrics")
-    assert corridor <= {"gate", "flat"}
+    hero, metrics = comps("hero"), comps("metrics")
     assert metrics <= {"typogrid", "ladder", "ranked", "duel", "bars", "monolith", "gauge", "flat"}
-    assert not any(c.startswith(("object:", "extrude:")) or c in ("typo3d", "fan", "path", "stack", "hub", "split") for c in metrics | corridor)
+    assert not any(c.startswith(("object:", "extrude:")) or c in ("typo3d", "fan", "path", "stack", "hub", "split") for c in metrics)
     assert any(c.startswith(("object:", "extrude:")) for c in hero)
-    assert hero - {"flat", "monolith"} != metrics - {"flat", "monolith"} and not (hero & corridor - {"flat"})
+    assert hero - {"flat", "monolith"} != metrics - {"flat", "monolith"} 
 
 
 def test_the_pictogram_of_a_scene_is_extruded_iff_it_has_one():
     with_icon = block("statement", say="Nobody knows yet.", icon="robot", title="Robots learn at home")
     assert compose(with_icon, "hero") == "extrude:robot"
     assert compose(block("statement", say="Nobody knows yet.", title="Robots learn at home"), "hero") == "typo3d"  # no icon: typography in depth
-    assert compose(with_icon, "metrics") == "typogrid" and compose(with_icon, "corridor") == "gate"
+    assert compose(with_icon, "metrics") == "typogrid"
     assert compose(block("outro", icon="comment", say="Comment below."), "hero") == "flat"
 
 
@@ -149,19 +145,30 @@ def test_an_explicit_preset_on_the_command_line_beats_the_saved_look():
     from newsletter_video.preview import _saved_look
 
     saved = {"style": "explainer", "theme": "cinematic", "recipe": "look-cinematic-glass", "preset": "cinematic-glass"}
-    over = {"preset": "depth-cards"}
+    over = {"preset": "data-focus"}
     look = resolve_look(_saved_look(saved, over), over)
-    assert look["preset"] == "depth-cards" and look["recipe"] == "look-depth-cards" and look["theme"] == "dark"
+    assert look["preset"] == "data-focus" and look["recipe"] == "look-data-focus" and look["theme"] == "dark"
     assert resolve_look(_saved_look(saved, None), None)["preset"] == "cinematic-glass"
-    both = resolve_look(_saved_look(saved, {"preset": "depth-cards", "theme": "light"}), {"preset": "depth-cards", "theme": "light"})
-    assert both["theme"] == "light" and both["recipe"] == "look-depth-cards"  # an explicit theme still wins over the preset
+    both = resolve_look(_saved_look(saved, {"preset": "data-focus", "theme": "light"}), {"preset": "data-focus", "theme": "light"})
+    assert both["theme"] == "light" and both["recipe"] == "look-data-focus"  # an explicit theme still wins over the preset
 
 
 def test_paper_and_flat_presets_leave_the_plan_unchanged():
     from newsletter_video.styles.planner import apply_recipe_policy
 
     before = [s["type"] for s in validate_plan(statements_only()).to_list()]
-    for policy in ("auto", "none", "look-quiet-editorial", "look-glow-type", "look-depth-cards", "look-data-focus", "look-cinematic-glass"):
+    for policy in ("auto", "none", "look-quiet-editorial", "look-glow-type", "look-data-focus", "look-cinematic-glass"):
         plan = validate_plan(statements_only())
         apply_recipe_policy(plan, policy)
         assert [s["type"] for s in plan.to_list()] == before, policy  # the worlds draw scenes; they never rewrite the plan
+
+
+def test_a_retired_preset_falls_back_to_the_default_look():
+    from newsletter_video.look import look_from_env, resolve_look
+
+    assert "depth-cards" not in {p.id for p in load_presets()}
+    env = {"VIDEO_STYLE": "explainer", "LOOK_PRESET": "depth-cards"}
+    assert look_from_env(env)["preset"] == "" and look_from_env(env)["recipe"] == "auto"  # the env var
+    saved = resolve_look({"preset": "depth-cards", "theme": "dark", "recipe": "look-depth-cards"}, environ={"VIDEO_STYLE": "explainer"})
+    assert saved["preset"] == "" and saved["recipe"] == "auto" and saved["theme"] == "dark"  # a saved look keeps its hand-set fields
+    assert looks.world_of({"style": "explainer", "preset": "depth-cards", "recipe": "look-depth-cards"}) == ""

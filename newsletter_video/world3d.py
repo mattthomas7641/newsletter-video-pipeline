@@ -10,8 +10,6 @@ template needs no per-type logic for the three worlds:
               ring, shards, an icon on a glass plate) next to the sentence set
               as glowing type on a plate, over a grid floor with reflections;
               a different layout and camera move for each scene
-    corridor  depth-cards: every scene is a plane in ONE continuous 3D space;
-              scene changes are camera flights from plane to plane, never cuts
     metrics   data-focus: columns / rings for every beat; the numbers found in
               the scene's own words become the bars, with no number in the text
               the scene gets abstract (decorative, no figures) columns
@@ -23,7 +21,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-WORLDS = ("hero", "corridor", "metrics")
+WORLDS = ("hero", "metrics")
 
 _NUM = re.compile(r"(?<![\w.])(\$?\d[\d,]*(?:\.\d+)?)\s*(%|x|k|m|b|t|bn|million|billion|trillion|thousand)?(?![\w])", re.I)
 _MULT = {"k": 1e3, "thousand": 1e3, "m": 1e6, "million": 1e6, "b": 1e9, "bn": 1e9, "billion": 1e9, "t": 1e12, "trillion": 1e12}
@@ -136,7 +134,6 @@ OBJECT_PATTERNS = [
 MONEY = re.compile(r"[$\u20ac\u00a3]\s?\d|\b\d[\d.,]*\s?(?:billion|million|trillion|bn)\b", re.I)
 LAYERS = re.compile(r"\b(layers?|stack|tiers?|levels?|osi|pipeline|stages?|abstraction)\b", re.I)
 LOOP = re.compile(r"\b(loop|cycle|circle|flywheel)\b", re.I)
-PLANE_KINDS = ("title", "statement", "quote", "outro")  # what the corridor sets as planes in depth
 _STOP = set("the a an and or but to of in on at for with than as by from into that its is are was were not no per this these those their his her our your it be been have has had will would could may might can just more most very over under about after before while when where which who whom what how why".split())
 
 
@@ -190,7 +187,6 @@ def compose(c: dict, world: str) -> str:
     """The 3D composition built from THIS scene's own content, or 'flat' (a 2D scene on the 3D backdrop).
     Each world has its OWN vocabulary and staging:
       hero      one subject per scene, close up: the scene's pictogram extruded, or the object its text names
-      corridor  gates: big planes the camera flies through, a sequence is consecutive gates
       metrics   a dashboard in 3D: everything is measurable geometry on a grid (bars, ladders, ranked columns...)
     """
     kind, items, nums = c["kind"], c["items"], _figures_on_screen(c)
@@ -198,8 +194,6 @@ def compose(c: dict, world: str) -> str:
     pct = len(nums) == 1 and nums[0]["shown"].endswith("%") and 0 < nums[0]["value"] <= 100
     if kind == "outro":
         return "object:ring" if world == "hero" and LOOP.search(text) else "flat"
-    if world == "corridor":
-        return "gate"
     if world == "metrics":
         if len(nums) >= 2 and kind in ("stat", "chart", "comparison", "object3d", "statement"):
             return "bars"
@@ -263,7 +257,7 @@ def annotate(contents: list[dict], world: str) -> None:
         c["icon3d"] = comp.split(":", 1)[1] if comp.startswith("extrude:") else ""
         c["chunks"] = []
         words = []
-        if comp in ("typo3d", "typogrid", "gate") or comp.startswith(("object:", "extrude:")):
+        if comp in ("typo3d", "typogrid") or comp.startswith(("object:", "extrude:")):
             emph = sorted((c.get("emph") or "").split(), key=len, reverse=True)
             key = emph[0] if emph else next(iter(keywords_of(c["title"] + " " + " ".join(c["lines"]), 1)), "") or next(iter(keywords_of(c["say"], 1)), "")
             words = [key] if key else []
