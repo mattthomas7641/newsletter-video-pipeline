@@ -187,50 +187,84 @@ def _figures_on_screen(c: dict) -> list[dict]:
 
 
 def compose(c: dict, world: str) -> str:
-    """The 3D composition this scene's content justifies in this world, or 'flat' (the 2D scene)."""
+    """The 3D composition built from THIS scene's own content, or 'flat' (a 2D scene on the 3D backdrop).
+    Each world has its OWN vocabulary and staging:
+      hero      one subject per scene, close up: the scene's pictogram extruded, or the object its text names
+      corridor  gates: big planes the camera flies through, a sequence is consecutive gates
+      metrics   a dashboard in 3D: everything is measurable geometry on a grid (bars, ladders, ranked columns...)
+    """
     kind, items, nums = c["kind"], c["items"], _figures_on_screen(c)
     text = scene_text(c)
     pct = len(nums) == 1 and nums[0]["shown"].endswith("%") and 0 < nums[0]["value"] <= 100
+    if kind == "outro":
+        return "object:ring" if world == "hero" and LOOP.search(text) else "flat"
     if world == "corridor":
-        return "plane" if kind in PLANE_KINDS else "flat"
+        return "gate"
+    if world == "metrics":
+        if len(nums) >= 2 and kind in ("stat", "chart", "comparison", "object3d", "statement"):
+            return "bars"
+        if kind == "comparison" and len(items) == 2:
+            return "duel"
+        if len(nums) == 1 and kind == "stat":
+            return "gauge" if pct else "monolith"
+        if kind in ("timeline", "diagram") and len(items) >= 2:
+            return "ladder"
+        if kind in ("list", "device", "glass", "depth", "object3d") and len(items) >= 2:
+            return "ranked"
+        if kind in ("title", "statement", "quote", "stat"):
+            return "typogrid"
+        return "flat"
     if len(nums) >= 2 and kind in ("stat", "chart", "comparison", "object3d", "statement"):
         return "bars"
-    if kind == "comparison" and len(items) == 2 and (world == "hero" or nums):
+    if kind == "comparison" and len(items) == 2:
         return "split"
-    if len(nums) == 1 and kind in ("stat",) and (pct or nums[0]["shown"][:1] in "$\u20ac\u00a3" or nums[0]["value"] >= 100):
-        return "gauge" if pct else "monolith"  # a small count ("3 cities") is not worth a monolith: it stays a 2D stat
+    if len(nums) == 1 and kind == "stat":
+        return "gauge" if pct else "monolith"
     if len(items) >= 2 and kind in ("diagram", "timeline", "list", "depth", "object3d") and LAYERS.search(text):
         return "stack"
-    if world == "hero":
-        if kind in ("timeline", "diagram") and c.get("sub") != "hub" and len(items) >= 3:
-            return "path"  # a real sequence of steps: planes the camera walks through as each is spoken
-        if kind == "diagram" and c.get("sub") == "hub" and len(items) >= 3:
-            return "hub"
-        if kind == "outro":
-            return "object:ring" if LOOP.search(text) else "flat"
+    if kind in ("timeline", "diagram") and c.get("sub") != "hub" and len(items) >= 2:
+        return "path"
+    if kind == "diagram" and c.get("sub") == "hub" and len(items) >= 3:
+        return "hub"
+    if kind in ("list", "device", "glass") and len(items) >= 2:
+        return "fan"
+    if kind in ("title", "statement", "quote", "stat"):
         obj = object_for(c)
-        if obj and kind in ("title", "statement", "quote", "stat"):
+        if obj:
             return f"object:{obj}"
+        if c.get("icon"):
+            return f"extrude:{c['icon']}"
+        return "typo3d"
     return "flat"
 
 
 def choose_compositions(contents: list[dict], world: str) -> list[str]:
-    """One composition per scene, from its content alone. A relevant 3D shot is never swapped for
-    another to vary the video, but two identical 3D shots in a row are not allowed: the second one
-    falls back to its 2D scene, which keeps the video a mix of 2D and 3D."""
+    """One composition per scene, from its content alone. Two identical object / pictogram shots in a
+    row are not allowed (the second becomes extruded type), so neighbours differ."""
     chosen: list[str] = []
     for c in contents:
         pick = compose(c, world)
-        if chosen and pick != "flat" and pick == chosen[-1] and world != "corridor":
-            pick = "flat"
+        if chosen and pick == chosen[-1]:
+            if pick.startswith(("object:", "extrude:")):
+                pick = "typo3d"
+            elif pick in ("fan", "ranked"):
+                pick = "ladder" if world == "metrics" else "path"
         chosen.append(pick)
     return chosen
 
 
 def annotate(contents: list[dict], world: str) -> None:
-    """Adds `comp` (a composition or 'flat'), `shape` and `words` (the emphasised keyword) to each block, in place."""
-    for c, comp in zip(contents, choose_compositions(contents, world)):
+    """Adds `comp`, `shape`/`icon3d`, `variant` (rotates the staging scene to scene) and `words` (the keyword the
+    narration lands on) to each block, in place."""
+    for i, (c, comp) in enumerate(zip(contents, choose_compositions(contents, world))):
         c["comp"] = comp
+        c["variant"] = i
         c["shape"] = comp.split(":", 1)[1] if comp.startswith("object:") else ""
-        c["chunks"] = [(i["label"] + " " + i["text"]).strip() for i in c["items"]][:4] if comp == "path" else []
-        c["words"] = []
+        c["icon3d"] = comp.split(":", 1)[1] if comp.startswith("extrude:") else ""
+        c["chunks"] = []
+        words = []
+        if comp in ("typo3d", "typogrid", "gate") or comp.startswith(("object:", "extrude:")):
+            emph = sorted((c.get("emph") or "").split(), key=len, reverse=True)
+            key = emph[0] if emph else next(iter(keywords_of(c["title"] + " " + " ".join(c["lines"]), 1)), "") or next(iter(keywords_of(c["say"], 1)), "")
+            words = [key] if key else []
+        c["words"] = words

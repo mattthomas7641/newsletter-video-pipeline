@@ -61,51 +61,73 @@ def test_every_scene_of_any_story_gets_a_world_block_and_a_composition():
     assert blocks[2]["value"] == "$21.5B" and blocks[1]["emph"] == "Super Intelligence"
 
 
-def test_a_scene_gets_3d_only_when_its_own_words_justify_it():
+def test_3d_is_built_from_the_scenes_own_content():
     plan = validate_plan(statements_only())
     hero = [s["w3"]["comp"] for s in story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0, "dark", world="hero")["scenes"]]
-    # title and the last statement name chips; the stat is a money figure; everything else is a 2D scene
-    assert hero == ["object:chip", "flat", "monolith", "flat", "flat", "object:chip", "flat"], hero
+    # title and the last statement name chips; the brain statement is its own pictogram in 3D; the stat a monolith;
+    # the quote typography in depth; the list slabs in depth; the outro stays a calm 2D scene on the 3D backdrop
+    assert hero == ["object:chip", "extrude:brain", "monolith", "typo3d", "fan", "object:chip", "flat"], hero
     metrics = [s["w3"]["comp"] for s in story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0, "dark", world="metrics")["scenes"]]
-    assert metrics == ["flat", "flat", "monolith", "flat", "flat", "flat", "flat"], metrics  # figures only: no decorative objects
+    assert metrics == ["typogrid", "typogrid", "monolith", "typogrid", "ranked", "typogrid", "flat"], metrics  # measurable geometry or extruded type on the grid
+    corridor = [s["w3"]["comp"] for s in story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0, "dark", world="corridor")["scenes"]]
+    assert corridor == ["gate"] * 6 + ["flat"], corridor  # gates in one continuous corridor
+
+
+def test_each_preset_has_its_own_composition_vocabulary():
+    plan = validate_plan(statements_only())
+    def comps(world):
+        return {s["w3"]["comp"] for s in story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0, "dark", world=world)["scenes"]}
+    hero, corridor, metrics = comps("hero"), comps("corridor"), comps("metrics")
+    assert corridor <= {"gate", "flat"}
+    assert metrics <= {"typogrid", "ladder", "ranked", "duel", "bars", "monolith", "gauge", "flat"}
+    assert not any(c.startswith(("object:", "extrude:")) or c in ("typo3d", "fan", "path", "stack", "hub", "split") for c in metrics | corridor)
+    assert any(c.startswith(("object:", "extrude:")) for c in hero)
+    assert hero - {"flat", "monolith"} != metrics - {"flat", "monolith"} and not (hero & corridor - {"flat"})
+
+
+def test_the_pictogram_of_a_scene_is_extruded_iff_it_has_one():
+    with_icon = block("statement", say="Nobody knows yet.", icon="robot", title="Robots learn at home")
+    assert compose(with_icon, "hero") == "extrude:robot"
+    assert compose(block("statement", say="Nobody knows yet.", title="Robots learn at home"), "hero") == "typo3d"  # no icon: typography in depth
+    assert compose(with_icon, "metrics") == "typogrid" and compose(with_icon, "corridor") == "gate"
+    assert compose(block("outro", icon="comment", say="Comment below."), "hero") == "flat"
 
 
 def test_the_relevance_gate_per_composition():
-    # a generic list is never a stack; layers are
+    # a generic list is slabs in depth (never a stack of plates); layers are a stack
     generic = block("list", items=[{"label": "", "text": "Nvidia wants supply"}, {"label": "", "text": "TSMC has the fabs"}])
-    assert compose(generic, "hero") == "flat" and compose(generic, "metrics") == "flat"
+    assert compose(generic, "hero") == "fan" and compose(generic, "metrics") == "ranked"
     layered = block("list", say="The network has seven layers.", items=[{"label": "Layer 1", "text": "cables"}, {"label": "Layer 2", "text": "frames"}])
     assert compose(layered, "hero") == "stack"
-    # an icon alone never summons an object; the scene's own words do
-    assert compose(block(icon="globe", say="A firm said it was doing well."), "hero") == "flat"
+    # a named subject gets its richer object; an icon alone never summons a decorative one (it gets its own pictogram)
+    assert compose(block(icon="globe", say="A firm said it was doing well."), "hero") == "extrude:globe"
     assert compose(block(icon="globe", say="The firm is going worldwide this year."), "hero") == "object:globe"
-    assert compose(block(icon="globe", say="It trains on real-world data."), "hero") == "flat"
-    assert compose(block(icon="chip", say="Nobody knows yet."), "hero") == "flat"
+    assert compose(block(icon="globe", say="It trains on real-world data."), "hero") == "extrude:globe"
     assert compose(block(say="TSMC may build memory chips for Nvidia."), "hero") == "object:chip"
     assert compose(block(say="Zipline raised $21.5B from investors."), "hero") == "object:coins"
     assert compose(block(say="Servers fill the data center."), "hero") == "object:cubegrid"
-    # the outro is calm 2D unless it is about a loop
+    # the outro is calm 2D unless it is about a loop; the other worlds never use decorative objects
     assert compose(block("outro", say="Comment below."), "hero") == "flat"
     assert compose(block("outro", say="That is the whole loop."), "hero") == "object:ring"
-    # the metrics and corridor worlds never use decorative objects
     assert not compose(block(say="TSMC may build memory chips."), "metrics").startswith("object:")
-    assert compose(block("statement"), "corridor") == "plane" and compose(block("stat"), "corridor") == "flat"
-    assert compose(block("comparison", items=[{"label": "a", "text": "x"}, {"label": "b", "text": "y"}]), "hero") == "split"
+    duel_items = [{"label": "a", "text": "x"}, {"label": "b", "text": "y"}]
+    assert compose(block("comparison", items=duel_items), "hero") == "split" and compose(block("comparison", items=duel_items), "metrics") == "duel"
     seq = block("timeline", say="First capture, then train, then ship.", items=[{"label": "a", "text": "x"}, {"label": "b", "text": "y"}, {"label": "c", "text": "z"}])
-    assert compose(seq, "hero") == "path" and compose(seq, "metrics") == "flat"
+    assert compose(seq, "hero") == "path" and compose(seq, "metrics") == "ladder"
 
 
-def test_no_two_consecutive_3d_shots_are_the_same():
+def test_no_two_consecutive_object_shots_are_the_same():
     chip = block(say="Chips again.")
-    assert choose_compositions([chip, chip, chip], "hero") == ["object:chip", "flat", "object:chip"]
+    assert choose_compositions([chip, chip, chip], "hero") == ["object:chip", "typo3d", "object:chip"]
 
 
-def test_bars_only_with_two_or_more_figures_in_the_scene():
+def test_figures_become_data_geometry():
     two = block("stat", numbers=[{"label": "a", "value": 1, "shown": "1"}, {"label": "b", "value": 2, "shown": "2"}])
     assert compose(two, "metrics") == "bars"
-    lone_small = block("stat", numbers=[{"label": "cities", "value": 3, "shown": "3"}])
-    assert compose(lone_small, "metrics") == "flat"  # a small count is not worth a monolith
-    assert compose(block("statement", numbers=[{"label": "a", "value": 1, "shown": "1"}]), "metrics") == "flat"
+    lone = block("stat", numbers=[{"label": "cities", "value": 3, "shown": "3"}])
+    assert compose(lone, "metrics") == "monolith"  # even a single number is a monolith with the number on it
+    assert compose(block("stat", numbers=[{"label": "x", "value": 40, "shown": "40%"}]), "metrics") == "gauge"
+    assert compose(block("statement", numbers=[{"label": "a", "value": 1, "shown": "1"}]), "metrics") == "typogrid"  # one figure in a sentence: typography
 
 
 def test_numbers_in_the_words_become_figures_and_nothing_is_invented():

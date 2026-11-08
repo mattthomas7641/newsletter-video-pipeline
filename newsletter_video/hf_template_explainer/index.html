@@ -3360,6 +3360,12 @@
           tl.set(spans, { color: ink2 }, 0);
         });
 
+        if (story.world) { // 2D scenes of a 3D look: a slight perspective tilt that settles as the scene lands
+          built.forEach((b) => {
+            const wc = b.scene.w3;
+            if (wc && wc.comp === "flat") tl.fromTo(b.root, { transformPerspective: 1600, rotationX: 5 }, { rotationX: 0, duration: 1.0, ease: "power3.out", immediateRender: false }, b.scene.start);
+          });
+        }
         window.__timelines["main"] = tl;
       }
 
@@ -3378,12 +3384,21 @@
       const threeScenes = story.scenes.filter((s) => s.type === "object3d" || s.type === "depth");
       window.__hf = window.__hf || {};
       window.__hf.buildReady = window.__hf.buildReady || {};
+      // addons for the 3D worlds (optional: without them the pictogram / extruded type fall back to flat plates)
+      const ADDONS = "https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/";
+      const optional = (promise) => promise.catch((err) => { console.warn("three addon unavailable: " + err); return null; });
       const threeReady = threeScenes.length || story.world
-        ? import(THREE_URL).then((THREE) => setupThree(THREE)).catch((err) => console.warn("three.js unavailable: " + err))
+        ? Promise.all([
+            import(THREE_URL),
+            story.world ? optional(import(ADDONS + "loaders/SVGLoader.js/+esm")) : null,
+            story.world ? optional(import(ADDONS + "geometries/TextGeometry.js/+esm")) : null,
+            story.world ? optional(import(ADDONS + "loaders/FontLoader.js/+esm")) : null,
+            story.world ? optional(fetch(ADDONS + "fonts/helvetiker_bold.typeface.json").then((r) => r.json())) : null,
+          ]).then(([THREE, svg, tg, fl, fontJson]) => setupThree(THREE, { svg, tg, fl, fontJson })).catch((err) => console.warn("three.js unavailable: " + err))
         : Promise.resolve();
       window.__hf.buildReady["explainer-three"] = threeReady;
 
-      function setupThree(THREE) {
+      function setupThree(THREE, X3 = {}) {
         const glow = GLOW.map((c) => new THREE.Color(c));
         const cinematic = CINEMATIC || story.theme === "dark"; // both are dark grounds: neon on black
         const SW = 1080, SH = 1120; // the slot: full frame width, the stage's height plus a little
@@ -4081,15 +4096,20 @@
             return mix(g);
           }
           // a billboard tag: small mono label over a line of text (or one big word)
-          function tagSprite(label, text, color, wide) {
+          function tagSprite(label, text, color, wide, bare) {
             const cv = document.createElement("canvas");
             cv.width = 768; cv.height = 256;
             const g = cv.getContext("2d");
-            g.fillStyle = "rgba(6,8,22,0.74)";
-            g.strokeStyle = hex(color); g.lineWidth = 4;
-            g.beginPath(); g.roundRect(8, 24, 752, 208, 30); g.fill(); g.stroke();
+            if (bare) { // dashboard label: no plate, a thin rule under the text
+              g.strokeStyle = hex(color); g.lineWidth = 3;
+              g.beginPath(); g.moveTo(80, 226); g.lineTo(688, 226); g.stroke();
+            } else {
+              g.fillStyle = "rgba(6,8,22,0.74)";
+              g.strokeStyle = hex(color); g.lineWidth = 4;
+              g.beginPath(); g.roundRect(8, 24, 752, 208, 30); g.fill(); g.stroke();
+            }
             g.textAlign = "center";
-            g.shadowColor = hex(color); g.shadowBlur = 14;
+            g.shadowColor = hex(color); g.shadowBlur = bare ? 0 : 14;
             if (text) {
               g.fillStyle = hex(color); g.font = "600 40px " + MONO;
               g.fillText((label || "").toUpperCase().slice(0, 22), 384, 90);
@@ -4148,8 +4168,65 @@
             return g;
           }
           const line = (pts, color, op) => { const l = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false })); l.frustumCulled = false; return l; };
+          // ---- the scene's own pictogram rebuilt in 3D: each SVG path of icons.js becomes a glowing tube
+          // swept along it (a real extrusion of a round profile), on a bevelled glass slab; the tubes
+          // draw on one after the other (assembly), a pulse lights them as the keyword is spoken
+          function pictogram(iconName, color, color2) {
+            const g = new THREE.Group();
+            const SIZE = 2.7, K = SIZE / 24;
+            const tubes = [];
+            const slab = glassSolid(new THREE.BoxGeometry(SIZE + 0.7, SIZE + 0.7, 0.2), color, 0.08);
+            slab.position.z = -0.25;
+            g.add(slab);
+            const paths = ICONS[iconName];
+            if (paths && X3.svg) {
+              const loader = new X3.svg.SVGLoader();
+              paths.forEach((d0) => {
+                const filled = d0.startsWith("f ");
+                const data = loader.parse('<svg xmlns="http://www.w3.org/2000/svg"><path d="' + (filled ? d0.slice(2) : d0) + '"/></svg>');
+                data.paths.forEach((sp) => sp.subPaths.forEach((sub) => {
+                  const pts2 = sub.getPoints(24);
+                  if (pts2.length < 2) return;
+                  const pts = pts2.map((q) => new THREE.Vector3((q.x - 12) * K, -(q.y - 12) * K, 0));
+                  if (filled) {
+                    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 8), new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.95 }));
+                    dot.position.copy(pts[0]);
+                    g.add(dot);
+                    return;
+                  }
+                  const curve = new THREE.CatmullRomCurve3(pts, false, "catmullrom", 0.1);
+                  const seg = Math.max(10, pts.length * 2);
+                  const outer = new THREE.Mesh(new THREE.TubeGeometry(curve, seg, 0.085, 8, false), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+                  const inner = new THREE.Mesh(new THREE.TubeGeometry(curve, seg, 0.035, 6, false), new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.95 }));
+                  g.add(outer, inner);
+                  tubes.push({ outer, inner, n1: outer.geometry.index.count, n2: inner.geometry.index.count });
+                }));
+              });
+            } else {
+              const ic = new THREE.Mesh(new THREE.PlaneGeometry(SIZE, SIZE), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(iconCanvas(iconName, 256, "#ffffff", 22)), transparent: true, depthWrite: false, color }));
+              ic.position.z = 0.05;
+              g.add(ic);
+            }
+            const halo = glowSprite(color, 3.6);
+            halo.position.z = -0.4;
+            g.add(halo);
+            g.userData.setProgress = (p, pulse) => {
+              const n = tubes.length || 1;
+              tubes.forEach((tb, i) => {
+                const f = clamp01(p * n - i);
+                tb.outer.geometry.setDrawRange(0, Math.floor(tb.n1 * f / 3) * 3);
+                tb.inner.geometry.setDrawRange(0, Math.floor(tb.n2 * f / 3) * 3);
+                tb.outer.material.userData.pulse = pulse || 0;
+              });
+              slab.userData.pulse = pulse || 0;
+              halo.userData.pulse = pulse || 0;
+            };
+            g.userData.tubes = tubes;
+            return g;
+          }
           // ---- objects that ARE the thing a scene talks about -------------------------------
           function shapeObject(shape, color, color2, iconName) {
+            if (shape === "extrude") return mix(pictogram(iconName, color, color2));
             const g = new THREE.Group();
             if (shape === "chip") { // a glass chip slab: die, pins, traces
               g.add(glassSolid(new THREE.BoxGeometry(2.6, 0.3, 2.6), color, 0.22));
@@ -4198,8 +4275,8 @@
               g.add(l, glowSprite(color2, 2.4));
               g.userData.streakLine = l;
             } else if (shape === "cubegrid") { // a data-centre: racks of cubes lighting up
-              for (let x = 0; x < 4; x++) for (let y = 0; y < 3; y++) for (let z = 0; z < 3; z++) { const q = glassSolid(new THREE.BoxGeometry(0.5, 0.5, 0.5), (x + y + z) % 3 ? color : color2, 0.3); q.position.set((x - 1.5) * 0.7, (y - 1) * 0.7, (z - 1) * 0.7); q.userData.pulse = x + y * 2 + z * 3; g.add(q); }
-              g.add(glowSprite(color, 1.8));
+              for (let x = 0; x < 4; x++) for (let y = 0; y < 3; y++) for (let z = 0; z < 3; z++) { const q = glassSolid(new THREE.BoxGeometry(0.5, 0.5, 0.5), (x + y + z) % 3 ? color : color2, 0.14); q.position.set((x - 1.5) * 0.7, (y - 1) * 0.7, (z - 1) * 0.7); q.userData.pulse = x + y * 2 + z * 3; g.add(q); }
+              g.add(glowSprite(color, 1.0));
             } else if (shape === "globe") { // the internet / the world: wire sphere with meridians
               g.add(new THREE.Mesh(new THREE.SphereGeometry(1.15, 36, 24), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false })));
               for (let k = 0; k < 6; k++) { const t = new THREE.Mesh(new THREE.TorusGeometry(1.17, 0.012, 6, 90), new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.55 })); t.rotation.y = (k / 6) * Math.PI; g.add(t); }
@@ -4219,18 +4296,48 @@
             }
             return mix(g);
           }
+          // text on a plain plane with a thin outline: the dashboard look has no glowing plates
+          function flatText(c, color, w) {
+            const hh = w * 0.625, g = new THREE.Group();
+            g.add(new THREE.Mesh(new THREE.PlaneGeometry(w, hh), new THREE.MeshBasicMaterial({ map: plateTexture(c, color), transparent: true, depthWrite: false })));
+            g.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([x, y]) => new THREE.Vector3(x * w / 2, y * hh / 2, 0))), new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.7 })));
+            return mix(g);
+          }
+          // a word as real extruded type (bevelled, edge-lit); `solid` = clean dark body with thin lines, no glow
+          function extrudedWord(word, color, solid) {
+            if (X3.tg && X3.fl && X3.fontJson) {
+              const font = new X3.fl.FontLoader().parse(X3.fontJson);
+              const geo = new X3.tg.TextGeometry(word, { font, size: 1, depth: 0.42, curveSegments: 6, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.035, bevelSegments: 2 });
+              geo.computeBoundingBox();
+              const bb = geo.boundingBox, w0 = bb.max.x - bb.min.x;
+              geo.translate(-(bb.min.x + bb.max.x) / 2, -(bb.min.y + bb.max.y) / 2, -0.21);
+              const g = new THREE.Group();
+              g.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: solid ? color : plateColor, transparent: true, opacity: solid ? 0.9 : 0.92 })));
+              if (!solid) g.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false })));
+              g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), new THREE.LineBasicMaterial({ color: "#ffffff", transparent: true, opacity: solid ? 0.8 : 0.95 })));
+              g.userData.k = Math.min(2.2, 4.4 / w0);
+              return mix(g);
+            }
+            const g = wordPlane(word, color, 4.4);
+            g.userData.k = 1;
+            return g;
+          }
           const sceneAt = (t) => { for (let i = scenesW.length - 1; i >= 0; i--) if (t >= scenesW[i].start) return i; return 0; };
           // camera moves are motivated: a slow push toward the thing being discussed; the compositions
           // that reveal parts (a stack, a split, a path) steer the camera themselves
           function moveCamera(it, st) {
-            const bs = it.cb, e = easeIO(st);
-            aim(wcam, bs.yaw, bs.pitch, bs.dist * lerp(1.18, 0.92, e), 0, bs.ty + 0.9, 0);
+            const bs = it.cb, e = easeIO(st), v = it.index % 3;
+            if (WORLD === "metrics") { // a dashboard seen from above: isometric, the view alternates scene to scene
+              aim(wcam, [0.75, -0.7, 0.45][v] * (1 - 0.12 * e), [0.62, 0.8, 0.5][v], bs.dist * lerp(1.15, 0.95, e), 0, bs.ty + 0.9, 0);
+              return;
+            }
+            // hero: a slow orbit in toward the single subject
+            aim(wcam, bs.yaw + (1 - e) * (it.index % 2 ? 0.5 : -0.5), bs.pitch, bs.dist * lerp(1.25, 0.92, e), 0, bs.ty + 0.9, 0);
           }
-          const HERO_LAYOUTS = [
-            { obj: [0, -0.9, 1.0], pl: [0, 2.3, -1.0], yaw: 0, pitch: -0.05, os: 1.0 },
-            { obj: [-1.4, -0.3, 1.1], pl: [0.9, 0.7, -1.0], yaw: -0.4, pitch: 0, os: 0.95 },
-            { obj: [1.4, -0.35, 1.0], pl: [-0.9, 0.95, -1.0], yaw: 0.4, pitch: 0.04, os: 0.95 },
-            { obj: [0, -0.1, 0.4], pl: [0, 2.0, -1.8], yaw: 0, pitch: -0.28, os: 1.3 },
+          const HERO_LAYOUTS = [ // single-subject staging: the subject centred and large, a small caption plate under or beside it
+            { obj: [0, 1.2, 0.6], pl: [0, -1.5, 2.0], yaw: 0, pitch: -0.2, os: 1.0 },
+            { obj: [-0.4, 1.2, 0.6], pl: [0.7, -1.5, 1.8], yaw: -0.2, pitch: -0.1, os: 1.0 },
+            { obj: [0.4, 1.2, 0.6], pl: [-0.7, -1.5, 1.8], yaw: 0.2, pitch: -0.1, os: 1.0 },
           ];
           const CAM = {
             object: { yaw: -0.3, pitch: 0.2, dist: 11, ty: 1.9 }, "type-plate": { yaw: 0.25, pitch: 0.14, dist: 10.5, ty: 1.1 }, "type-mono": { yaw: -0.3, pitch: 0.1, dist: 12, ty: 1.5 },
@@ -4239,6 +4346,7 @@
             gauge: { yaw: 0, pitch: 0.42, dist: 12.5, ty: 0.9 }, "type-stack": { yaw: 0, pitch: 0.12, dist: 8, ty: 0.9 },
           };
           const items = [];
+          let corridorZ = 0;
           scenesW.forEach((s, i) => {
             const c = s.w3 || { kind: s.type, comp: "type-plate", label: "", title: "", value: "", lines: [], items: [], numbers: [], icon: "", cues: [], chunks: [], words: [] };
             if (c.comp === "flat" || !c.comp) { items.push(null); return; }
@@ -4250,36 +4358,34 @@
             it.cb = CAM[key] || CAM["type-plate"];
             const cue = (k, fb) => (c.cues && c.cues[k] != null ? c.cues[k] : fb);
             const accent = col(i), accent2 = col(i + 1), accent3 = col(i + 2);
-            const head = (w) => { // the scene's own heading as a plate above its composition
-              const pl = plate({ label: c.label, title: c.title, icon: c.icon, emph: c.emph, lines: [] }, accent, w || 4.2);
+            const head = (w) => { // the scene's own heading above its composition (a plate; flat text in the dashboard world)
+              const hc = { label: c.label, title: c.title, icon: c.icon, emph: c.emph, lines: [] };
+              const pl = WORLD === "metrics" ? flatText(hc, accent, w || 4.2) : plate(hc, accent, w || 4.2);
               g.add(pl); return pl;
             };
-            if (WORLD === "corridor") {
-              const big = c.kind === "title" || c.kind === "outro";
-              const pl = plate(c, col(i), big ? 4.3 : 3.9);
-              const rank = items.filter(Boolean).length;
-              pl.position.set(rank === 0 ? 0 : (rank % 2 ? 0.95 : -0.95), ((rank % 3) - 1) * 0.4 + 0.2, -rank * CDS);
-              pl.userData.yaw = rank === 0 || i === scenesW.length - 1 ? 0 : (rank % 2 ? -0.3 : 0.3);
-              it.rank = rank;
-              pl.rotation.y = pl.userData.yaw;
-              wrig.add(pl);
-              it.pl = pl;
-              items.push(it);
-              return;
-            }
-            if (comp.startsWith("object:")) {
-              const shape = comp.slice(7);
-              const L = c.kind === "title" ? { obj: [0, -0.8, 1.0], pl: [0, 2.2, -0.8], yaw: 0, pitch: -0.04, os: 1.1 }
-                : c.kind === "outro" ? { obj: [0, -0.4, 0.6], pl: [0, 1.9, -0.5], yaw: 0, pitch: -0.1, os: 1.15 }
-                : HERO_LAYOUTS[(shape === "network" || shape === "cubegrid" || shape === "globe" || shape === "coins" ? 0 : i) % HERO_LAYOUTS.length];
-              it.cb = { ...CAM.object, ty: (L.pl[1] + L.obj[1]) / 2 - 0.7 }; // frame the plate and its object together
-              const obj = shapeObject(shape, accent2, accent3, c.icon), mir = shapeObject(shape, accent2, accent3, c.icon);
-              const pl = plate(c, accent, 4.5);
+            if (comp.startsWith("object:") || comp.startsWith("extrude:")) {
+              const shape = comp.startsWith("extrude:") ? "extrude" : comp.slice(7);
+              const iconName = comp.startsWith("extrude:") ? comp.slice(8) : c.icon;
+              const L = HERO_LAYOUTS[c.variant % HERO_LAYOUTS.length || 0];
+              it.cb = { ...CAM.object, dist: 11.5, ty: (L.pl[1] + L.obj[1]) / 2 + 0.2 }; // frame the subject and its caption together
+              const obj = shapeObject(shape, accent2, accent3, iconName), mir = shapeObject(shape, accent2, accent3, iconName);
+              const pl = plate(c, accent, 3.1);
               g.add(obj, mir, pl);
               it.upd = (X) => {
                 const { lt, a, p } = X;
                 const p1 = p(X.s0 + 0.1, 0.9), p2 = p(X.s0 + 0.35, 0.9);
                 const y0 = L.obj[1];
+                if (shape === "extrude") { // the pictogram of the 2D scene, assembled in 3D; a pulse as its keyword is spoken
+                  const pulse = Math.exp(-Math.pow((X.t - cue(0, X.s0 + 1.2)) * 2.0, 2));
+                  obj.userData.setProgress(p1 * 1.15, pulse); mir.userData.setProgress(p1 * 1.15, 0);
+                  const sc = L.os * 0.85 * (1 + 0.07 * pulse);
+                  obj.position.set(L.obj[0], y0 + 0.3, L.obj[2]); obj.scale.setScalar(sc); obj.rotation.set(0.04, (1 - p1) * 0.8, 0);
+                  mir.position.set(L.obj[0], 2 * FLOOR - obj.position.y, L.obj[2]); mir.scale.set(sc, -sc, sc); mir.rotation.copy(obj.rotation);
+                  pl.position.set(L.pl[0] + (1 - p2) * (L.pl[0] >= 0 ? 1.2 : -1.2), L.pl[1], L.pl[2]);
+                  pl.rotation.set(L.pitch, L.yaw * (0.5 + 0.5 * p2), 0); pl.scale.setScalar(0.9 + 0.1 * p2);
+                  fade(obj, a * Math.min(1, p1 * 3)); fade(mir, a * Math.min(1, p1 * 3), 0.18); fade(pl, a * p2);
+                  return;
+                }
                 obj.position.set(L.obj[0], y0 + (1 - p1) * -1.8 + Math.sin(lt * 1.5) * 0.09, L.obj[2]);
                 obj.scale.setScalar(Math.max(0.001, L.os * p1));
                 obj.rotation.set(shape === "chip" ? 0.5 : shape === "ring" ? 0.6 : 0.12 + Math.sin(lt * 0.6) * 0.1, shape === "ring" ? 0 : shape === "globe" ? lt * 0.25 : Math.sin(lt * 0.5) * 0.35, shape === "ring" ? lt * 0.5 : 0);
@@ -4305,17 +4411,41 @@
               const pl = plate(c, accent, 5.0);
               g.add(pl);
               it.upd = (X) => { const p2 = X.p(X.s0 + 0.2, 0.9); pl.position.set(0, 1.1, 0); pl.rotation.set(-0.05, 0.2 * (1 - p2) + Math.sin(X.lt * 0.5) * 0.06, 0); pl.scale.setScalar(0.92 + 0.08 * p2); fade(pl, X.a * p2); };
-            } else if (comp === "type-mono") {
-              const word = (c.words && c.words[0]) || (c.title || "").split(" ").sort((a, b) => b.length - a.length)[0] || c.label || "";
-              const big = wordPlane(word.replace(/[.,]+$/, ""), accent, 4.9);
-              const lower = plate({ label: c.label, title: c.title, icon: c.icon, emph: c.emph || word, lines: [] }, accent2, 3.8);
-              g.add(big, lower);
+            } else if (comp === "typo3d") {
+              // the sentence as typography in depth: the keyword the narration lands on as REAL extruded type
+              // (bevelled, edge-lit), neon layers behind it that parallax as the camera pushes, the sentence below
+              const rawWord = (c.words && c.words[0]) || (c.title || "").split(" ").sort((a, b) => b.length - a.length)[0] || c.label || "";
+              const word = rawWord.replace(/[^\w$%'.-]/g, "").slice(0, 22) || "NOW";
+              const sentence = plate({ label: c.label, title: c.title, icon: "", emph: c.emph || rawWord, lines: [] }, accent2, 3.9);
+              let big = null, bigMats = [];
+              if (X3.tg && X3.fl && X3.fontJson) {
+                const font = new X3.fl.FontLoader().parse(X3.fontJson);
+                const geo = new X3.tg.TextGeometry(word, { font, size: 1, depth: 0.42, curveSegments: 6, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.035, bevelSegments: 2 });
+                geo.computeBoundingBox();
+                const bb = geo.boundingBox, w0 = bb.max.x - bb.min.x, k = Math.min(2.2, 4.4 / w0);
+                geo.translate(-(bb.min.x + bb.max.x) / 2, -(bb.min.y + bb.max.y) / 2, -0.21);
+                big = new THREE.Group();
+                big.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: plateColor, transparent: true, opacity: 0.92 })));
+                big.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false })));
+                big.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), new THREE.LineBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.95 })));
+                big.userData.k = k;
+                mix(big);
+              } else {
+                big = wordPlane(word, accent, 4.4);
+                big.userData.k = 1;
+              }
+              const layers = [1.18, 1.42].map((s, k) => { const n = neonPlate(4.6 * s, 2.9 * s, col(k + 1), 0.05, 0); n.position.set(0, 0.2, -1.1 - k * 1.1); mix(n); g.add(n); return n; });
+              g.add(big, sentence);
               it.upd = (X) => {
-                const p1 = X.p(X.s0 + 0.1, 0.8), p2 = X.p(X.s0 + 0.5, 0.9);
-                big.position.set(0, 2.2 + (1 - p1) * 0.8, -1.5); big.rotation.y = 0.2; big.scale.setScalar(0.85 + 0.15 * p1);
-                lower.position.set(0.5, -0.1, 1.3); lower.rotation.set(-0.2, -0.16, 0);
-                fade(big, X.a * p1); fade(lower, X.a * p2);
+                const p1 = X.p(X.s0 + 0.1, 0.9), p2 = X.p(X.s0 + 0.5, 0.9);
+                const pulse = Math.exp(-Math.pow((X.t - cue(0, X.s0 + 1.2)) * 2.0, 2)); // the keyword lights as it is spoken
+                big.position.set(0, 2.0, 0.2 + (1 - p1) * 2.5); big.rotation.set(0.05, -0.3 * (1 - p1) + 0.08, 0);
+                big.scale.setScalar(big.userData.k * (0.85 + 0.15 * p1) * (1 + 0.05 * pulse));
+                sentence.position.set(0.3, -0.85, 1.3); sentence.rotation.set(-0.2, -0.12, 0);
+                layers.forEach((n, k) => { n.position.x = (1 - X.st) * (k ? 0.5 : 0.25) - 0.1; fade(n, X.a * X.p(X.s0 + 0.2 + k * 0.2, 0.8), 0.55 - k * 0.15); });
+                fade(big, X.a * p1); fade(sentence, X.a * p2);
               };
+              it.cb = { yaw: -0.15, pitch: 0.12, dist: 12, ty: -0.15 };
             } else if (comp === "type-orbit") {
               const centerPl = plate({ label: c.label, title: c.title, icon: c.icon, emph: c.emph, lines: [] }, accent, 3.7);
               const tags = (c.words || []).slice(0, 5).map((w, k) => { const t = tagSprite(w, "", col(k + 1), 1.8); g.add(t); return t; });
@@ -4330,24 +4460,175 @@
                   fade(t, X.a * pk);
                 });
               };
-            } else if (comp === "path") {
-              // a real sequence of steps: one plane per step, the camera walks through them as each is spoken
-              const parts = c.items.slice(0, 4).map((x) => ({ label: x.label, title: x.text }));
-              const pls = parts.map((ch, k) => { const p = plate({ label: ch.label, title: ch.title, icon: "", emph: "", lines: [] }, col(k), 3.6); p.position.set(k % 2 ? 0.25 : -0.25, 0.8 - k * 0.25, -k * 3.0); p.userData.yaw = k % 2 ? -0.22 : 0.22; g.add(p); return p; });
+            } else if (comp === "path" || comp === "fan") {
+              // structured content with depth: each step / item is a slab in a descending staircase placed in depth
+              // (offset in x, y AND z so every label stays readable), a path is joined by light tubes; ALL stay
+              // visible, the spoken one is pulled forward and lit, the others dim
+              const its = c.items.slice(0, 5), n = its.length, tubes = comp === "path";
+              const step = Math.min(1.7, 5.6 / n), sc0 = Math.min(1, step / 1.62);
+              const pos = (k) => new THREE.Vector3((tubes ? (k % 2 ? 0.55 : -0.55) : (k - (n - 1) / 2) * 0.28), (n - 1) * step / 2 - k * step + 0.7, -k * 0.9);
+              const slabs = its.map((x, k) => { const p = plate({ label: x.label, title: x.text, icon: "", emph: "", lines: [] }, col(k), 2.9); p.userData.base = pos(k); p.userData.yaw = k % 2 ? -0.22 : 0.22; g.add(p); return p; });
+              const rods = tubes ? its.slice(1).map((x, k) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1, 6), new THREE.MeshBasicMaterial({ color: col(k + 1), transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false })); g.add(m); return m; }) : [];
+              const hd = c.title ? tagSprite(c.title, "", accent, 3.0) : null; if (hd) g.add(hd);
               it.upd = (X) => {
-                const n = pls.length;
+                let cur = 0; for (let k = 0; k < n; k++) if (X.t >= cue(k, X.s0 + 0.4 + k * 0.8) - 0.1) cur = k;
+                slabs.forEach((p, k) => {
+                  const pk = X.p(cue(k, X.s0 + 0.4 + k * 0.8) - 0.3, 0.7);
+                  const spoken = k === cur ? smooth((X.t - (cue(k, X.s0 + 0.4 + k * 0.8) - 0.1)) / 0.6) : 0;
+                  const b = p.userData.base;
+                  p.position.set(b.x, b.y - (1 - pk) * 0.6, b.z + 0.9 * spoken);
+                  p.rotation.set(0, p.userData.yaw * (1 - 0.5 * spoken), 0);
+                  p.scale.setScalar(sc0 * (1 + 0.05 * spoken));
+                  fade(p, X.a * pk * (k === cur ? 1 : 0.62));
+                });
+                rods.forEach((m, k) => {
+                  const A = slabs[k].userData.base, B = slabs[k + 1].userData.base, pk = X.p(cue(k + 1, X.s0 + 0.4 + (k + 1) * 0.8) - 0.4, 0.6);
+                  const len = A.distanceTo(B) * pk;
+                  m.scale.set(1, Math.max(0.001, len), 1);
+                  m.position.copy(A).add(B.clone().sub(A).multiplyScalar(pk / 2));
+                  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());
+                  m.material.opacity = 0.8 * X.a * pk;
+                });
+                if (hd) { hd.position.set(0, (n - 1) * step / 2 + 0.7 + 1.35, 0); hd.scale.set(2.4, 0.8, 1); fade(hd, X.a * X.p(X.s0 + 0.2, 0.8)); }
+                const e = easeIO(X.st);
+                aim(wcam, tubes ? -0.1 : -0.18, 0.06, 12.4 * lerp(1.08, 0.97, e), 0, 1.1, 0);
+                X.camDone = true;
+              };
+            } else if (comp === "gate") {
+              // the corridor: each scene is a gate (a big plane in a frame) the camera flies through; a sequence
+              // is consecutive gates; statements are huge planes; three gate styles rotate scene to scene
+              const multi = c.items.length >= 2 && c.kind !== "stat";
+              const parts = multi ? c.items.slice(0, 4).map((x) => ({ label: x.label, title: x.text, icon: "", emph: "", lines: [] }))
+                : [{ label: c.label, title: c.title, icon: c.icon, emph: c.emph, value: c.value, lines: c.lines }];
+              const style = c.variant % 3, huge = c.kind === "statement" || c.kind === "quote" || c.kind === "title";
+              const W = huge ? 4.5 : 4.1, GS = 5.5;
+              let sr = 31 + i * 17;
+              const srnd = () => ((sr = (sr * 1103515245 + 12345) % 2147483648) / 2147483648);
+              const gates = parts.map((pt, j) => {
+                const gg = new THREE.Group();
+                gg.add(plate(pt, col(c.variant + j), W));
+                if (style === 0) { // a portal: nested frames receding behind the plane
+                  [1.18, 1.42, 1.72].forEach((s2, k2) => { const nn = neonPlate(W * s2, W * 0.625 * s2, col(c.variant + j + k2 + 1), 0.05, 0); nn.position.z = -0.9 - k2 * 0.9; mix(nn); gg.add(nn); });
+                } else if (style === 1) { // foreground shards at the edges
+                  for (let q = 0; q < 8; q++) { const sh = glassSolid(new THREE.OctahedronGeometry(1, 0), col(q + j), 0.3); sh.scale.set(0.12 + srnd() * 0.14, 0.3 + srnd() * 0.5, 0.12 + srnd() * 0.14); sh.position.set((q % 2 ? 1 : -1) * (W / 2 + 0.2 + srnd() * 0.9), (srnd() - 0.5) * 3, 0.6 + srnd() * 1.6); sh.rotation.set(srnd() * 3, srnd() * 3, srnd() * 3); mix(sh); gg.add(sh); }
+                } else { // tall light strips either side
+                  [-1, 1].forEach((sd) => { const st2 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 5.2, 0.06), new THREE.MeshBasicMaterial({ color: col(c.variant + j + 1), transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false })); st2.position.set(sd * (W / 2 + 0.55), 0, 0.2); mix(st2); gg.add(st2); });
+                }
+                gg.position.set(0, 0.4, -j * GS);
+                if (style === 2) gg.rotation.y = (j % 2 ? -1 : 1) * 0.14;
+                mix(gg); g.add(gg);
+                return gg;
+              });
+              it.span = (gates.length - 1) * GS;
+              it.upd = (X) => {
+                const n = gates.length;
                 let adv = 0;
-                for (let k = 1; k < n; k++) adv += easeIO(clamp01((X.t - (cue(k, X.s0 + 0.5 + k * 0.7) - 0.6)) / 1.0));
-                const camZ = 9.2 - adv * 3.0;
-                wcam.position.set(0, 1.0, camZ);
-                wcam.lookAt(0, 0.8, camZ - 8);
-                pls.forEach((p, k) => {
-                  const dist = camZ - p.position.z, pk = X.p(cue(k, X.s0 + 0.3 + k * 0.7), 0.7);
-                  p.rotation.y = p.userData.yaw * (1 - 0.5 * clamp01(1 - Math.abs(dist - 9.2) / 4));
-                  fade(p, X.a * pk * (1 - smooth(clamp01(adv - k)))); // a step is gone once the camera has moved on to the next: never two steps' text at once
+                for (let k = 1; k < n; k++) adv += easeIO(clamp01((X.t - (cue(k, X.s0 + 0.6 + k * 0.9) - 0.7)) / 1.1));
+                const camZ = 6.6 - adv * GS - 0.9 * X.st; // forward through the gates, a slow push on each
+                wcam.position.set(0, 0.55, camZ);
+                wcam.lookAt(0, 0.45, camZ - 8);
+                gates.forEach((gg, k) => {
+                  const dist = camZ - gg.position.z;
+                  const pk = k === 0 ? 1 : X.p(cue(k, X.s0 + 0.6 + k * 0.9) - 0.6, 0.6);
+                  fade(gg, X.a * pk * clamp01((dist - 1.4) / 1.6)); // the gate dissolves as the camera passes through it
                 });
                 X.camDone = true;
               };
+            } else if (comp === "ladder") {
+              // a flow as a step ladder: one box per step, each a step higher; the spoken step lit
+              const its = c.items.slice(0, 5), n = its.length;
+              const boxes = its.map((x, k) => {
+                const hh = 0.7 + k * 0.55;
+                const cc = mix(cell(1.3, hh, 1.3, col(k), 0.5 + 0.1 * k));
+                cc.userData.h = hh; cc.position.set((k - (n - 1) / 2) * 1.75, 0, (k - (n - 1) / 2) * -0.5);
+                const t = tagSprite(x.label, x.text, col(k), 2.2, true);
+                g.add(cc, t);
+                return { cc, t, hh };
+              });
+              const hd = head(4.2);
+              it.upd = (X) => {
+                let cur = 0; for (let k = 0; k < n; k++) if (X.t >= cue(k, X.s0 + 0.4 + k * 0.7) - 0.1) cur = k;
+                boxes.forEach((o, k) => {
+                  const pk = X.p(cue(k, X.s0 + 0.4 + k * 0.7) - 0.2, 0.7), hh = Math.max(0.001, o.hh * pk);
+                  o.cc.scale.y = Math.max(0.001, pk); o.cc.position.y = FLOOR + hh / 2;
+                  o.t.position.set(o.cc.position.x, FLOOR + hh + 0.65 + (k % 2) * 0.7, o.cc.position.z);
+                  fade(o.cc, Math.min(1, pk * 2) * X.a * (k === cur ? 1 : 0.7)); fade(o.t, X.a * pk);
+                });
+                hd.position.set(0, FLOOR + 4.7, -1.4); hd.rotation.set(-0.1, 0, 0); fade(hd, X.a * X.p(X.s0 + 0.3, 0.8));
+              };
+              it.cb = { yaw: 0.7, pitch: 0.62, dist: 11.5, ty: -0.4 };
+            } else if (comp === "ranked") {
+              // a list as ranked columns: the first item the tallest; the height is the item's place in the list
+              const its = c.items.slice(0, 5), n = its.length;
+              const cols = its.map((x, k) => {
+                const hh = 0.9 + (n - 1 - k) * 0.6;
+                const cc = mix(cell(1.1, hh, 1.1, col(k), 0.55));
+                cc.userData.h = hh; cc.position.set((k - (n - 1) / 2) * 1.75, 0, 0);
+                const t = tagSprite("#" + (k + 1) + " " + x.label, x.text, col(k), 2.2, true);
+                g.add(cc, t);
+                return { cc, t, hh };
+              });
+              const hd = head(4.2);
+              it.upd = (X) => {
+                let cur = 0; for (let k = 0; k < n; k++) if (X.t >= cue(k, X.s0 + 0.4 + k * 0.7) - 0.1) cur = k;
+                cols.forEach((o, k) => {
+                  const pk = X.p(cue(k, X.s0 + 0.4 + k * 0.7) - 0.2, 0.7), hh = Math.max(0.001, o.hh * pk);
+                  o.cc.scale.y = Math.max(0.001, pk); o.cc.position.y = FLOOR + hh / 2;
+                  o.t.position.set(o.cc.position.x, FLOOR + hh + 0.65 + (k % 2) * 0.7, 0);
+                  fade(o.cc, Math.min(1, pk * 2) * X.a * (k === cur ? 1 : 0.7)); fade(o.t, X.a * pk);
+                });
+                hd.position.set(0, FLOOR + 4.7, -1.4); hd.rotation.set(-0.1, 0, 0); fade(hd, X.a * X.p(X.s0 + 0.3, 0.8));
+              };
+              it.cb = { yaw: -0.7, pitch: 0.8, dist: 11.5, ty: -0.4 };
+            } else if (comp === "duel") {
+              // a comparison as two columns with a labelled gap (heights from the figures when there are some)
+              const its = c.items.slice(0, 2);
+              const vals = c.numbers.length >= 2 ? c.numbers.slice(0, 2).map((x) => x.value) : [1, 1];
+              const mx = Math.max(...vals) || 1;
+              const cols = its.map((x, k) => {
+                const hh = 0.8 + (vals[k] / mx) * 2.3;
+                const cc = mix(cell(1.4, hh, 1.4, col(k), 0.7));
+                cc.userData.h = hh; cc.position.set(k ? 2.0 : -2.0, 0, 0);
+                const t = tagSprite(x.label, x.text, col(k), 2.6, true);
+                g.add(cc, t);
+                return { cc, t, hh };
+              });
+              const gap = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-1.2, 0, 0), new THREE.Vector3(1.2, 0, 0), new THREE.Vector3(-1.2, -0.18, 0), new THREE.Vector3(-1.2, 0.18, 0), new THREE.Vector3(1.2, -0.18, 0), new THREE.Vector3(1.2, 0.18, 0)]), new THREE.LineBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.8 }));
+              const vs = tagSprite("vs", "", accent3, 1.0, true);
+              g.add(gap, vs);
+              const hd = head(3.6);
+              it.upd = (X) => {
+                cols.forEach((o, k) => {
+                  const pk = X.p(cue(k, X.s0 + 0.4 + k * 0.8) - 0.2, 0.8), hh = Math.max(0.001, o.hh * pk);
+                  o.cc.scale.y = Math.max(0.001, pk); o.cc.position.y = FLOOR + hh / 2;
+                  o.t.position.set(o.cc.position.x, FLOOR + hh + 0.8, 0);
+                  fade(o.cc, Math.min(1, pk * 2) * X.a); fade(o.t, X.a * pk);
+                });
+                const gp = X.p(X.s0 + 1.2, 0.7), top = FLOOR + Math.max(cols[0].hh, cols[1].hh) * 0.5;
+                gap.position.set(0, top, 0); vs.position.set(0, top + 0.55, 0);
+                gap.material.opacity = 0.8 * X.a * gp; fade(vs, X.a * gp);
+                hd.position.set(0, FLOOR + 4.7, -1.4); hd.rotation.set(-0.1, 0, 0); fade(hd, X.a * X.p(X.s0 + 0.3, 0.8));
+              };
+              it.cb = { yaw: 0.5, pitch: 0.55, dist: 13, ty: 0.7 };
+            } else if (comp === "typogrid") {
+              // a statement as big extruded type standing on the grid; three stagings rotate scene to scene
+              const rawWord = (c.words && c.words[0]) || (c.title || "").split(" ").sort((a, b) => b.length - a.length)[0] || c.label || "";
+              const word = rawWord.replace(/[^\w$%'.-]/g, "").slice(0, 22) || "NOW";
+              const big = extrudedWord(word, accent, true);
+              const cap = flatText({ label: c.label, title: c.title, icon: "", emph: c.emph || rawWord, lines: [] }, accent2, 3.9);
+              const v = c.variant % 3;
+              g.add(big, cap);
+              it.upd = (X) => {
+                const p1 = X.p(X.s0 + 0.1, 0.9), p2 = X.p(X.s0 + 0.5, 0.9);
+                const pulse = Math.exp(-Math.pow((X.t - cue(0, X.s0 + 1.2)) * 2.0, 2));
+                const k = big.userData.k * (v === 2 ? 1.1 : 0.9) * (0.88 + 0.12 * p1) * (1 + 0.04 * pulse);
+                if (v === 0) { big.position.set(0, FLOOR + 1.3, -0.5); big.rotation.set(0, 0, 0); cap.position.set(0, FLOOR + 0.9, 2.6); cap.rotation.set(-0.2, 0, 0); }
+                else if (v === 1) { big.position.set(-0.8, FLOOR + 1.4, -1.0); big.rotation.set(0, 0.35, 0); cap.position.set(0.6, FLOOR + 0.9, 2.4); cap.rotation.set(-0.2, -0.2, 0.0); }
+                else { big.position.set(0, FLOOR + 1.2, -2.2); big.rotation.set(0, -0.25, 0); cap.position.set(0, FLOOR + 0.9, 2.2); cap.rotation.set(-0.2, 0, 0); }
+                big.scale.setScalar(k); big.position.y += (1 - p1) * -1.2;
+                fade(big, X.a * p1); fade(cap, X.a * p2);
+              };
+              it.cb = { yaw: 0.7, pitch: 0.62, dist: 12.5, ty: -0.5 };
             } else if (comp === "stack") {
               const its = c.items.slice(0, 5);
               const pls = its.map((x, k) => { const p = neonPlate(3.7, 2.4, col(k), 0.05, k + 2); p.rotation.x = -Math.PI / 2; mix(p); g.add(p); return p; });
@@ -4449,7 +4730,8 @@
               const face = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 3.75), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false }));
               face.position.z = 0.27; slab.add(face);
               mix(slab);
-              const side = plate({ label: c.label, title: c.title || (c.lines || [])[0] || "", icon: c.icon, emph: c.emph, lines: [] }, accent2, 3.6);
+              const sideC = { label: c.label, title: c.title || (c.lines || [])[0] || "", icon: c.icon, emph: c.emph, lines: [] };
+              const side = WORLD === "metrics" ? flatText(sideC, accent2, 3.6) : plate(sideC, accent2, 3.6);
               g.add(slab, side);
               it.upd = (X) => {
                 const p1 = X.p(X.s0 + 0.1, 1.0), p2 = X.p(X.s0 + 0.5, 0.9);
@@ -4485,27 +4767,38 @@
               g.add(pl);
               it.upd = (X) => { pl.position.set(0, 1.0, 0); fade(pl, X.a * X.p(X.s0 + 0.2, 0.9)); };
             }
+            it.rank = items.filter(Boolean).length;
+            if (WORLD === "corridor") { it.gz = corridorZ; g.position.z = corridorZ; corridorZ -= (it.span || 0) + 9; } // scenes sit along the corridor; the camera flies between them
             if (it.g) wrig.add(g);
             items.push(it);
           });
-          // the corridor: dust, pylons and rails streaming past
+          // the corridor: dust, pylons, light strips and floating shards streaming past (parallax)
           if (WORLD === "corridor") {
-            const n = items.filter(Boolean).length;
-            wscene.add(dust(260, [16, FLOOR + 0.2, 7, -CDS * (n + 1), CDS * (n + 3)], 777, col(1)));
-            for (let k = 0; k <= n + 1; k++) {
-              [-3.6, 3.6].forEach((x) => {
-                const p = glowCube(col(k + 1), 0.28);
-                p.scale.set(1, 7, 1);
-                p.position.set(x, FLOOR + 1.6, -k * CDS + CDS / 2);
-                wrig.add(mix(p));
-                p.userData.pylon = true;
+            const len = -corridorZ + 14;
+            wscene.add(dust(300, [16, FLOOR + 0.2, 7, -len + 10, len + 6], 777, col(1)));
+            for (let z = 0; z > corridorZ - 9; z -= 9) {
+              [-3.8, 3.8].forEach((x) => {
+                const pcube = glowCube(col(Math.round(-z / 9) + 1), 0.28);
+                pcube.scale.set(1, 7, 1);
+                pcube.position.set(x, FLOOR + 1.6, z - 4.5);
+                wrig.add(mix(pcube));
+                pcube.userData.pylon = true;
               });
             }
-            const railMat = (c) => new THREE.LineBasicMaterial({ color: c, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false });
-            [-3.6, 3.6].forEach((x, k) => {
-              const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x, FLOOR + 0.02, 12), new THREE.Vector3(x, FLOOR + 0.02, -CDS * (n + 2))]);
-              wscene.add(new THREE.Line(geo, railMat(col(k + 1))));
+            [[-3.4, FLOOR + 0.04], [3.4, FLOOR + 0.04], [-3.4, 3.2], [3.4, 3.2]].forEach(([x, y], k) => {
+              const strip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, len), new THREE.MeshBasicMaterial({ color: col(k + 1), transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
+              strip.position.set(x, y, -len / 2 + 8);
+              wscene.add(strip);
             });
+            let sr2 = 99;
+            const sd = () => ((sr2 = (sr2 * 1103515245 + 12345) % 2147483648) / 2147483648);
+            for (let q = 0; q < 70; q++) { // floating shards: foreground / background parallax
+              const sh = glassSolid(new THREE.OctahedronGeometry(1, 0), col(q), 0.25);
+              sh.scale.set(0.08 + sd() * 0.16, 0.2 + sd() * 0.4, 0.08 + sd() * 0.16);
+              sh.position.set((sd() < 0.5 ? -1 : 1) * (2.0 + sd() * 2.6), FLOOR + sd() * 5.5, 6 - sd() * len);
+              sh.rotation.set(sd() * 3, sd() * 3, sd() * 3);
+              wscene.add(sh);
+            }
           }
 
           // ------------- the per-frame draw ----------------------------------------
@@ -4513,35 +4806,54 @@
             const idx = sceneAt(t);
             let drawn = false;
             if (WORLD === "corridor") {
-              const planes = items.filter(Boolean);
+              const live = items.filter(Boolean);
+              const gzOf = (o) => o.gz;
+              // evaluate a scene's composition at tEval (alpha a) and return the camera pose it implies in the corridor
+              const run = (o, tEval, a) => {
+                const s = o.s, lt = tEval - s.start, st = clamp01(lt / Math.max(1, s.end - s.start));
+                o.g.visible = true;
+                const X = { t: tEval, lt, st, a, s0: s.start, p: (at, dur) => prog(tEval, at, dur), camDone: false };
+                o.upd(X);
+                if (!X.camDone) moveCamera(o, st);
+                wcam.position.z += gzOf(o);
+                wcam.updateMatrixWorld(true);
+                return { pos: wcam.position.clone(), quat: wcam.quaternion.clone() };
+              };
+              live.forEach((o) => { o.g.visible = false; });
               const cur = items[idx];
+              let prevIt = null; for (let j = idx - 1; j >= 0; j--) if (items[j]) { prevIt = items[j]; break; }
               if (cur) {
                 drawn = true;
-                const STAND = CSTAND;
-                const posOf = (r) => { const p = planes[r].pl.position; return new THREE.Vector3(p.x * 0.55, p.y + 0.45, p.z + STAND); };
-                const lookOf = (r) => { const p = planes[r].pl.position; return new THREE.Vector3(p.x * 0.8, p.y, p.z - 1.0); };
-                const k = cur.rank, s = scenesW[idx];
-                const fl = k === 0 ? 1 : smooth((t - (s.start - 0.2)) / 1.3);
-                const A = posOf(Math.max(0, k - 1)), B = posOf(k), LA = lookOf(Math.max(0, k - 1)), LB = lookOf(k);
-                if (k > 0) A.z -= 1.2; // the push-in the previous hold ended with
-                const hold = clamp01((t - s.start) / Math.max(1, s.end - s.start)) * 1.2;
-                const intro = k === 0 ? smooth((t - s.start) / 1.6) : 1;
-                const e = k === 0 ? 1 : easeIO(fl);
-                wcam.position.lerpVectors(A, B, e);
-                wcam.position.z += (1 - intro) * 4.5 - hold * e;
-                wcam.position.y += Math.sin(Math.PI * e) * (k === 0 ? 0 : 0.5);
-                const look = new THREE.Vector3().lerpVectors(LA, LB, e);
-                wcam.lookAt(look.x, look.y, look.z);
-                wcam.rotateZ((k === 0 ? 0 : Math.sin(Math.PI * e)) * (k % 2 ? -0.09 : 0.09));
-                floor.material.uniforms.uC.value.set(wcam.position.x, wcam.position.z - 6);
-                // only the plane being spoken (and, during a flight, the one just left) is visible: never two planes' text at once
+                const s = scenesW[idx];
+                const e = prevIt ? easeIO(clamp01((t - (s.start - 0.15)) / 1.3)) : 1; // the flight from the previous scene's shot
                 const out = 1 - smooth((t - (s.end - 0.25)) / 0.25) * (items[idx + 1] ? 0 : 1);
-                planes.forEach((it2, j) => {
-                  const vis = j === k ? (k === 0 ? smooth((t - s.start) / 0.8) : smooth(e * 1.4)) * out : j === k - 1 ? 1 - smooth(e * 1.6) : 0;
-                  fade(it2.pl, vis);
-                });
-              wrig.children.forEach((o) => { if (o.userData.pylon) { const d = wcam.position.z - o.position.z; fade(o, clamp01(1 - (d - 4) / 22) * clamp01((d + 2) / 3) * 0.7); } });
+                const P0 = prevIt ? run(prevIt, prevIt.s.end, Math.max(0, 1 - smooth(e * 2.2))) : null;
+                const P1 = run(cur, t, (prevIt ? smooth(e * 1.6) : smooth((t - s.start) / 0.6)) * out);
+                if (P0) {
+                  wcam.position.lerpVectors(P0.pos, P1.pos, e); wcam.quaternion.slerpQuaternions(P0.quat, P1.quat, e);
+                  wcam.rotateZ(Math.sin(Math.PI * e) * (idx % 2 ? -0.08 : 0.08)); wcam.position.y += Math.sin(Math.PI * e) * 0.4;
+                } else {
+                  wcam.position.copy(P1.pos); wcam.quaternion.copy(P1.quat); wcam.position.z += (1 - smooth((t - s.start) / 1.6)) * 4.5;
+                }
+                floor.material.uniforms.uC.value.set(wcam.position.x, wcam.position.z - 6);
+                wrig.children.forEach((o) => { if (o.userData.pylon) { const d = wcam.position.z - o.position.z; fade(o, clamp01(1 - (d - 4) / 22) * clamp01((d + 2) / 3) * 0.35 * (d > 6 ? 1 : 0)); } });
+              } else if (live.length) { // a 2D scene sits on the corridor's backdrop: floor and dust, the camera holding where the last shot ended
+                drawn = true;
+                const s = scenesW[idx], st = clamp01((t - s.start) / Math.max(1, s.end - s.start));
+                if (prevIt) {
+                  const P = run(prevIt, prevIt.s.end, 0); prevIt.g.visible = false;
+                  wcam.position.copy(P.pos); wcam.quaternion.copy(P.quat); wcam.position.z -= 0.6 * st;
+                } else aim(wcam, -0.25, 0.2, 13, 0, 1.9, 0);
+                floor.material.uniforms.uC.value.set(wcam.position.x, wcam.position.z - 6);
+                wrig.children.forEach((o) => { if (o.userData.pylon) fade(o, 0); });
               }
+            } else if (!items[idx]) { // a 2D scene sits on the 3D backdrop: the grid floor, the camera drifting in slowly
+              const s = scenesW[idx];
+              drawn = true;
+              items.forEach((o) => { if (o) o.g.visible = false; });
+              const st = clamp01((t - s.start) / Math.max(1, s.end - s.start));
+              aim(wcam, -0.25, 0.2, 13 * lerp(1.1, 0.95, st), 0, 1.9, 0);
+              floor.material.uniforms.uC.value.set(0, 0);
             } else if (items[idx]) {
               const it = items[idx];
               const s = it.s;
