@@ -37,10 +37,10 @@ PIPELINE_MARKERS = ("newsletter_video.run_pipeline", "newsletter_video.ui.previe
 # Every job kind that renders, voices, fetches or calls the writer. Only one
 # of these runs at a time: a draft render beside a final render would starve
 # this machine's memory, and two writer calls for the same day make no sense.
-HEAVY_KINDS = ("test", "batch", "plan", "rewrite", "preview", "render", "style-add")
+HEAVY_KINDS = ("test", "batch", "plan", "rewrite", "preview", "render")
 RUN_KINDS = ("test", "batch", "plan", "rewrite", "preview", "render")
 KIND_LABELS = {"test": "A test video", "batch": "Today's batch", "plan": "A plan", "rewrite": "A script rewrite",
-               "preview": "A preview", "render": "A final render", "style-add": "A style reference"}
+               "preview": "A preview", "render": "A final render"}
 
 STAGES = [  # (log fragment, label, step)
     ("Scraping editions", "Reading today's newsletters", 1),

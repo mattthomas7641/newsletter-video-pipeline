@@ -157,15 +157,4 @@ export async function stopRun(latest) {
   return true;
 }
 
-export async function removeReference(ref) {
-  const ok = await confirmDialog({
-    title: `Remove "${ref.title}"?`,
-    body: h("p", { class: "muted", text: "Deletes the clip copy, its analysis and its recipes. Videos planned with these recipes keep rendering in the default look." }),
-    confirmLabel: "Remove", tone: "danger",
-  });
-  if (!ok) return false;
-  await api.post(`/api/styles/${encodeURIComponent(ref.name)}/remove`, { confirm: true });
-  return true;
-}
-
 export const busyNow = () => isRunning();

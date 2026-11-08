@@ -19,7 +19,7 @@ def seed_plan(paths, ref=None, n=2):
 
 def test_plans_list_and_describe(client, paths):
     _, empty = client.get_json("/api/plans")
-    assert empty["plans"] == [] and "recipes" in empty
+    assert empty == {"plans": []}
     seed_plan(paths)
     _, data = client.get_json("/api/plans")
     assert data["plans"][0]["ref"] == DAY.isoformat() and data["plans"][0]["count"] == 2
@@ -172,7 +172,9 @@ def test_stale_previews_are_not_reported(client, paths):
     assert "stills" in plan["videos"][0]["preview"]
     client.send_json("PUT", f"/api/plans/{DAY.isoformat()}/videos/v01/look", {"look": {"theme": "dark"}})
     _, plan = client.get_json(f"/api/plans/{DAY.isoformat()}")
-    assert plan["videos"][0]["preview"] == {}  # the look changed: the old storyboard is hidden
+    preview = plan["videos"][0]["preview"]
+    assert "stills" not in preview  # the look changed: the old storyboard is hidden...
+    assert [k["look"]["theme"] for k in preview["looks"]] == ["light"]  # ...and kept under the look it showed
 
 
 def test_studio_starts_one_local_server_per_panel(client, spawner, paths, app, sleeper):
@@ -224,6 +226,6 @@ def test_no_plan_endpoint_leaks_secrets(client, paths):
     from tests.ui.conftest import SECRETS
 
     seed_plan(paths)
-    for path in ("/api/plans", f"/api/plans/{DAY.isoformat()}", "/api/styles"):
+    for path in ("/api/plans", f"/api/plans/{DAY.isoformat()}", "/api/looks"):
         status, _, body = client.request("GET", path)
         assert status == 200 and not any(s.encode() in body for s in SECRETS), path

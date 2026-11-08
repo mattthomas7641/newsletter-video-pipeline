@@ -3,19 +3,13 @@
 // (chips, labels, preview blocks) is shared with the workbench.
 import { h, append, icon, spinner, formatDuration, formatBytes, plural } from "../dom.js";
 import { toast, ago } from "../components.js";
-import { state, subscribe, loadPlan, isRunning, isTestRef, recipes as allRecipes, referenceForRecipe } from "../store.js";
+import { state, subscribe, loadPlan, isRunning, isTestRef } from "../store.js";
 import { startPreview, saveLook, openStudio, stopJob, rewriteVideo, renderFinal, attempt, approxRender } from "../actions.js";
+import { presetName, presetSelect } from "../presets.js";
 
 export const STYLE_LABEL = { avatar: "Avatar", explainer: "Explainer" };
-export const THEME_LABEL = { light: "Light", dark: "Dark" };
+export const THEME_LABEL = { light: "Light", dark: "Dark", cinematic: "Cinematic" };
 export const BG_LABEL = { gameplay: "Gameplay", none: "Plain" };
-
-export function recipeLabel(id, recipes) {
-  if (!id || id === "auto") return "Planner picks recipes";
-  if (id === "none") return "No recipe";
-  const found = (recipes || allRecipes()).find((r) => r.id === id);
-  return found ? found.name : id;
-}
 
 export function characterName(slug) {
   if (!slug) return "Default narrator";
@@ -23,25 +17,21 @@ export function characterName(slug) {
   return c ? c.name : slug;
 }
 
-/** One line naming a resolved look: "Explainer · Punchy slam · Light · Default narrator". */
+/** One line naming a resolved look: "Explainer · Cinematic dark glass · Cinematic theme · Default narrator". */
 export function lookLabel(resolved) {
   const parts = [STYLE_LABEL[resolved.style] || resolved.style];
   if (resolved.style === "avatar") parts.push(`${BG_LABEL[resolved.background] || resolved.background} background`);
-  else parts.push(recipeLabel(resolved.recipe), `${THEME_LABEL[resolved.theme] || resolved.theme} theme`);
+  else parts.push(presetName(resolved.preset), `${THEME_LABEL[resolved.theme] || resolved.theme} theme`);
   parts.push(characterName(resolved.character));
   return parts.join(" · ");
 }
 
-export function lookChips(resolved, overrides, recipes) {
+export function lookChips(resolved, overrides) {
   const set = (k) => overrides && overrides[k] !== undefined;
   const chip = (text, k) => h("span", { class: `chip${set(k) ? " active" : ""}`, title: set(k) ? "Set for this video" : "From your defaults" }, text);
   const chips = [chip(`${STYLE_LABEL[resolved.style] || resolved.style} style`, "style"), chip(characterName(resolved.character), "character")];
   if (resolved.style === "avatar") chips.push(chip(`${BG_LABEL[resolved.background] || resolved.background} background`, "background"));
-  else {
-    chips.push(chip(`${THEME_LABEL[resolved.theme] || resolved.theme} theme`, "theme"));
-    const ref = referenceForRecipe(resolved.recipe);
-    chips.push(chip(ref ? `${recipeLabel(resolved.recipe, recipes)} (${ref.title})` : recipeLabel(resolved.recipe, recipes), "recipe"));
-  }
+  else chips.push(chip(`${presetName(resolved.preset)} look`, "preset"), chip(`${THEME_LABEL[resolved.theme] || resolved.theme} theme`, "theme"));
   return chips;
 }
 
@@ -86,7 +76,6 @@ export function mountPlanPanel(host, { onJobStarted }) {
     h("div", { class: "section-head split" }, h("div", {}, title, sub), switcher), list, footer);
   host.append(section);
 
-  const recipes = () => allRecipes();
   const plan = () => (state.plan && !isTestRef(state.plan.ref) ? state.plan : null);
   const jobFor = (id) => {
     const latest = state.runs.latest;
@@ -114,7 +103,7 @@ export function mountPlanPanel(host, { onJobStarted }) {
     renderSwitcher();
     if (!p) return;
     const running = state.runs.latest?.state === "running" ? state.runs.latest : null;
-    const key = JSON.stringify([p, [...selected], [...open], busyVideo, running?.id, running?.kind, running?.meta, state.characters.length, isRunning(), state.styles?.references?.length]);
+    const key = JSON.stringify([p, [...selected], [...open], busyVideo, running?.id, running?.kind, running?.meta, state.characters.length, isRunning(), state.looks?.presets?.length]);
     if (key === renderedKey) return;
     renderedKey = key;
     title.textContent = `Plan for ${formatDate(p.date)}`;
@@ -159,7 +148,7 @@ export function mountPlanPanel(host, { onJobStarted }) {
     const scenes = v.scenes ? h("ol", { class: "pv-scenes", "aria-label": "Scenes" }, v.scenes.map((t) => h("li", { text: t }))) : null;
 
     const lookRow = h("div", { class: "pv-look" },
-      h("span", { class: "label small", text: "Look" }), ...lookChips(v.resolved, v.look, recipes()),
+      h("span", { class: "label small", text: "Look" }), ...lookChips(v.resolved, v.look),
       h("button", { class: "btn small quiet", type: "button", "aria-expanded": String(open.has(v.id)), onClick: () => {
         open.has(v.id) ? open.delete(v.id) : open.add(v.id); renderedKey = ""; render();
       } }, icon("sliders", "sm"), open.has(v.id) ? "Close" : "Change look"));
@@ -212,29 +201,28 @@ export function mountPlanPanel(host, { onJobStarted }) {
     } }, h("option", { value: "\u0000", text: `Default (${characterName(d.character)})` }),
     ...state.characters.map((c) => h("option", { value: c.slug, text: c.slug ? c.name : "Default narrator" })));
     charSel.value = draft.character !== undefined ? draft.character : "\u0000";
-    const themeSeg = seg("Theme", [["light", "Light"], ["dark", "Dark"]], "theme", `Default (${THEME_LABEL[d.theme]})`);
+    const themeSeg = seg("Theme", [["light", "Light"], ["dark", "Dark"], ["cinematic", "Cinematic"]], "theme", `Default (${THEME_LABEL[d.theme]})`);
     const bgSeg = seg("Background", [["gameplay", "Gameplay"], ["none", "Plain"]], "background", `Default (${BG_LABEL[d.background]})`);
-    const recipeSel = h("select", { class: "select", "aria-label": "Style recipe", onChange: () => {
-      const val = recipeSel.value; if (val === "\u0000") delete draft.recipe; else draft.recipe = val;
-    } }, h("option", { value: "\u0000", text: `Default (${recipeLabel(d.recipe, recipes())})` }),
-    h("option", { value: "auto", text: "Auto (planner picks)" }), h("option", { value: "none", text: "None (template look)" }),
-    ...recipes().map((r) => h("option", { value: r.id, text: `${r.name}${r.fidelity != null ? ` · fidelity ${r.fidelity.toFixed(2)}` : ""}` })));
-    recipeSel.value = draft.recipe !== undefined ? draft.recipe : "\u0000";
-    const themeRow = row("Theme", themeSeg, "Explainer videos only.");
+    const presetPick = presetSelect({
+      value: draft.preset ?? "", defaultLabel: `Default look (${presetName(d.preset)})`,
+      onChange: (val) => { if (val === "") delete draft.preset; else draft.preset = val; delete draft.theme; refreshVisibility(); },
+    });
+    const presetRow = row("Look preset", presetPick, "From the look library. Sets the theme and the motion of the scenes without a writer call; try them side by side in the Look workbench.");
+    const themeRow = row("Theme", themeSeg, "Explainer videos only. A preset brings its own theme; pick one here to override it.");
     const bgRow = row("Background", bgSeg, "Avatar videos only.");
-    const recipeRow = row("Style recipe", recipeSel, recipes().length ? "From your style library. Changing it re-styles the scenes without a writer call."
-      : "No style library yet. Add references in the Look workbench.");
     function refreshVisibility() {
       const style = draft.style || d.style;
       themeRow.hidden = style !== "explainer";
-      recipeRow.hidden = style !== "explainer";
+      presetRow.hidden = style !== "explainer";
       bgRow.hidden = style !== "avatar";
+      for (const input of themeSeg.querySelectorAll("input")) input.checked = (draft.theme ?? "") === input.value;
     }
     refreshVisibility();
     return h("div", { class: "pv-editor" },
       row("Style", styleSeg, "Avatar shows the narrator over footage; Explainer is clean graphics."),
+      presetRow,
       row("Narrator", charSel, "Their voice comes with them."),
-      themeRow, bgRow, recipeRow,
+      themeRow, bgRow,
       h("div", { class: "form-actions" },
         h("button", { class: "btn small primary", type: "button", onClick: () => withBusy(v, "look", async () => {
           await saveLook(plan().ref, v.id, draft);

@@ -1,6 +1,7 @@
 import { h, icon, spinner, nextId, formatClock } from "../dom.js";
 import { savePill, notYetNote } from "../components.js";
-import { state, subscribe, value, setDraft, loadSetup, loadStyles } from "../store.js";
+import { state, subscribe, value, setDraft, loadSetup, defaultPresetId, presetInfo } from "../store.js";
+import { presetName, presetSelect } from "../presets.js";
 import { mountLook } from "./look.js";
 
 const PRIVACY = [
@@ -26,23 +27,20 @@ export function mountSettings(root, ctx) {
     lookHost);
   onCleanup(mountLook(lookHost, { embedded: true }));
 
-  // ---- style library ----
-  const libId = nextId("lib");
-  const libBox = h("input", { id: libId, type: "checkbox", role: "switch", onChange: () => setDraft("STYLE_LIBRARY", libBox.checked ? "style_library" : "off") });
-  const libState = h("span", { class: "state" });
-  const policySel = h("select", { class: "select", "aria-labelledby": "policy-l", onChange: () => setDraft("STYLE_RECIPE", policySel.value) });
-  const policyHelp = h("p", { class: "help", id: "policy-help" });
-  const library = h("section", { class: "section", "aria-labelledby": "lib-h" },
-    h("div", { class: "section-head" }, h("h2", { id: "lib-h", text: "Style library" }),
-      h("p", { text: "Reference videos and the recipes made from them live in the Look workbench. These two settings decide whether new videos use them." })),
+  // ---- default look preset ----
+  const presetId = nextId("preset");
+  // "" and the library's default preset render the same, so the picker shows one option for both.
+  const presetPick = presetSelect({ value: "", id: presetId, onChange: (v) => setDraft("LOOK_PRESET", v === defaultPresetId() ? "" : v) });
+  const presetHelp = h("p", { class: "help", id: `${presetId}-help` });
+  const presetNote = h("div");
+  const library = h("section", { class: "section", "aria-labelledby": "preset-h" },
+    h("div", { class: "section-head" }, h("h2", { id: "preset-h", text: "Default look preset" }),
+      h("p", { text: "The look every new explainer video starts from: theme, motion and the kinds of scenes the writer favours. A planned video can still pick its own." })),
     h("div", { class: "panel rows" },
-      h("div", { class: "row" },
-        h("div", {}, h("label", { class: "label", for: libId, text: "Use the style library" }),
-          h("p", { class: "help", text: "Off means the template's own look, exactly as before the library existed." })),
-        h("div", { class: "control" }, h("label", { class: "switch" }, libBox, h("span", { class: "track" }), libState))),
-      h("div", { class: "row", id: "policy-row" },
-        h("div", {}, h("span", { class: "label", id: "policy-l", text: "Style recipes for new videos" }), policyHelp),
-        h("div", { class: "control" }, policySel))));
+      h("div", { class: "row", id: "preset-row" },
+        h("div", {}, h("label", { class: "label", for: presetId, text: "Look preset" }), presetHelp, presetNote,
+          h("p", { class: "help" }, h("a", { class: "link", href: "#/workbench", text: "Browse the library in the Look workbench" }), " to see each one on a real story.")),
+        h("div", { class: "control" }, presetPick))));
 
   // ---- videos per day ----
   const perDayId = nextId("perday");
@@ -144,24 +142,16 @@ export function mountSettings(root, ctx) {
 
   root.append(head, lookSection, library, production, youtube, writer, setup);
 
-  function syncLibrary() {
-    const on = value("STYLE_LIBRARY") !== "off";
-    libBox.checked = on;
-    libState.textContent = on ? "On" : "Off";
-    const policy = value("STYLE_RECIPE") || "auto";
-    const data = state.styles;
-    policySel.replaceChildren(
-      h("option", { value: "auto", text: "Auto: the planner picks per scene" }),
-      h("option", { value: "none", text: "None: the template's own look" }),
-      ...(data?.references || []).flatMap((r) => r.recipes.map((rc) => h("option", { value: rc.id, text: `${r.title}: ${rc.name}` }))),
-      ...(data?.builtin_recipes || []).map((rc) => h("option", { value: rc.id, text: `Built-in: ${rc.name}` })));
-    if (![...policySel.options].some((o) => o.value === policy)) policySel.append(h("option", { value: policy, text: policy }));
-    policySel.value = policy;
-    policySel.disabled = !on;
-    root.querySelector("#policy-row").toggleAttribute("data-off", !on);
-    policyHelp.textContent = !on ? "Only used when the library is on."
-      : policy === "auto" ? "One small planner call per video (about 2 cents) chooses recipes from your references that fit each scene."
-        : policy === "none" ? "No recipes unless a video's own look asks for one." : "Every video gets this one recipe on its middle scenes, with no planner call.";
+  function syncPreset() {
+    const chosen = value("LOOK_PRESET") || defaultPresetId();
+    if (document.activeElement !== presetPick.select) presetPick.sync(chosen);
+    const explainer = value("VIDEO_STYLE") === "explainer";
+    root.querySelector("#preset-row").toggleAttribute("data-off", !explainer);
+    const p = presetInfo(chosen);
+    presetHelp.textContent = !explainer ? "Only explainer videos have a look preset; avatar videos keep their footage and character."
+      : p?.default || !p ? `${presetName("")}: the template's own look, exactly today's daily video.`
+        : `${p.description.replace(/\s*\([^)]*\)\s*$/, "")}${p.good_for ? ` Good for ${p.good_for.charAt(0).toLowerCase()}${p.good_for.slice(1)}` : ""}`;
+    presetNote.replaceChildren(notYetNote(state.settings?.supported?.LOOK_PRESET) || "");
   }
 
   async function runCheck() {
@@ -242,14 +232,13 @@ export function mountSettings(root, ctx) {
       chip.className = "chip";
       help.textContent = "No scheduled job was found. You can still run the batch by hand from the Today's videos page.";
     }
-    syncLibrary();
+    syncPreset();
     renderChecks();
   }
 
   sync();
   onCleanup(subscribe(sync));
   if (!state.setup) loadSetup().catch(() => {});
-  if (!state.styles) loadStyles().catch(() => {});
 
   return () => { cleanup.forEach((fn) => fn()); root.replaceChildren(); };
 }

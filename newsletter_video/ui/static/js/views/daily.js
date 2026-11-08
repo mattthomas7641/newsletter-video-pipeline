@@ -3,7 +3,7 @@
 import { api } from "../api.js";
 import { h, icon, spinner, formatBytes, formatClock, formatDay, plural } from "../dom.js";
 import { costTag } from "../components.js";
-import { state, subscribe, value, isDirty, isRunning, draftLook, loadPlans, loadPlan, loadStyles, isTestRef } from "../store.js";
+import { state, subscribe, value, isDirty, isRunning, draftLook, loadPlans, loadPlan, isTestRef } from "../store.js";
 import { planDay, runBatch, attempt, approxRender, WRITER_COST } from "../actions.js";
 import { mountRunPanel } from "./run.js";
 import { mountPlanPanel, lookChips } from "./plan.js";
@@ -30,7 +30,7 @@ export function mountDaily(root) {
       h("p", { text: "Picks the stories and writes the scripts, then stops. Nothing is voiced or rendered until you say so." }),
       summary, unsavedNote, h("span", { class: "spacer" }), planFacts, h("div", { class: "run-actions" }, planButton, batchButton)),
     h("div", { class: "make-aside" }, h("h2", { text: "Trying a new look?" }),
-      h("p", { text: "Drop in a reference video, make a throwaway test video in its style and tweak it side by side. Nothing there is uploaded or counted." }),
+      h("p", { text: "Pick a look from the library, write one throwaway test video with it and compare looks side by side on the same story. Nothing there is uploaded or counted." }),
       h("span", { class: "spacer" }),
       h("a", { class: "btn", href: "#/workbench" }, icon("palette", "sm"), "Open the Look workbench", icon("arrow", "sm"))));
 
@@ -47,7 +47,7 @@ export function mountDaily(root) {
     h("div", { class: "today-head" }, todayTitle, todayMeta), todayHost, earlierHost);
 
   root.append(head, make, noticeHost, runHost, planHost, today);
-  const runPanel = mountRunPanel(runHost, { accept: (job) => !job.meta?.test && !isTestRef(job.meta?.ref) && job.kind !== "style-add" });
+  const runPanel = mountRunPanel(runHost, { accept: (job) => !job.meta?.test && !isTestRef(job.meta?.ref) });
   onCleanup(() => runPanel.dispose());
   onCleanup(mountPlanPanel(planHost, { onJobStarted: () => runPanel.focus() }));
 
@@ -85,8 +85,8 @@ export function mountDaily(root) {
     planButton.replaceChildren(starting === "plan" ? spinner() : icon("plus", "fill"), "Plan today's videos");
 
     const resolved = { style: value("VIDEO_STYLE"), character: value("CHARACTER"), theme: value("VIDEO_THEME"),
-      background: value("BACKGROUND_STYLE"), recipe: value("STYLE_RECIPE") };
-    summary.replaceChildren(...lookChips(resolved, {}, state.plans?.recipes));
+      background: value("BACKGROUND_STYLE"), preset: value("LOOK_PRESET") };
+    summary.replaceChildren(...lookChips(resolved, {}));
     unsavedNote.hidden = !isDirty();
     const s = state.settings?.values;
     if (s) {
@@ -193,7 +193,6 @@ export function mountDaily(root) {
   todayHost.replaceChildren(h("div", { class: "panel empty" }, h("div", { class: "skeleton", "aria-hidden": "true" }), h("p", { class: "help", text: "Loading today's videos" })));
   refreshVideos();
   refreshPlans();
-  if (!state.styles) loadStyles().catch(() => {});
   const videosTimer = setInterval(refreshVideos, isRunning() ? 8000 : 20000);
   onCleanup(() => clearInterval(videosTimer));
   let lastRunKey = "";

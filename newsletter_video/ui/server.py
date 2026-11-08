@@ -19,6 +19,7 @@ from typing import Callable
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from newsletter_video.look import LookError
+from newsletter_video.looks import load_presets
 
 from . import history, security
 from .characters_svc import CharacterService
@@ -27,7 +28,6 @@ from .envstore import SCHEMA, EnvStore, SettingsError
 from .jobs import JobManager, Spawner, default_spawner
 from .plans import PlanError, PlanService
 from .runs import RUN_KINDS, RunBlocked, RunService
-from .styles_svc import MAX_VIDEO_BYTES, StyleService
 
 log = logging.getLogger("newsletter_video.ui")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -88,6 +88,22 @@ def feature_support(root: Path) -> dict[str, bool]:
     return {key: key in sources for key in SCHEMA}
 
 
+def looks_payload() -> dict:
+    """The look library for the panel: every preset with its thumbnail served
+    from the guarded static folder, and which one is the pipeline's default."""
+    presets = []
+    default = ""
+    for p in load_presets():
+        thumb = p.thumbnail if p.thumbnail and (STATIC_DIR / p.thumbnail).is_file() else ""
+        presets.append({"id": p.id, "name": p.name, "description": p.description, "good_for": p.good_for,
+                        "default": p.default, "theme": p.look.get("theme") or "light", "recipe": p.recipe_id,
+                        "cinematic": p.cinematic, "emphasis": list(p.emphasis),
+                        "thumbnail": f"/static/{thumb}" if thumb else None})
+        if p.default:
+            default = p.id
+    return {"presets": presets, "default": default}
+
+
 class App:
     def __init__(self, paths: UIPaths, guard: security.Guard, spawner: Spawner = default_spawner,
                  lister=None, voicebox=None):
@@ -100,7 +116,6 @@ class App:
         self.runs = RunService(paths, self.jobs, self.store, **kwargs)
         self.characters = CharacterService(paths, self.jobs, self.store, **({"voicebox": voicebox} if voicebox else {}))
         self.plans = PlanService(paths, self.jobs, self.store, self.runs, characters=self.characters)
-        self.styles = StyleService(paths, self.jobs, self.store, self.runs)
         self.support = feature_support(paths.root)
         self._schedule_cache: tuple[float, dict] | None = None
         self.index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
@@ -162,13 +177,12 @@ class App:
                                   "days": [d for d in history.recent_days(self.paths, today) if d["date"] != today.isoformat()],
                                   "previews": history.previews(self.paths)})
         if path == "/api/plans":
-            return json_response({"plans": self.plans.list_plans(date.today()), "recipes": self.styles.recipe_choices()})
+            return json_response({"plans": self.plans.list_plans(date.today())})
+        if path == "/api/looks":
+            return json_response(looks_payload())
         m = re.fullmatch(r"/api/plans/([A-Za-z0-9-]+)", path)
         if m:
             return json_response(self.plans.describe(m.group(1)))
-        if path == "/api/styles":
-            query = (req.query.get("q") or [""])[0][:200]
-            return json_response(self.styles.describe(query))
         m = re.fullmatch(r"/media/plan/([A-Za-z0-9-]+)/([^/]+)/(.+)", path)
         if m:
             target = self.plans.preview_file(m.group(1), unquote(m.group(2)), unquote(m.group(3)))
@@ -176,13 +190,6 @@ class App:
                 return error(404, "Not found.")
             ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
             return Response(200, content_type=ctype, file=target, headers={"Cache-Control": "no-cache"})
-        m = re.fullmatch(r"/media/style/([^/]+)/(.+)", path)
-        if m:
-            target = self.styles.media_path(unquote(m.group(1)), unquote(m.group(2)))
-            if not target:
-                return error(404, "Not found.")
-            ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
-            return Response(200, content_type=ctype, file=target, headers={"Cache-Control": "max-age=300"})
         m = re.fullmatch(r"/api/jobs/([a-z0-9]+)", path)
         if m:
             return self._job(m.group(1), int((req.query.get("since") or ["0"])[0] or 0))
@@ -258,8 +265,6 @@ class App:
         payload = {"job": data, "log": self.jobs.log(job_id, since)}
         if view.kind == "add" and view.state != "running":
             payload["outcome"] = self.characters.add_outcome(view)
-        if view.kind == "style-add" and view.state != "running":
-            payload["outcome"] = self.styles.add_outcome(view)
         if view.kind == "preview" and view.state != "running":
             try:
                 payload["outcome"] = self.plans.preview_state(view.meta.get("ref", ""), view.meta.get("video", ""))
@@ -361,13 +366,6 @@ class App:
                 return error(400, "only must be a list of video ids.")
             job = self.plans.start_render(m.group(1), only, data.get("confirm") is True)
             return json_response({"job": self.runs.describe(job)}, 201)
-        if path == "/api/styles" and req.method == "POST":
-            return self._add_style(req)
-        m = re.fullmatch(r"/api/styles/([^/]+)/remove", path)
-        if m and req.method == "POST":
-            if self._read_json(req).get("confirm") is not True:
-                return error(400, "Removing a reference needs confirmation.")
-            return json_response({"removed": self.styles.remove(unquote(m.group(1)))})
         m = re.fullmatch(r"/api/characters/([^/]*)/sample", path)
         if m and req.method == "POST":
             return json_response(self.characters.start_sample(unquote(m.group(1))), 202)
@@ -393,20 +391,11 @@ class App:
         job = self.characters.start_add(fields, avatar, clips)
         return json_response({"job": job.to_json()}, 202)
 
-    def _add_style(self, req: Request) -> Response:
-        if len(req.body) > body_limit("/api/styles"):
-            return error(413, "That upload is too large.")
-        parts = security.parse_multipart(req.header("Content-Type"), req.body)
-        fields = {p.name: p.data.decode("utf-8", "replace") for p in parts if p.filename is None}
-        video = next((p.data for p in parts if p.name == "video" and p.filename is not None), b"")
-        job = self.styles.start_add(fields, video)
-        return json_response({"job": job.to_json()}, 202)
-
 
 def body_limit(path: str) -> int:
-    """How large a request body may be: a reference video upload is the one
-    big thing the panel accepts; everything else stays small."""
-    return MAX_VIDEO_BYTES + 64 * 1024 if path == "/api/styles" else security.MAX_BODY_BYTES
+    """How large a request body may be. The same small cap everywhere: the
+    panel accepts character pictures and voice clips, nothing bigger."""
+    return security.MAX_BODY_BYTES
 
 
 # --- HTTP plumbing -------------------------------------------------------------
