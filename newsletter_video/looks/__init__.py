@@ -44,7 +44,11 @@ class Preset:
     registry: list[str] = field(default_factory=list)
     thumbnail: str = ""
     default: bool = False
-    threed: bool = False  # the plan is 3D-ified (threed.py) and the writer is told to prefer 3D scenes
+    world: str = ""  # a 3D look: "hero" | "corridor" | "metrics" (world3d.py); every scene is drawn in 3D
+
+    @property
+    def threed(self) -> bool:
+        return bool(self.world)
 
     @property
     def recipe_id(self) -> str:
@@ -66,7 +70,7 @@ class Preset:
         return {"id": self.id, "name": self.name, "description": self.description, "default": self.default,
                 "look": dict(self.look), "recipe": self.recipe_id, "knobs": dict(self.knobs), "emphasis": list(self.emphasis),
                 "registry": list(self.registry), "thumbnail": self.thumbnail, "cinematic": self.cinematic,
-                "threed": self.threed}
+                "threed": self.threed, "world": self.world}
 
 
 def _validate(raw: Any) -> Preset:
@@ -85,12 +89,16 @@ def _validate(raw: Any) -> Preset:
     style, errs = validate_style(dict(knobs))
     if errs:
         raise PresetError(f"preset {pid!r}: " + "; ".join(errs))
+    from ..world3d import WORLDS
+
+    if raw.get("world") and raw["world"] not in WORLDS:
+        raise PresetError(f"preset {pid!r}: world must be one of {', '.join(WORLDS)}")
     return Preset(
         id=pid, name=str(raw.get("name") or pid), description=str(raw.get("description") or ""),
         look={k: v for k, v in look.items() if k == "theme"}, knobs={k: v for k, v in (style or {}).items()
                                                                      if k != "recipe" and v not in (None, "", [], "default", 1.0)},
         emphasis=[str(t) for t in raw.get("emphasis") or []], registry=[str(r) for r in raw.get("registry") or []],
-        thumbnail=str(raw.get("thumbnail") or ""), default=bool(raw.get("default")), threed=bool(raw.get("threed")),
+        thumbnail=str(raw.get("thumbnail") or ""), default=bool(raw.get("default")), world=str(raw.get("world") or ""),
     )
 
 

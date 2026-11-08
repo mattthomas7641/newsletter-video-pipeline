@@ -15,7 +15,7 @@
     },
     {
       "id": "cinematic-glass",
-      "threed": true,
+      "world": "hero",
       "name": "Cinematic dark glass",
       "description": "Near-black ground with drifting aurora fields, a grid floor, grain, glass panels, neon 3D stacks and bars; scenes dissolve and push in slowly. (The mesh-gradient shader background is installed and works in stills; set background 'mesh-gradient' on a scene to use it once the CLI renders WebGPU blocks.)",
       "look": {"theme": "cinematic"},
@@ -35,7 +35,7 @@
     },
     {
       "id": "depth-cards",
-      "threed": true,
+      "world": "corridor",
       "name": "Depth cards",
       "description": "Dark theme: processes and timelines become glass planes the camera dollies through, stacks and hubs become 3D objects; scenes slide in from the right with a parallax hold.",
       "look": {"theme": "dark"},
@@ -54,7 +54,7 @@
     },
     {
       "id": "data-focus",
-      "threed": true,
+      "world": "metrics",
       "name": "Data focus",
       "description": "Dark ground with heavy sans headlines, hard wipes and popping bars: charts and comparisons become 3D columns standing on a grid floor, lit from inside.",
       "look": {"theme": "dark"},

@@ -48,19 +48,23 @@ resolved look is cinematic (`look.cinematic_requested`, `explainer_writer.CINEMA
 
 The 3D slot bleeds to the full 1080 px frame width (the stage is 820 px), so scene wipes use `OPEN`, an `inset` a little wider than the stage, instead of `inset(0)`; otherwise a wipe transition clips the 3D world to the stage box.
 
-## 3D-ification (`threed.py`)
+## 3D worlds: every scene of a 3D look is 3D, for any story
 
-The 3D looks should show several 3D scenes in an ordinary story. `threeify_plan(plan)` rewrites suitable middle scenes of a validated plan in place (no model call, narration untouched, every result re-validated, no run of three identical layouts, at most 4 3D scenes counting those already there):
+The first version only converted diagrams, charts, comparisons and timelines, so a story made of statements, stats and a title (most real ones) came out as the flat scenes in a glowing skin; the second drew a glass plate with decorative bars under every statement. Neither is what the owner wanted. The 3D presets are now defined by a **world** (`"world"` in `presets.json`) and in a world *every* scene, title and outro included, is drawn in 3D by the composition's world renderer, and **every 3D element is chosen from what the scene says** (the plan is never rewritten: `tests/test_worlds.py::test_paper_and_flat_presets_leave_the_plan_unchanged`).
 
-| Scene | Becomes |
-|---|---|
-| diagram `stack` | object3d `stack` |
-| diagram `hub` | object3d `orbit` |
-| chart | object3d `bars` |
-| comparison with numbers | object3d `bars` (two columns) |
-| comparison without numbers, timeline, diagram `flow`/`funnel` | `depth` |
+`world3d.scene_content(scene)` turns any scene type into one normalised block (`w3`: label, title and its emphasised words, value, lines, items, icon, figures found in the words); `world3d.choose_compositions` picks a composition per scene; `explainer_builder.story_payload(..., world=...)` puts both on each scene together with the cue times of the composition's parts (when each chunk, item, keyword or bar is spoken). Text and pictograms are textures on 3D plates (so they take the perspective); labels of stacks, hubs and bars are billboards. Rules, in order:
 
-It runs from `apply_recipe_policy` when the recipe is `look-<preset>` of a preset with `"threed": true` (cinematic-glass, depth-cards, data-focus), so the preview, the planner, the writer path and `render_plan` all get it. For those presets the writer prompt also carries `THREE_D_NOTE` ("prefer 3D scenes, at least 3 of the middle scenes"). `paper` and the flat presets never change (`tests/test_threed.py`).
+1. **What the scene shows decides.** An item list, process or diagram becomes an exploded layer **stack** (labels from its items) or, in the hero world, a **hub** (a core with labelled satellites); a comparison becomes two **facing slabs** with a VS between; figures found in the scene's own words become **bars** (two or more of one unit), a **monolith** (one figure) or a **gauge** (one percentage). In the hero world an icon or a keyword picks the object that *is* the thing discussed: chip/GPU/memory = a glass chip slab with pins and traces, AI/robot/people = a node network, money/valuation/price = coin stacks, speed = light streaks rushing at the lens, security/lock = a shield with the lock on it, data centre/cloud/compute = a rack of glowing cubes, globe = a wire globe, the outro's question = a ring. No chart without figures, no object without a reason.
+2. **No visual, then typography in depth**, never decoration: *type-stack* (the sentence in 2-3 chunks on plates at different depths, the camera pushing through as each is spoken), *type-mono* (the line's longest keyword as a huge glowing word with the sentence on a plate in front), *type-orbit* (the line's own keywords orbiting a plate), *type-plate* (a tilted glass plate). They rotate with the scene's index.
+3. **Variety is enforced.** Data-bearing compositions are never swapped for typography just to vary, but no two consecutive scenes share a composition, typography prefers forms not yet used, and the camera move rotates dolly / orbit / crane / tilt / push-through scene by scene (`MOVES`). Tests: a 7-scene statements-only story gets at least 5 different compositions in both the hero and metrics worlds.
+
+| Preset | World | Structure |
+|---|---|---|
+| `cinematic-glass` | `hero` | all compositions: objects that are the thing discussed (with a mirrored reflection on the grid floor), stacks, hubs, facing slabs, bars, monoliths, typography; scenes dissolve into each other |
+| `depth-cards` | `corridor` | one continuous space: every scene (title and outro too) is a plane along z, zig-zagging, with pylons, rails, dust and the floor streaming past; no cuts, each scene change is a camera flight from plane to plane with a bank, a slow push-in during each hold, the next plane peeking in the haze |
+| `data-focus` | `metrics` | figure- and typography-led: bars, monoliths, gauges, stacks, facing slabs and typography in depth, no decorative objects at all (a scene without figures gets typography, not a made-up chart) |
+
+Command-line flags win over a video's saved look: `--preset depth-cards` on a plan whose video was saved with `cinematic-glass` now drops the saved preset's theme and recipe (`preview._saved_look`), so the header and the video are the new preset's. For a 3D preset the writer prompt also carries `THREE_D_NOTE`.
 
 ## Presets
 
@@ -71,9 +75,9 @@ name, description, look: {theme}, knobs, emphasis, registry, thumbnail}`:
 | id | ground | knobs (middle scenes) | emphasis | registry items |
 |---|---|---|---|---|
 | `paper` (default) | light | none | — | — |
-| `cinematic-glass` | cinematic, 3D | fade / fade-up / slow-push / inOut, neon palette, speed 0.9 | object3d, glass, depth, kinetic | grain-overlay, aurora-drift (mesh-gradient installed, see status above) |
-| `depth-cards` | dark, 3D | push-left / line-slide / parallax, accent `#7b96ff`, violet-cyan palette, stagger 0.1 | depth, glass, device, diagram | processes become glass planes the camera dollies through |
-| `data-focus` | dark, 3D | wipe-down / scale-pop / sans-heavy, mint-blue palette, speed 1.15 | chart, stat, comparison, object3d | charts and comparisons become 3D columns on the grid floor |
+| `cinematic-glass` | cinematic, world `hero` | fade / fade-up / slow-push / inOut, neon palette, speed 0.9 | object3d, glass, depth, kinetic | grain-overlay, aurora-drift (mesh-gradient installed, see status above) |
+| `depth-cards` | dark, world `corridor` | accent `#7b96ff`, violet-cyan palette | depth, glass, device, diagram | every scene a plane the camera flies to |
+| `data-focus` | dark, world `metrics` | sans-heavy, mint-blue palette, speed 1.15 | chart, stat, comparison, object3d | columns, rings and towers for every beat |
 | `glow-type` | cinematic | cut / letter-stagger / caps / pulse, magenta-cyan palette, speed 1.2 | kinetic, statement, stat, glass | grain-overlay, caption-neon-glow |
 | `quiet-editorial` | light | fade / fade-up / float, speed 0.8 | quote, statement, timeline, list | — |
 
@@ -127,11 +131,21 @@ library.
 - HyperFrames registry search (`hyperframes catalog --query`, about 20 queries: 3d, isometric, layers stack, glass, orbit, globe, cube, network graph, camera rig, depth, parallax, hologram, grid floor, neon, chart 3d, shader orb, three). Candidates installed and read, then removed again because they do not fit this template: `exploded-stack` (isometric white plates, 1920x1080 landscape, four fixed layers, one self-driven 5 s clock, no word cues), `three-orbiting-cards` (cards on an orbit, no labels or data), `gallery-tunnel` (image corridor), the WebGPU orb blocks `plastic`, `liquid-metal`, `obsidian`, `light-edge` (an orb on black: nothing to carry a label or a number). `camera-rig-depth-stack` and `parallax-*` are CSS-3D card moves, which is what the first `depth` was and why it was replaced. Registry items are not scene types, so they cannot take the story's labels and numbers or the voice's cues without being rewritten, which is why the scenes are ours.
 - `aurora-drift`, `grain-overlay`, `caption-neon-glow` (registry, adapted inline) and the `mesh-gradient` block are as described above.
 
+## Evidence for the worlds (same story, every preset)
+
+All in `docs/screenshots/rich-scenes/`, from saved real plans, no writer call, no voice, estimated timing, stills (one per scene, at the moment the scene is built) and 12 fps draft clips:
+
+- `worlds-tsmc.jpg`, `worlds-aidc.jpg`, `worlds-plumb.jpg`: three stories (TSMC memory chips for Nvidia; investors turning on AI data-centre builders; a startup fixing plumbing free) under `paper`, `cinematic-glass`, `depth-cards` and `data-focus`, one row per preset, one column per scene.
+- `worlds-tsmc-storyboards.jpg`: the TSMC storyboards of the four presets side by side (the preview's own storyboard images).
+- `worlds-tsmc-filmstrips.jpg`, `worlds-aidc-filmstrips.jpg`, `worlds-plumb-filmstrips.jpg`: the draft clip of each preset, a frame every 1.2 s, so the camera moves and the corridor flights show.
+- `presets-contact.jpg`: the TSMC story, all six presets.
+
 ## Honest gaps
 
-- **Genuinely 3D**: the stack, bars, orbit and cards are real meshes under a perspective camera (orbit, climb, dolly) over a grid floor in perspective; the depth scene is real planes with a real dolly. Shadows are blob textures on the floor and the floor reflection is a mirrored copy of the plates at low opacity, not a rendering of the floor's reflection.
-- **Faked**: the bloom is a blurred copy of the frame, not a post-processing pass; the plate "circuits" are random thin boxes; labels are HTML chips pinned by projection (they sit over the 3D, they are not geometry); the cube is a plain box, not a model.
-- **Still differs from the reference**: it has 5+ big layers with a photo, a phone with a glowing bezel, a mascot, maps and a router route; ours are 2-5 plain plates, no hero artwork, no mascot, labels as small chips, no in-plate UI. Our orbit and bars scenes have no counterpart in the reference. Depth planes show text only. The draft shows these at 12 fps; the final render has not been run for this change.
-- The writer is only *offered* the rich scenes; for the 3D presets it is told to prefer them and the transform guarantees several 3D scenes for any story with a diagram, chart, comparison or timeline, but a story made only of statements and stats gets none.
+- **Genuinely 3D**: in the three worlds every scene is real meshes under a perspective camera that moves (orbit, dolly, flight with a bank), over a shader grid floor; text and icons are textures on 3D plates and take the perspective. Shadows are blob textures and reflections are mirrored low-opacity copies, not rendered reflections.
+- **Faked or weak**: the bloom is a blurred copy of the frame; the hero objects are primitive shapes (cube, octahedron, sphere with rings, torus, shards), not modelled; the icon is a flat glow on a plate, not an extrusion; the metrics world's abstract forms (no figures in the words) are decoration, they carry no data and say so in the code; text on plates is static (it does not land word by word as in the flat scenes, only the plate and its object animate); depth-cards stills look like tilted cards, the structure (continuous flight, parallax) only shows in motion (draft filmstrips).
+- **Still differs from the reference**: it has big layered boards with a photo, a phone with a glowing bezel, a mascot, maps; ours has plain plates and primitive objects, no hero artwork, no mascot.
+- Figures for the metrics world are read from the scene's words with a regular expression (`world3d.numbers_in`); a number it misreads becomes a wrong bar label, so it only uses figures of one unit class and at most five.
+- Not run: a final voiced render; the draft clips are 12 fps with estimated timing. The writer is only told to prefer 3D scenes; the worlds do not depend on it.
 - Grain is a stepping tile, not per-frame noise. The `mesh-gradient` block still fails in `render` on this CLI version (see above).
 - The style-library reference analysis is unchanged by this work (the reference-video part is being retired in favour of presets).
