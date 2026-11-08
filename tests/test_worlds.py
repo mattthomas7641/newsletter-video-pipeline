@@ -5,7 +5,7 @@ from newsletter_video import look as looks
 from newsletter_video.explainer_builder import story_payload
 from newsletter_video.looks import get_preset, load_presets
 from newsletter_video.scene_plan import validate_plan
-from newsletter_video.world3d import annotate, choose_compositions, keywords_of, numbers_in, object_for, phrase_chunks, scene_content
+from newsletter_video.world3d import choose_compositions, compose, keywords_of, numbers_in, object_for, phrase_chunks, scene_content
 
 LINE = "This spoken line carries the beat with enough words to reach the budget for the video."
 
@@ -42,6 +42,12 @@ def test_world_of_follows_the_preset():
     assert looks.threed_requested({"style": "explainer", "preset": "data-focus"})
 
 
+def block(kind="statement", say="A plain sentence about nothing in particular.", **kw):
+    c = {"kind": kind, "label": "", "title": "", "emph": "", "value": "", "lines": [], "items": [], "numbers": [], "icon": "", "say": say}
+    c.update(kw)
+    return c
+
+
 def test_every_scene_of_any_story_gets_a_world_block_and_a_composition():
     plan = validate_plan(statements_only())
     flat = story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0)
@@ -50,43 +56,56 @@ def test_every_scene_of_any_story_gets_a_world_block_and_a_composition():
         payload = story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0, "dark", world=world)
         assert payload["world"] == world and all(s["w3"]["kind"] == s["type"] and s["w3"]["comp"] for s in payload["scenes"])
         assert not any("_words" in s for s in payload["scenes"])
-    blocks = [s["w3"] for s in payload["scenes"]]
+    blocks = [s["w3"] for s in story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0, "dark", world="hero")["scenes"]]
     assert blocks[0]["title"] == "TSMC eyes AI memory chips" and blocks[0]["icon"] == "chip"
     assert blocks[2]["value"] == "$21.5B" and blocks[1]["emph"] == "Super Intelligence"
-    assert [i["text"] for i in blocks[4]["items"]][0] == "Nvidia wants supply"
 
 
-def test_no_two_consecutive_scenes_share_a_composition_and_the_video_varies():
+def test_a_scene_gets_3d_only_when_its_own_words_justify_it():
     plan = validate_plan(statements_only())
-    for world in ("hero", "metrics"):
-        payload = story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0, "dark", world=world)
-        comps = [s["w3"]["comp"] for s in payload["scenes"]]
-        assert all(a != b for a, b in zip(comps, comps[1:])), comps
-        assert len(set(comps)) >= 5, comps
+    hero = [s["w3"]["comp"] for s in story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0, "dark", world="hero")["scenes"]]
+    # title and the last statement name chips; the stat is a money figure; everything else is a 2D scene
+    assert hero == ["object:chip", "flat", "monolith", "flat", "flat", "object:chip", "flat"], hero
+    metrics = [s["w3"]["comp"] for s in story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0, "dark", world="metrics")["scenes"]]
+    assert metrics == ["flat", "flat", "monolith", "flat", "flat", "flat", "flat"], metrics  # figures only: no decorative objects
 
 
-def test_objects_come_from_what_the_scene_says():
-    plan = validate_plan(statements_only())
-    hero = story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0, "dark", world="hero")
-    comps = {s["type"] + str(i): s["w3"]["comp"] for i, s in enumerate(hero["scenes"])}
-    assert comps["title0"] == "object:chip"  # the chip icon: a chip slab
-    assert comps["statement1"] == "object:network"  # the brain icon: a node network
-    assert comps["stat2"] == "monolith"  # one figure: a monolith, never a made-up chart
-    metrics = story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0, "dark", world="metrics")
-    assert not any(s["w3"]["comp"].startswith("object:") for s in metrics["scenes"])  # figures and typography only
-    assert object_for({"icon": "lock"}, "x") == "shield" and object_for({"icon": ""}, "Zipline raised a $21.5B valuation") == "coins"
-    assert object_for({"icon": ""}, "A plain sentence about nothing in particular") == ""
+def test_the_relevance_gate_per_composition():
+    # a generic list is never a stack; layers are
+    generic = block("list", items=[{"label": "", "text": "Nvidia wants supply"}, {"label": "", "text": "TSMC has the fabs"}])
+    assert compose(generic, "hero") == "flat" and compose(generic, "metrics") == "flat"
+    layered = block("list", say="The network has seven layers.", items=[{"label": "Layer 1", "text": "cables"}, {"label": "Layer 2", "text": "frames"}])
+    assert compose(layered, "hero") == "stack"
+    # an icon alone never summons an object; the scene's own words do
+    assert compose(block(icon="globe", say="A firm said it was doing well."), "hero") == "flat"
+    assert compose(block(icon="globe", say="The firm is going worldwide this year."), "hero") == "object:globe"
+    assert compose(block(icon="globe", say="It trains on real-world data."), "hero") == "flat"
+    assert compose(block(icon="chip", say="Nobody knows yet."), "hero") == "flat"
+    assert compose(block(say="TSMC may build memory chips for Nvidia."), "hero") == "object:chip"
+    assert compose(block(say="Zipline raised $21.5B from investors."), "hero") == "object:coins"
+    assert compose(block(say="Servers fill the data center."), "hero") == "object:cubegrid"
+    # the outro is calm 2D unless it is about a loop
+    assert compose(block("outro", say="Comment below."), "hero") == "flat"
+    assert compose(block("outro", say="That is the whole loop."), "hero") == "object:ring"
+    # the metrics and corridor worlds never use decorative objects
+    assert not compose(block(say="TSMC may build memory chips."), "metrics").startswith("object:")
+    assert compose(block("statement"), "corridor") == "plane" and compose(block("stat"), "corridor") == "flat"
+    assert compose(block("comparison", items=[{"label": "a", "text": "x"}, {"label": "b", "text": "y"}]), "hero") == "split"
+    seq = block("timeline", say="First capture, then train, then ship.", items=[{"label": "a", "text": "x"}, {"label": "b", "text": "y"}, {"label": "c", "text": "z"}])
+    assert compose(seq, "hero") == "path" and compose(seq, "metrics") == "flat"
+
+
+def test_no_two_consecutive_3d_shots_are_the_same():
+    chip = block(say="Chips again.")
+    assert choose_compositions([chip, chip, chip], "hero") == ["object:chip", "flat", "object:chip"]
 
 
 def test_bars_only_with_two_or_more_figures_in_the_scene():
-    plan = validate_plan(statements_only())
-    for world in ("hero", "metrics"):
-        payload = story_payload(plan, per_line_of(plan), 30.0, "TLDR", 1.0, "dark", world=world)
-        for s in payload["scenes"]:
-            if s["w3"]["comp"] in ("bars", "monolith", "gauge"):
-                assert len(s["w3"]["numbers"]) >= (2 if s["w3"]["comp"] == "bars" else 1)
-    two = {"kind": "statement", "title": "x", "items": [], "numbers": [{"label": "a", "value": 1, "shown": "1"}, {"label": "b", "value": 2, "shown": "2"}], "icon": "", "label": "", "lines": [], "say": "a b"}
-    assert choose_compositions([two], "metrics") == ["bars"]
+    two = block("stat", numbers=[{"label": "a", "value": 1, "shown": "1"}, {"label": "b", "value": 2, "shown": "2"}])
+    assert compose(two, "metrics") == "bars"
+    lone_small = block("stat", numbers=[{"label": "cities", "value": 3, "shown": "3"}])
+    assert compose(lone_small, "metrics") == "flat"  # a small count is not worth a monolith
+    assert compose(block("statement", numbers=[{"label": "a", "value": 1, "shown": "1"}]), "metrics") == "flat"
 
 
 def test_numbers_in_the_words_become_figures_and_nothing_is_invented():

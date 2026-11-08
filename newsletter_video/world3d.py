@@ -87,7 +87,7 @@ def scene_content(scene) -> dict:
         c.update(title=f.get("title", ""), items=[{"label": p["label"], "text": f"{p['value']:g}{f.get('unit', '')}"} for p in f.get("series", [])])
         c["numbers"] = _series_numbers(f.get("series", []), f.get("unit", ""))
     elif t == "diagram":
-        c.update(title=f.get("title", ""), label=f.get("center", ""), items=[{"label": n["label"], "text": n.get("text", "")} for n in f.get("nodes", [])])
+        c.update(title=f.get("title", ""), label=f.get("center", ""), sub=f.get("kind", ""), items=[{"label": n["label"], "text": n.get("text", "")} for n in f.get("nodes", [])])
     elif t in ("object3d", "depth", "glass"):
         c.update(title=f.get("title", ""), label=f.get("label", "") or f.get("center", ""), icon=f.get("icon", ""))
         if f.get("kind") == "bars":
@@ -102,7 +102,7 @@ def scene_content(scene) -> dict:
     elif t == "outro":
         c.update(title=f.get("text", ""), icon=f.get("icon", "comment"))
     if not c["numbers"]:
-        nums = numbers_in(" ".join([scene.say, c["title"], c["value"]]))
+        nums = numbers_in(" ".join([c["title"], c["value"]] + c["lines"]))
         # bars need two or more figures of one kind; one lone figure is a "hero number"
         klass = max({n["class"] for n in nums}, key=lambda k: sum(n["class"] == k for n in nums), default="") if nums else ""
         same = [n for n in nums if n["class"] == klass][:5]
@@ -118,28 +118,33 @@ def scene_content(scene) -> dict:
 
 
 # --- compositions: what each scene is, chosen from its content ----------------------------
-# The renderer has a library of 3D compositions. Which one a scene gets comes from what it
-# says (an icon or a keyword picks an object that IS the thing discussed; figures pick bars,
-# a monolith or a gauge; a list, a process or a comparison picks a stack, a hub or a split;
-# anything without a visual becomes typography in depth) and from rotation, so no two
-# consecutive scenes share a composition and a 7-scene video shows at least 5 different ones.
+# A 3D composition may appear in a scene ONLY if it depicts something that scene's own words are
+# about; every other scene stays a clean 2D scene ("flat", the ordinary explainer scene of its
+# kind in the preset's colours), so a video is a mix of 2D and 3D shots and nothing is decoration.
+# The gate is the scene's text (narration, title, label, items), never an icon alone: an icon the
+# writer picked loosely cannot summon a globe, and a generic list is never a stack of plates.
 
-OBJECT_BY_ICON = {
-    "chip": "chip", "brain": "network", "robot": "network", "cloud": "cubegrid", "database": "cubegrid",
-    "energy": "cubegrid", "globe": "globe", "users": "network",
-    "dollar": "coins", "money": "coins", "wallet": "coins", "lock": "shield", "shield": "shield", "key": "shield",
-    "bug": "shield", "box": "cube", "layers": "stack3", "building": "cubegrid",
-}
-OBJECT_BY_KEYWORD = [
-    ("chip", r"\b(chips?|gpus?|semiconductors?|silicon|processors?|memory|hbm|wafers?|fabs?)\b"),
-    ("network", r"\b(ai models?|neural|llms?|agents?|robots?|intelligence|machine learning)\b"),
-    ("coins", r"\b(valuation|funding|revenue|profit|loss|price|pricing|billion|million|ipo|raised|payments?)\b"),
-    ("streaks", r"\b(faster|fastest|speed|instantly|latency|real-time|lightning|quicker)\b"),
-    ("shield", r"\b(security|encrypt\w*|privacy|breach|hack\w*|exploit\w*|vulnerab\w*|safety)\b"),
-    ("cubegrid", r"\b(data ?cent(?:er|re)s?|servers?|clusters?|gigawatts?|compute)\b"),
+OBJECT_PATTERNS = [
+    ("chip", r"\b(chips?|gpus?|cpus?|semiconductors?|silicon|processors?|hbm|wafers?|fabs?|asics?)\b"),
+    ("cubegrid", r"\b(data ?cent(?:er|re)s?|servers?|server racks?|clusters?|superclusters?|gigawatts?|hyperscal\w*)\b"),
+    ("shield", r"\b(security|encrypt\w*|privacy|breach\w*|hack\w*|exploit\w*|vulnerab\w*|malware|cyberattacks?)\b"),
+    ("streaks", r"\b(faster|fastest|speed(?:s|ing)?|instantly|latency|real-time|lightning|quicker|milliseconds?)\b"),
+    ("globe", r"\b(worldwide|global\w*|countries|earth|planet|satellites?|orbit\w*)\b|(?<!real-)(?<!real )\bthe world\b"),
+    ("network", r"\b(neural|llms?|ai models?|machine learning|ai agents?)\b"),
+    ("cube", r"\b(packages?|parcels?|shipments?|shipping)\b"),
 ]
-TYPE_COMPS = ("type-stack", "type-mono", "type-orbit", "type-plate")
+MONEY = re.compile(r"[$\u20ac\u00a3]\s?\d|\b\d[\d.,]*\s?(?:billion|million|trillion|bn)\b", re.I)
+LAYERS = re.compile(r"\b(layers?|stack|tiers?|levels?|osi|pipeline|stages?|abstraction)\b", re.I)
+LOOP = re.compile(r"\b(loop|cycle|circle|flywheel)\b", re.I)
+PLANE_KINDS = ("title", "statement", "quote", "outro")  # what the corridor sets as planes in depth
 _STOP = set("the a an and or but to of in on at for with than as by from into that its is are was were not no per this these those their his her our your it be been have has had will would could may might can just more most very over under about after before while when where which who whom what how why".split())
+
+
+def scene_text(c: dict) -> str:
+    """Everything the scene says or shows, lower-cased: the gate for every 3D composition."""
+    parts = [c.get("say", ""), c.get("title", ""), c.get("label", ""), c.get("value", "")] + list(c.get("lines", []))
+    parts += [(i["label"] + " " + i["text"]) for i in c.get("items", [])]
+    return " ".join(parts).lower()
 
 
 def phrase_chunks(text: str, n: int = 3) -> list[str]:
@@ -164,75 +169,68 @@ def keywords_of(text: str, n: int = 4) -> list[str]:
     return [w for w in out if w in top][:n]
 
 
-def object_for(c: dict, say: str) -> str:
-    """The object that is the thing the scene talks about, or ''."""
-    if c.get("icon") in OBJECT_BY_ICON:
-        return OBJECT_BY_ICON[c["icon"]]
-    text = " ".join([say, c.get("title", ""), c.get("label", "")]).lower()
-    for obj, pattern in OBJECT_BY_KEYWORD:
+def object_for(c: dict, say: str = "") -> str:
+    """The object that is the thing the scene talks about, or '': its own text must name it (or a
+    direct synonym); money needs an amount."""
+    text = scene_text(c)
+    if MONEY.search(text):
+        return "coins"
+    for obj, pattern in OBJECT_PATTERNS:
         if re.search(pattern, text):
             return obj
     return ""
 
 
-def _candidates(c: dict, world: str, index: int) -> tuple[list[str], list[str]]:
-    """(data-bearing compositions, typographic ones), best first. A data-bearing one shows what the
-    scene's items or figures are (a stack of its steps, bars of its numbers, the object it names); the
-    typographic ones set its words in depth and suit any scene."""
-    kind, items, nums = c["kind"], c["items"], c["numbers"]
+def _figures_on_screen(c: dict) -> list[dict]:
+    """Figures that are what the scene is about: its stat value, series or comparison, or two or more in its title."""
+    return c["numbers"] if c["kind"] in ("stat", "chart", "comparison", "object3d") or len(c["numbers"]) >= 2 else []
+
+
+def compose(c: dict, world: str) -> str:
+    """The 3D composition this scene's content justifies in this world, or 'flat' (the 2D scene)."""
+    kind, items, nums = c["kind"], c["items"], _figures_on_screen(c)
+    text = scene_text(c)
     pct = len(nums) == 1 and nums[0]["shown"].endswith("%") and 0 < nums[0]["value"] <= 100
-    rot = TYPE_COMPS[(index + 1) % len(TYPE_COMPS):] + TYPE_COMPS[:(index + 1) % len(TYPE_COMPS)]
-    typo = list(rot)
-    obj = object_for(c, c.get("say", "")) if world == "hero" else ""
-    if kind == "outro":
-        return (["object:ring"] if world == "hero" else []), ["type-mono", "type-plate"]
-    if kind == "title":
-        return ([f"object:{obj}"] if obj else []), ["type-mono", "type-orbit"]
-    data: list[str] = []
-    if len(nums) >= 2 and kind in ("stat", "chart", "comparison", "object3d", "statement", "quote"):
-        data.append("bars")
-    if len(nums) == 1:
-        data.append("gauge" if pct else "monolith")
-    if kind == "comparison" and len(items) == 2:
-        data.insert(0, "split") if (world == "hero" or not nums) else data.append("split")
-    if len(items) >= 2 and kind != "comparison":
-        flow = kind in ("timeline", "diagram", "depth", "object3d", "glass", "list", "device")
-        data.append("stack" if flow else "type-stack")
-        if kind == "diagram" and world == "hero":
-            data.insert(0, "hub")
-        if len(items) >= 3 and "type-stack" not in data:
-            data.append("type-stack")
-    if obj and world == "hero":
-        data.append(f"object:{obj}")
-    return data, typo
+    if world == "corridor":
+        return "plane" if kind in PLANE_KINDS else "flat"
+    if len(nums) >= 2 and kind in ("stat", "chart", "comparison", "object3d", "statement"):
+        return "bars"
+    if kind == "comparison" and len(items) == 2 and (world == "hero" or nums):
+        return "split"
+    if len(nums) == 1 and kind in ("stat",) and (pct or nums[0]["shown"][:1] in "$\u20ac\u00a3" or nums[0]["value"] >= 100):
+        return "gauge" if pct else "monolith"  # a small count ("3 cities") is not worth a monolith: it stays a 2D stat
+    if len(items) >= 2 and kind in ("diagram", "timeline", "list", "depth", "object3d") and LAYERS.search(text):
+        return "stack"
+    if world == "hero":
+        if kind in ("timeline", "diagram") and c.get("sub") != "hub" and len(items) >= 3:
+            return "path"  # a real sequence of steps: planes the camera walks through as each is spoken
+        if kind == "diagram" and c.get("sub") == "hub" and len(items) >= 3:
+            return "hub"
+        if kind == "outro":
+            return "object:ring" if LOOP.search(text) else "flat"
+        obj = object_for(c)
+        if obj and kind in ("title", "statement", "quote", "stat"):
+            return f"object:{obj}"
+    return "flat"
 
 
 def choose_compositions(contents: list[dict], world: str) -> list[str]:
-    """One composition per scene. Content decides first: the first data-bearing candidate that differs
-    from the previous scene's wins (never swapped for typography just to vary); a scene without one
-    gets typography in depth, preferring a form not used yet. No two consecutive scenes match."""
+    """One composition per scene, from its content alone. A relevant 3D shot is never swapped for
+    another to vary the video, but two identical 3D shots in a row are not allowed: the second one
+    falls back to its 2D scene, which keeps the video a mix of 2D and 3D."""
     chosen: list[str] = []
-    used: set[str] = set()
-    for i, c in enumerate(contents):
-        data, typo = _candidates(c, world, i)
-        prev = chosen[-1] if chosen else ""
-        pick = next((x for x in data if x != prev), None)
-        if pick is None:
-            pick = next((x for x in typo if x != prev and x not in used), None) or next((x for x in typo if x != prev), typo[0])
+    for c in contents:
+        pick = compose(c, world)
+        if chosen and pick != "flat" and pick == chosen[-1] and world != "corridor":
+            pick = "flat"
         chosen.append(pick)
-        used.add(pick)
     return chosen
 
 
 def annotate(contents: list[dict], world: str) -> None:
-    """Adds `comp`, `shape`, `chunks` and `words` (keyword labels) to each block, in place."""
+    """Adds `comp` (a composition or 'flat'), `shape` and `words` (the emphasised keyword) to each block, in place."""
     for c, comp in zip(contents, choose_compositions(contents, world)):
         c["comp"] = comp
         c["shape"] = comp.split(":", 1)[1] if comp.startswith("object:") else ""
-        text = c["title"] or " ".join(c["lines"])
-        if comp == "type-stack":
-            # the sentence in chunks, or (a scene with items but no sentence) its items, each set in depth
-            c["chunks"] = phrase_chunks(text, 3) if text else [(i["label"] + " " + i["text"]).strip() for i in c["items"]][:3]
-        else:
-            c["chunks"] = []
-        c["words"] = keywords_of(c["title"] + " " + " ".join(c["lines"]) + " " + c.get("say", ""), 5) if comp in ("type-orbit", "type-mono") else []
+        c["chunks"] = [(i["label"] + " " + i["text"]).strip() for i in c["items"]][:4] if comp == "path" else []
+        c["words"] = []

@@ -329,7 +329,7 @@ def story_payload(plan: ScenePlan, per_line: list[list[tuple[str, float]]], spee
             words, start, end = e.pop("_words")
             c = e["w3"]
             # when each part of the composition lands: its words are spoken
-            if c["comp"] == "type-stack":
+            if c["comp"] in ("type-stack", "path"):
                 parts = c["chunks"]
             elif c["comp"] == "type-orbit":
                 parts = c["words"]

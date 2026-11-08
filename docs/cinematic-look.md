@@ -48,23 +48,24 @@ resolved look is cinematic (`look.cinematic_requested`, `explainer_writer.CINEMA
 
 The 3D slot bleeds to the full 1080 px frame width (the stage is 820 px), so scene wipes use `OPEN`, an `inset` a little wider than the stage, instead of `inset(0)`; otherwise a wipe transition clips the 3D world to the stage box.
 
-## 3D worlds: every scene of a 3D look is 3D, for any story
+## 3D worlds: 2D and 3D shots, each only where it is relevant
 
-The first version only converted diagrams, charts, comparisons and timelines, so a story made of statements, stats and a title (most real ones) came out as the flat scenes in a glowing skin; the second drew a glass plate with decorative bars under every statement. Neither is what the owner wanted. The 3D presets are now defined by a **world** (`"world"` in `presets.json`) and in a world *every* scene, title and outro included, is drawn in 3D by the composition's world renderer, and **every 3D element is chosen from what the scene says** (the plan is never rewritten: `tests/test_worlds.py::test_paper_and_flat_presets_leave_the_plan_unchanged`).
+The 3D presets are defined by a **world** (`"world"` in `presets.json`: `hero`, `corridor`, `metrics`). Every scene is either a **3D shot** or its ordinary **2D scene** (the flat explainer scene of its kind, in the preset's theme and colours): a 3D composition appears in a scene only if it depicts something that scene's own words are about (`world3d.compose`, gate = the scene's narration, title, label and items, never an icon alone). The plan is never rewritten. `scene_content` turns a scene into a content block (`w3`) and `compose` decides `w3.comp`; `flat` means the 2D scene stays on screen and the world draws nothing. Rules:
 
-`world3d.scene_content(scene)` turns any scene type into one normalised block (`w3`: label, title and its emphasised words, value, lines, items, icon, figures found in the words); `world3d.choose_compositions` picks a composition per scene; `explainer_builder.story_payload(..., world=...)` puts both on each scene together with the cue times of the composition's parts (when each chunk, item, keyword or bar is spoken). Text and pictograms are textures on 3D plates (so they take the perspective); labels of stacks, hubs and bars are billboards. Rules, in order:
-
-1. **What the scene shows decides.** An item list, process or diagram becomes an exploded layer **stack** (labels from its items) or, in the hero world, a **hub** (a core with labelled satellites); a comparison becomes two **facing slabs** with a VS between; figures found in the scene's own words become **bars** (two or more of one unit), a **monolith** (one figure) or a **gauge** (one percentage). In the hero world an icon or a keyword picks the object that *is* the thing discussed: chip/GPU/memory = a glass chip slab with pins and traces, AI/robot/people = a node network, money/valuation/price = coin stacks, speed = light streaks rushing at the lens, security/lock = a shield with the lock on it, data centre/cloud/compute = a rack of glowing cubes, globe = a wire globe, the outro's question = a ring. No chart without figures, no object without a reason.
-2. **No visual, then typography in depth**, never decoration: *type-stack* (the sentence in 2-3 chunks on plates at different depths, the camera pushing through as each is spoken), *type-mono* (the line's longest keyword as a huge glowing word with the sentence on a plate in front), *type-orbit* (the line's own keywords orbiting a plate), *type-plate* (a tilted glass plate). They rotate with the scene's index.
-3. **Variety is enforced.** Data-bearing compositions are never swapped for typography just to vary, but no two consecutive scenes share a composition, typography prefers forms not yet used, and the camera move rotates dolly / orbit / crane / tilt / push-through scene by scene (`MOVES`). Tests: a 7-scene statements-only story gets at least 5 different compositions in both the hero and metrics worlds.
-
-| Preset | World | Structure |
+| Composition | Only when | Worlds |
 |---|---|---|
-| `cinematic-glass` | `hero` | all compositions: objects that are the thing discussed (with a mirrored reflection on the grid floor), stacks, hubs, facing slabs, bars, monoliths, typography; scenes dissolve into each other |
-| `depth-cards` | `corridor` | one continuous space: every scene (title and outro too) is a plane along z, zig-zagging, with pylons, rails, dust and the floor streaming past; no cuts, each scene change is a camera flight from plane to plane with a bank, a slow push-in during each hold, the next plane peeking in the haze |
-| `data-focus` | `metrics` | figure- and typography-led: bars, monoliths, gauges, stacks, facing slabs and typography in depth, no decorative objects at all (a scene without figures gets typography, not a made-up chart) |
+| `object:chip` / `cubegrid` / `shield` / `streaks` / `globe` / `network` / `cube` | the scene text names it: chips, GPUs, semiconductors; data centre, servers, clusters; security, breach, encryption; faster, speed, latency; worldwide, global, countries, planet, satellite ("real-world" does not count); neural, LLM, AI model, machine learning; package, shipping | hero; title, statement, quote, stat scenes |
+| `object:coins` | a money amount ($21.5B, 3 million dollars) | hero |
+| `object:ring` | the outro is literally about a loop or cycle | hero |
+| `stack` | the items are layers / tiers / levels / a pipeline / stages (the scene says so) | hero, metrics |
+| `path` | a timeline or a flow diagram with 3-4 steps: one plane per step, the camera walks through as each is spoken, a step is gone before the next shows | hero |
+| `hub` | a hub diagram: a core with its labelled parts | hero |
+| `split` | a real two-way comparison | hero, metrics (with figures) |
+| `bars` | two or more figures of one unit in the scene's own on-screen text, or a chart / comparison series | hero, metrics |
+| `monolith` / `gauge` | a stat that is a money amount, a percentage or at least 100 (a small count like "3 cities" stays a 2D stat) | hero, metrics |
+| `plane` | title, statement, quote, outro scenes: set in depth in one continuous corridor, the camera flying plane to plane (2D scenes in between), only the plane being spoken visible | corridor |
 
-Command-line flags win over a video's saved look: `--preset depth-cards` on a plan whose video was saved with `cinematic-glass` now drops the saved preset's theme and recipe (`preview._saved_look`), so the header and the video are the new preset's. For a 3D preset the writer prompt also carries `THREE_D_NOTE`.
+Everything else is 2D: a generic list is never a stack, an icon the writer picked loosely never summons an object, an outro is a calm 2D scene. No two consecutive 3D shots are the same composition (the second falls back to 2D). A video with nothing to depict is mostly 2D, by design; a typical one is about half 3D. Camera moves are motivated: a slow push toward the thing discussed; the stack climbs with the layers as they are spoken, the split turns to the side being spoken, the path walks to the next step. Command-line flags win over a video's saved look (`preview._saved_look`). Tests: `tests/test_worlds.py`.
 
 ## Presets
 
@@ -131,14 +132,9 @@ library.
 - HyperFrames registry search (`hyperframes catalog --query`, about 20 queries: 3d, isometric, layers stack, glass, orbit, globe, cube, network graph, camera rig, depth, parallax, hologram, grid floor, neon, chart 3d, shader orb, three). Candidates installed and read, then removed again because they do not fit this template: `exploded-stack` (isometric white plates, 1920x1080 landscape, four fixed layers, one self-driven 5 s clock, no word cues), `three-orbiting-cards` (cards on an orbit, no labels or data), `gallery-tunnel` (image corridor), the WebGPU orb blocks `plastic`, `liquid-metal`, `obsidian`, `light-edge` (an orb on black: nothing to carry a label or a number). `camera-rig-depth-stack` and `parallax-*` are CSS-3D card moves, which is what the first `depth` was and why it was replaced. Registry items are not scene types, so they cannot take the story's labels and numbers or the voice's cues without being rewritten, which is why the scenes are ours.
 - `aurora-drift`, `grain-overlay`, `caption-neon-glow` (registry, adapted inline) and the `mesh-gradient` block are as described above.
 
-## Evidence for the worlds (same story, every preset)
+## Evidence (relevance round)
 
-All in `docs/screenshots/rich-scenes/`, from saved real plans, no writer call, no voice, estimated timing, stills (one per scene, at the moment the scene is built) and 12 fps draft clips:
-
-- `worlds-tsmc.jpg`, `worlds-aidc.jpg`, `worlds-plumb.jpg`: three stories (TSMC memory chips for Nvidia; investors turning on AI data-centre builders; a startup fixing plumbing free) under `paper`, `cinematic-glass`, `depth-cards` and `data-focus`, one row per preset, one column per scene.
-- `worlds-tsmc-storyboards.jpg`: the TSMC storyboards of the four presets side by side (the preview's own storyboard images).
-- `worlds-tsmc-filmstrips.jpg`, `worlds-aidc-filmstrips.jpg`, `worlds-plumb-filmstrips.jpg`: the draft clip of each preset, a frame every 1.2 s, so the camera moves and the corridor flights show.
-- `presets-contact.jpg`: the TSMC story, all six presets.
+`docs/screenshots/relevance/`: `relevance-tsmc.jpg`, `relevance-plumb.jpg`, `relevance-aidc.jpg` (one still per scene of three saved plans under paper and the three 3D presets), `draft-filmstrip-tsmc-*.jpg` (draft clips, a frame every 1.4 s). Older images in `docs/screenshots/rich-scenes/` predate the relevance gate.
 
 ## Honest gaps
 
