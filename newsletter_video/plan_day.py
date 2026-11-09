@@ -33,7 +33,7 @@ log = logging.getLogger("newsletter_video")
 
 
 def plan(target_date: date, out_dir: Path, n_videos: int, kind: str = "day",
-         run_overrides: dict | None = None) -> dict:
+         run_overrides: dict | None = None, lineup_slots: list[dict] | None = None, lineup_total: int = 0) -> dict:
     """Fetch, select, write, save. `run_overrides` (a partial look) decides
     which writer path runs (an avatar look writes cards, an explainer look
     writes scene plans) and is recorded as the default of every video."""
@@ -53,13 +53,21 @@ def plan(target_date: date, out_dir: Path, n_videos: int, kind: str = "day",
             raise RuntimeError("No stories scraped; nothing to plan")
         covered = _covered_titles()
         log.info("Selecting top stories and building scripts")
-        scripts = build_scripts(editions, n_videos=n_videos, exclude_titles=covered)
+        if lineup_slots is not None:  # the standing lineup (lineup.py): formats per slot, one writer call per format
+            from .lineup import write_scripts
+
+            scripts = write_scripts(lineup_slots, target_date, lineup_total, editions, covered, build_scripts)
+        else:
+            scripts = build_scripts(editions, n_videos=n_videos, exclude_titles=covered)
         if not scripts:
             raise RuntimeError("No stories selected; nothing to plan")
         for script in scripts:
             log.info("Script %r (%s): %d words, stories %s", script.title, script.writer or "?", script.word_count,
                      [s.title for s in script.stories])
     data = pm.new_manifest(scripts, target_date, kind=kind, default_look=resolved, look_overrides=run_overrides)
+    if lineup_slots is not None:  # each planned video keeps its own slot's look and record
+        for entry, script in zip(data["videos"], scripts):
+            entry["look"] = pm.looks.compact(pm.looks.validate_look(script.look or {}))
     with pm.locked(out_dir):
         pm.drop_previews(out_dir)  # previews of the previous plan showed other videos
         path = pm.write_manifest(out_dir, data)

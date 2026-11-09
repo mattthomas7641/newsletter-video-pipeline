@@ -12,6 +12,7 @@ pressed there (or `python -m newsletter_video.render_plan DATE --final`).
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import shutil
@@ -135,7 +136,30 @@ def daily_mode() -> str:
     return mode
 
 
-def plan_only(target_date: date, out_dir: Path, wanted: int) -> list[Path]:
+def _pending_lineup_slots(day: date, out_dir: Path, already: int) -> tuple[list[dict] | None, int]:
+    """(the slots still to make today, the day's total) from the lineup, or (None, 0) without one. Slots whose
+    sidecar already exists are not made again, so a re-run only fills the gaps."""
+    from . import lineup as lineup_mod
+
+    act = lineup_mod.active(day)
+    if act is None:
+        return None, 0
+    core, which = act
+    slots = lineup_mod.expand(core, day)
+    made = set()
+    for path in sidecars(out_dir):
+        try:
+            made.add(int(json.loads(path.read_text()).get("lineup", {}).get("slot")))
+        except (OSError, ValueError, TypeError, AttributeError):
+            continue
+    pending = [s for s in slots if s["slot"] not in made]
+    if already > len(made):  # videos made before the lineup existed count towards the total
+        pending = pending[: max(0, core["total"] - already)]
+    log.info("Lineup (%s): %d slots for %s, %d to make now", which, core["total"], day, len(pending))
+    return pending, core["total"]
+
+
+def plan_only(target_date: date, out_dir: Path, wanted: int, slots: list[dict] | None = None, total: int = 0) -> list[Path]:
     """Approval mode: the planning step alone (one writer call, plan.json
     for the control panel), then stop. A plan the day already has (made
     from the panel, or by an earlier run) is kept, never replaced, because
@@ -150,7 +174,7 @@ def plan_only(target_date: date, out_dir: Path, wanted: int) -> list[Path]:
         log.info("%s already has a plan with %d video(s); keeping it (plan again from the panel to replace it)",
                  target_date, len(data["videos"]))
     elif wanted:
-        data = plan(target_date, out_dir, wanted)
+        data = plan(target_date, out_dir, wanted, lineup_slots=slots, lineup_total=total)
     else:
         log.info("Every video for %s is already made; nothing to plan", target_date)
         data = None
@@ -178,9 +202,14 @@ def run(target_date: date | None = None) -> list[Path]:
     # watchdog kill or a manual retry) only makes the videos still missing.
     n_videos = int(os.environ.get("VIDEOS_PER_DAY", 3))
     already = len(sidecars(out_dir))
-    wanted = max(0, n_videos - already)
+    # A lineup (lineup.json, lineup.py) says how many videos and in which formats; without the file this is
+    # exactly VIDEOS_PER_DAY videos in the .env look, as before.
+    lineup_slots, lineup_total = _pending_lineup_slots(target_date, out_dir, already)
+    if lineup_slots is not None:
+        n_videos = lineup_total
+    wanted = len(lineup_slots) if lineup_slots is not None else max(0, n_videos - already)
     if mode == "plan":
-        return plan_only(target_date, out_dir, wanted)
+        return plan_only(target_date, out_dir, wanted, lineup_slots, lineup_total)
 
     if not _wait_for_network():
         log.warning(
@@ -209,7 +238,12 @@ def run(target_date: date | None = None) -> list[Path]:
             log.info("Excluding %d previously-covered story title(s) (all-time, similarity-matched)", len(covered))
 
         log.info("Selecting top stories and building scripts")
-        scripts = build_scripts(editions, n_videos=wanted, exclude_titles=covered)
+        if lineup_slots is not None:
+            from .lineup import write_scripts
+
+            scripts = write_scripts(lineup_slots, target_date, lineup_total, editions, covered, build_scripts)
+        else:
+            scripts = build_scripts(editions, n_videos=wanted, exclude_titles=covered)
         for script in scripts:
             log.info("Script %r (%s): %d beats, %d words, stories %s", script.title, script.writer or "?",
                      len(script.beats), script.word_count, [s.title for s in script.stories])

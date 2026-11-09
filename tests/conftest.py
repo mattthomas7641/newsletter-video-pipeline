@@ -27,6 +27,7 @@ def isolated_env(monkeypatch, tmp_path):
                 "FALLBACK_UPLOAD", "RENDER_TIMEOUT_SECONDS", "VOICEBOX_GENERATION_TIMEOUT"):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("NOTIFY_MACOS", "0")
+    monkeypatch.setenv("BYTESIZE_LINEUP_FILE", str(tmp_path / "no-lineup.json"))  # a real lineup.json never leaks into tests
     monkeypatch.setenv("YOUTUBE_UPLOAD", "0")
     monkeypatch.setenv("YOUTUBE_PRIVACY", "public")
     monkeypatch.setenv("TTS_PROVIDER", "say")

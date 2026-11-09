@@ -25,6 +25,8 @@ from . import history, security
 from .characters_svc import CharacterService
 from .config import PROJECT_ROOT, UIPaths
 from .envstore import SCHEMA, EnvStore, SettingsError
+from .lineup_svc import LineupService
+from ..lineup import LineupError
 from .jobs import JobManager, Spawner, default_spawner
 from .plans import PlanError, PlanService
 from .runs import RUN_KINDS, RunBlocked, RunService
@@ -118,6 +120,7 @@ class App:
         self.runs = RunService(paths, self.jobs, self.store, **kwargs)
         self.characters = CharacterService(paths, self.jobs, self.store, **({"voicebox": voicebox} if voicebox else {}))
         self.plans = PlanService(paths, self.jobs, self.store, self.runs, characters=self.characters)
+        self.lineup = LineupService(paths, self.store, self.characters, self.plans, self._schedule)
         self.support = feature_support(paths.root)
         self._schedule_cache: tuple[float, dict] | None = None
         self.index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
@@ -145,6 +148,8 @@ class App:
             return error(400, str(exc))
         except LookError as exc:
             return error(400, "That look isn't valid: " + "; ".join(exc.errors))
+        except LineupError as exc:
+            return error(400, "That lineup isn't valid: " + "; ".join(exc.errors), errors=exc.errors)
         except KeyError:
             return error(404, "Not found.")
         except Exception:  # noqa: BLE001
@@ -182,6 +187,10 @@ class App:
             return json_response({"plans": self.plans.list_plans(date.today())})
         if path == "/api/looks":
             return json_response(looks_payload())
+        if path == "/api/lineup":
+            return json_response(self.lineup.get())
+        if path == "/api/results":
+            return json_response(self.lineup.results())
         m = re.fullmatch(r"/api/plans/([A-Za-z0-9-]+)", path)
         if m:
             return json_response(self.plans.describe(m.group(1)))
@@ -320,6 +329,31 @@ class App:
             return json_response({"job": self.runs.describe(job)}, 201)
         if path == "/api/characters" and req.method == "POST":
             return self._add_character(req)
+        if path == "/api/lineup" and req.method == "PUT":
+            data = self._read_json(req)
+            if data.get("clear_once") is True:
+                return json_response(self.lineup.clear_once())
+            raw = data.get("lineup")
+            if not isinstance(raw, dict):
+                return error(400, "lineup must be an object.")
+            return json_response(self.lineup.save(raw, once=data.get("once") is True))
+        if path == "/api/lineup/expand" and req.method == "POST":
+            data = self._read_json(req)
+            raw = data.get("lineup")
+            if not isinstance(raw, dict):
+                return error(400, "lineup must be an object.")
+            return json_response(self.lineup.expand(raw, data.get("date") if isinstance(data.get("date"), str) else None))
+        if path == "/api/lineup/preview" and req.method == "POST":  # try a format: a free draft of a sample story, nothing saved
+            data = self._read_json(req)
+            look = data.get("look")
+            if not isinstance(look, dict):
+                return error(400, "look must be an object.")
+            sample = self.lineup.sample()
+            if sample is None:
+                return error(409, "There is no story to try a format on yet. Plan once from the Design lab, then come back.")
+            ref, vid = sample
+            job = self.plans.start_preview(ref, vid, "draft", overrides=look, trial=True)
+            return json_response({"job": self.runs.describe(job), "ref": ref, "video": vid}, 201)
         if path == "/api/plans" and req.method == "POST":
             data = self._read_json(req)
             overrides = data.get("overrides") or {}

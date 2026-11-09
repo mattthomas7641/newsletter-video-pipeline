@@ -255,3 +255,69 @@ def test_rotation_setting_is_validated_and_each_video_shows_its_colour(client, p
     # the colours reach the preview CLI as the trial look of that video
     _, data = client.get_json("/api/looks")
     assert data["rotation_default"] == ["#ff7a1a", "#ff3d8a", "#22d3ee", "#8b5cff", "#2ee6a6"]
+
+
+# ---- the lineup through the panel ------------------------------------------------------
+
+LINEUP = {"order": "interleave", "batches": [
+    {"count": 3, "style": "explainer", "preset": "paper", "accent": "#0e8a7d"},
+    {"count": 4, "style": "explainer", "preset": "cinematic-glass", "accent_mode": "alternate", "palette": ["#ff7a1a", "#ff3d8a", "#22d3ee"]}]}
+
+
+def test_lineup_defaults_from_env_then_saves_and_syncs_videos_per_day(client, paths):
+    status, data = client.get_json("/api/lineup")
+    assert status == 200 and data["saved"] is False and data["lineup"]["total"] >= 1 and data["next_run"]["slots"]
+    status, data = client.send_json("PUT", "/api/lineup", {"lineup": LINEUP})
+    assert status == 200 and data["saved"] and data["lineup"]["total"] == 7 and len(data["next_run"]["slots"]) == 7
+    assert EnvStore(paths.env_path).read()["values"]["VIDEOS_PER_DAY"] == "7"  # the fallback key follows the lineup
+    assert [s["family"] for s in data["next_run"]["slots"]][:4] == ["paper", "glass", "paper", "glass"]
+
+
+def test_lineup_rejects_bad_input_and_unknown_avatars(client):
+    status, data = client.send_json("PUT", "/api/lineup", {"lineup": {"batches": [{"count": 3, "accent": "teal"}]}})
+    assert status == 400 and "#rrggbb" in data["error"]
+    status, data = client.send_json("PUT", "/api/lineup", {"lineup": {"batches": [{"count": 2, "style": "avatar", "character": "ghost"}]}})
+    assert status == 400 and "doesn't exist" in data["error"]
+    assert client.send_json("PUT", "/api/lineup", {"lineup": "x"})[0] == 400
+    assert client.send_json("PUT", "/api/lineup", {"lineup": {"batches": [{"count": 25}]}})[0] == 400
+
+
+def test_lineup_one_off_for_the_next_run_leaves_the_standing_lineup(client):
+    client.send_json("PUT", "/api/lineup", {"lineup": LINEUP})
+    one = {"order": "sequential", "batches": [{"count": 2, "style": "explainer", "preset": "cinematic-glass"}]}
+    status, data = client.send_json("PUT", "/api/lineup", {"lineup": one, "once": True})
+    assert status == 200 and data["once"]["total"] == 2 and data["lineup"]["total"] == 7  # the standing one is untouched
+    assert data["next_run"]["uses"] == "once" and data["next_run"]["total"] == 2 and data["once"]["date"] == data["next_run"]["date"]
+    assert client.get_json("/api/settings")[1]["values"]["VIDEOS_PER_DAY"] == "7"
+    status, data = client.send_json("PUT", "/api/lineup", {"clear_once": True})
+    assert data["once"] is None and data["next_run"]["uses"] == "default" and data["next_run"]["total"] == 7
+
+
+def test_lineup_expand_previews_an_unsaved_draft_and_names_problems(client):
+    status, data = client.send_json("POST", "/api/lineup/expand", {"lineup": LINEUP})
+    assert status == 200 and data["ok"] and data["total"] == 7 and data["slots"][1]["look"]["accent"] == "#ff7a1a"
+    status, data = client.send_json("POST", "/api/lineup/expand", {"lineup": {"batches": [{"count": 0}]}})
+    assert status == 200 and data["ok"] is False and data["errors"]
+
+
+def test_trying_a_format_needs_a_story_then_starts_a_free_trial_draft(client, paths, spawner):
+    status, data = client.send_json("POST", "/api/lineup/preview", {"look": {"style": "explainer", "preset": "cinematic-glass"}})
+    assert status == 409 and "no story" in data["error"].lower()
+    seed_plan(paths)
+    status, data = client.send_json("POST", "/api/lineup/preview", {"look": {"style": "explainer", "preset": "cinematic-glass", "accent": "#22d3ee"}})
+    argv = spawner.calls[-1]["argv"]
+    assert status == 201 and data["ref"] == DAY.isoformat() and data["video"] == "v01"
+    assert "--trial" in argv and argv[argv.index("--preview") + 1] == "draft" and argv[argv.index("--accent") + 1] == "#22d3ee"
+
+
+def test_results_group_the_uploaded_videos_of_the_last_14_days_by_format(client, paths):
+    for offset, (name, fmt, accent) in enumerate([("01_a", "Clean paper", "#0e8a7d"), ("02_b", "Dark glass", "#ff7a1a")]):
+        folder = paths.output_dir / (DAY - __import__("datetime").timedelta(days=offset)).isoformat()
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / f"{name}.json").write_text(json.dumps({"script": {"title": f"Video {name}"}, "lineup": {"format": fmt, "slot": offset + 1, "accent": accent, "date": folder.name}, "look": {}}))
+        (folder / "uploads.json").write_text(json.dumps({f"{name}.mp4": {"id": f"yt{name}1234", "privacy": "private"}}))
+    (paths.output_dir / (DAY - __import__("datetime").timedelta(days=30)).isoformat()).mkdir(parents=True, exist_ok=True)
+    status, data = client.get_json("/api/results")
+    assert status == 200 and data["total"] == 2 and {g["format"] for g in data["groups"]} == {"Clean paper", "Dark glass"}
+    g = next(g for g in data["groups"] if g["format"] == "Dark glass")
+    assert g["count"] == 1 and g["videos"][0]["url"].startswith("https://www.youtube.com/shorts/") and g["videos"][0]["accent"] == "#ff7a1a"

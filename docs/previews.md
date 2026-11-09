@@ -115,25 +115,39 @@ the CLIs, `LOOK_PRESET` in `.env`): it resolves into a theme and a `look-<id>` r
 wherever the look did not set those by hand. The `cinematic` theme and the rich scene
 types it unlocks are described in `docs/cinematic-look.md`.
 
-## The Videos page and the Design lab
+## The Lineup page and the Design lab
 
-`#/` (Videos, `views/videos.js` + `views/plan.js` + `stylepicker.js`) is the daily routine; `#/lab`
-(Design lab, `views/workbench.js`) is for new designs. Both sit on the API described above; the old
+`#/` (Lineup, `views/lineup.js`, `ui/lineup_svc.py`, `newsletter_video/lineup.py`) is the standing
+description of the day that the automatic run reads; `#/lab` (Design lab, `views/workbench.js`) is for
+new designs, and also holds the plan review (`views/dayplan.js`) for approval mode. The old
 `#/workbench` and `#/styles` routes redirect to the lab.
 
-- **Default style.** `PUT /api/settings` with `VIDEO_STYLE`, `LOOK_PRESET`, `LOOK_BG`, `LOOK_ACCENT`,
-  `CHARACTER`; the scheduled run reads them from `.env` like any look default. `GET /api/looks` lists the
-  two presets with their default colours and swatches (`presets.json` `colors`).
-- **Trial previews.** *Preview this video* is `POST .../preview {tier: draft, trial: true, overrides}`:
-  the CLI's `--trial` previews the given look INSTEAD of the saved one without saving it, and writes
-  `trial_look` into `preview.json`; the fingerprint is that of the video with that look saved, so the
-  draft is shown (flagged `trial`) and stays valid after *Use this style for this video* saves exactly
-  that look. Before a preview starts, the current fresh storyboard and draft are kept under
-  `_preview/<vid>/looks/<look-key>/` (newest eight, `looks.json`, served at
-  `/media/plan/<ref>/<vid>/looks/<key>/draft.mp4`), which is how the tile shows the saved style's draft
-  beside the trial.
-- **Design lab.** `GET /api/looks` library, a test plan, storyboards per look kept the same way, a
-  side-by-side compare, *Try another look* re-capturing stills. Never part of the Videos flow.
+- **The file.** `lineup.json` (project root, or `BYTESIZE_LINEUP_FILE`): `{version, total, order,
+  batches[{count, style, preset, bg, accent_mode: one|alternate|random, accent, palette, character}],
+  slots{n: override}, once?{date, ...}}`, validated by `lineup.validate` (counts 1-20, #rrggbb colours,
+  known presets, avatars that exist, palette at most 8) and written atomically. `lineup.active(day)`
+  returns the one-off for its date, else the standing lineup, else None (no file: exactly the
+  `VIDEOS_PER_DAY` / `LOOK_*` behaviour). `lineup.expand` turns it into slots (interleaved or in order;
+  alternate = palette[k % n] within the batch; random = seeded by day and batch, never the same twice
+  in a row).
+- **The daily run.** `run_pipeline` asks for the day's pending slots (a re-run only fills gaps, by the
+  `lineup.slot` in each sidecar) and `lineup.write_scripts` makes one writer call per format group
+  (avatar cards, explainer scene plans, a 3D look's notes), each told to skip the stories earlier groups
+  took; every script carries its slot's look and a `lineup` record. `DAILY_MODE=plan` plans the same
+  way and stores each video's look and record in `plan.json`.
+- **Experiment tracking.** The sidecar has `lineup: {date, slot, of, batch, batch_name, accent_mode,
+  format, style, preset, bg, accent, character, overridden}` and `uploads.json` entries get the same
+  fields; `GET /api/results` groups the last 14 days of uploads by format (read-only).
+- **API.** `GET/PUT /api/lineup` (`once: true` for the next run only, `clear_once`),
+  `POST /api/lineup/expand` (slots of an unsaved draft), `POST /api/lineup/preview` (a trial draft of a
+  batch's look on the newest planned story: the same `--trial` job as below, nothing saved).
+- **Trial previews.** `POST .../preview {tier: draft, trial: true, overrides}`: the CLI's `--trial`
+  previews the given look INSTEAD of the saved one without saving it, writing `trial_look` into
+  `preview.json`; the fingerprint is that of the video with that look saved, so the draft is shown
+  (flagged `trial`) and stays valid after the look is saved. Before a preview starts, the current fresh
+  storyboard and draft are kept under `_preview/<vid>/looks/<look-key>/` (newest eight).
+- **Design lab.** A test plan, storyboards per look kept the same way, side-by-side compare, *Try
+  another look*. Never part of the Lineup.
 
 The default look preset (Settings, `LOOK_PRESET`) is validated against the library file and is
 what a planned video uses until it picks its own. 
