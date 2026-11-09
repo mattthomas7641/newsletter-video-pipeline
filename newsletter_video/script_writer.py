@@ -84,6 +84,8 @@ class Script:
     # Per-video look overrides (see look.py): None or empty means "the
     # defaults from .env", which is what the unattended daily run always uses.
     look: dict | None = field(default=None, repr=False)
+    # Where this video came from in the day's lineup (lineup.py): batch, slot, format. None without a lineup.
+    lineup: dict | None = field(default=None, repr=False)
 
     @property
     def narration(self) -> str:

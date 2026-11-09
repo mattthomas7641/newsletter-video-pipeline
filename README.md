@@ -84,36 +84,30 @@ Everything above can be set up by clicking instead of editing files. Start the p
 It opens `http://127.0.0.1:8765` in your browser (another port is used if that one is busy)
 and needs nothing beyond the packages already in `requirements.txt`. The panel is always light. Press Ctrl+C in the terminal to stop it; anything already running keeps going.
 
-Three pages. Screenshots are in `docs/screenshots/panel-one-page/`.
+Three pages. Screenshots are in `docs/screenshots/lineup/`.
 
-- **Videos** (the landing page): everything about the daily videos on one page.
-  1. *Default style for automatic videos*: **Explainer | Avatar**. Explainer offers two looks,
-     **Clean paper** and **Dark glass**, and for each two colours: the *background* and the
-     *animation colour* (swatches or any hex, with a live preview; a pair that would be unreadable
-     is adjusted and the page says so). Avatar offers the avatars you have (plus *Add avatar*) and
-     shows the one standard voice (changed in Settings). Dark glass also has *Alternate the animation
-     colour across the day's videos*: video 1 gets the first colour of the palette, video 2 the
-     second, and so on (`LOOK_ACCENT_ROTATE`, up to 8 colours; a custom style on a video wins), and
-     each tile shows the colour it will get. *Save as default* writes `VIDEO_STYLE`, `LOOK_PRESET`,
-     `LOOK_BG`, `LOOK_ACCENT`, `LOOK_ACCENT_ROTATE`, `CHARACTER` to `.env`, which is what the scheduled run
-     and every new plan use.
-  2. *Today's videos*: *Plan today's videos* picks the stories and writes the scripts (one writer
-     call, about 3 cents) and stops; in [approval mode](#approval-mode) the scheduled job leaves the
-     plan here with a *Plan ready: review and render* banner. Each video is a tile with its status
-     (planned / drafted / rendered / uploaded) and a *Default style* or *Custom style* chip.
-     *Style for this video* opens the same style control, prefilled; *Preview this video* renders
-     a draft clip of that style (free, about 30-60 s, nothing is saved), shown beside the saved
-     style's draft; *Use this style for this video* saves it for that video only, *Reset to
-     default* removes it. *Open in Studio* serves the live composition; *Rewrite script…* is a
-     separate, confirmed, paid writer call. *Render all…* / *Render selected…* is the only step
-     that makes real videos: full quality, voiced, with confirmation, under the same lock,
-     watchdog and status bookkeeping as the daily job, uploading only if uploads are on. Stories
-     covered since planning are skipped. *Run the full daily job now…* runs the unattended job as
-     before. Below: today's rendered videos and, folded away, the last two weeks.
+- **Lineup** (the landing page): a standing description of the day's videos that the automatic
+  run reads, so there is no list of planned videos to review. Set *Videos per day* (1-20), split
+  them into **batches** (a count, a format and colours each), save. Example: 3 *Clean paper* in one
+  colour and 4 *Dark glass* in alternating colours, plus 3 avatar videos. A batch is Explainer
+  (*Clean paper* or *Dark glass*, a background colour, and the animation colour as *One colour*,
+  *Alternate* through a palette, or *Random* from it, seeded per day so a re-render keeps its colour)
+  or Avatar (the avatars you have, one standard voice set in Settings). Quick starts (*All dark
+  glass, alternating*, *All clean paper*, *50/50*), *Randomize* (with undo) and *Shuffle colours*
+  get you going; *Preview* on a batch makes a free draft of that format on a sample story. The slot
+  strip shows the day in publish order (*Interleave batches* spreads formats through the day);
+  click a slot to change just that one. *Save lineup* uses it every day until changed; *Only for
+  the next run* is a one-off after which the previous lineup is back. The banner always says what
+  the next run will make. Saved in `lineup.json` (gitignored, next to `.env`; no file means the
+  old behaviour from `VIDEOS_PER_DAY` and the `LOOK_*` settings, which stay as fallbacks);
+  `VIDEOS_PER_DAY` follows the lineup's total. The daily run writes one script batch per format and
+  records each video's format (style, preset, colours, avatar, batch, slot, date) in its sidecar and
+  in `uploads.json`; *Results by format* at the bottom lists the last 14 days of uploads grouped by
+  format, to compare formats over time (views are not fetched yet).
 - **Design lab**: for trying new designs, or seeing how a render looks without drafting a video.
   Pick a look, *Make a test video* (one throwaway video from today's newsletter, never uploaded),
   then compare storyboards of the same story in two looks side by side; every look control is next
-  to it and each change re-captures the storyboard (free, about 15 s). Not part of the daily flow.
+  to it and each change re-captures the storyboard (free, about 15 s). Not part of the daily flow. The plan review for `DAILY_MODE=plan` (approval mode), planning by hand and the rendered videos live in its *Plan review and rendered videos* section.
 - **Settings.** The narrators and their voices (*Hear voice*, *Add a character*),
   videos per day, what the scheduled run does (make everything, or plan and ask you), YouTube
   upload and privacy, what happens to videos made by the fallback writer, and a *Setup check*
@@ -415,7 +409,7 @@ By default the scheduled run makes and posts everything on its own. Set `DAILY_M
 after the planning step: it fetches the newsletters, picks the stories (skipping any already
 covered), writes the scripts (one writer call, about 3 cents) into `output/<date>/plan.json`,
 and sends the usual notification ("Daily plan finished: 3 video(s) planned ... waiting for
-your review"). Nothing is voiced, rendered or uploaded. The Videos page then shows *Plan
+your review"). Nothing is voiced, rendered or uploaded. The Design lab's plan review then shows *Plan
 ready — review and render* until you have previewed, changed looks and pressed *Render all…*
 or *Render selected…* (or run `python -m newsletter_video.render_plan <date> --final`), which
 renders and uploads exactly as the full run would, under the same lock, watchdog and

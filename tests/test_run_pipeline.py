@@ -323,3 +323,10 @@ def test_unattended_run_without_rotation_records_no_accent(stubbed_pipeline, iso
     assert run_pipeline.main([DAY.isoformat()]) == 0
     folder = isolated_env / DAY.isoformat()
     assert {json.loads(p.read_text())["look"]["accent"] for p in folder.glob("0*.json")} == {""}
+
+
+def test_without_a_lineup_file_the_daily_run_is_exactly_as_before(stubbed_pipeline, isolated_env, notifications):
+    assert run_pipeline.main([DAY.isoformat()]) == 0
+    folder = isolated_env / DAY.isoformat()
+    assert len(list(folder.glob("0*.json"))) == 3
+    assert all("lineup" not in json.loads(p.read_text()) for p in folder.glob("0*.json"))

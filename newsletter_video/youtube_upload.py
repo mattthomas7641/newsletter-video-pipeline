@@ -18,6 +18,7 @@ pipeline writes next to it. Uploaded video IDs are recorded in
 from __future__ import annotations
 
 import html
+import json
 import logging
 import os
 import sys
@@ -69,6 +70,25 @@ def _clean_url(url: str) -> str:
     return urlunsplit(parts._replace(query=urlencode(query)))
 
 
+def _format_record(video: Path) -> dict:
+    """The format fields of this video (style, preset, colours, avatar, batch, slot, date) for the upload
+    record, read from its sidecar, so uploads.json alone says which format each posted video was."""
+    try:
+        meta = json.loads(video.with_suffix(".json").read_text())
+    except (OSError, ValueError):
+        return {}
+    info = meta.get("lineup") if isinstance(meta, dict) else None
+    if isinstance(info, dict):
+        return {"format": info.get("format"), "style": info.get("style"), "preset": info.get("preset"), "bg": info.get("bg"),
+                "accent": info.get("accent"), "character": info.get("character"), "batch": info.get("batch"),
+                "batch_name": info.get("batch_name"), "slot": info.get("slot"), "date": info.get("date")}
+    look = meta.get("look") if isinstance(meta, dict) else None
+    if isinstance(look, dict):
+        return {"style": look.get("style"), "preset": look.get("preset"), "bg": look.get("bg"), "accent": look.get("accent"),
+                "character": look.get("character")}
+    return {}
+
+
 def write_metadata(script: Script, video_path: Path, privacy: str | None = None) -> Path:
     """Writes the post's title/description/tags next to the video, so the
     upload (or a manual post to TikTok) can reuse them later. `privacy`
@@ -115,6 +135,8 @@ def write_metadata(script: Script, video_path: Path, privacy: str | None = None)
         metadata["look"] = {"version": 1, **resolved}
     except (LookError, ValueError):
         pass  # an unreadable environment never blocks writing the sidecar
+    if getattr(script, "lineup", None):  # experiment tracking: which format this video was (lineup.py)
+        metadata["lineup"] = dict(script.lineup)
     path = video_path.with_suffix(".json")
     write_json_atomic(path, metadata)
     return path
@@ -325,7 +347,7 @@ def upload_day(day: date, dry_run: bool = False) -> list[str]:
             record_video(folder, video.stem, "upload_failed", error=f"{type(exc).__name__}: {exc}"[:300])
             continue
         video_id = response["id"]
-        record[video.name] = {"id": video_id, "privacy": privacy, "publishAt": at}
+        record[video.name] = {"id": video_id, "privacy": privacy, "publishAt": at, **_format_record(video)}
         write_json_atomic(record_path, record)
         record_video(folder, video.stem, "uploaded", youtube_id=video_id, privacy=privacy)
         uploaded.append(video_id)
