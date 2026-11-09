@@ -216,6 +216,10 @@ def run(target_date: date | None = None) -> list[Path]:
         if not scripts:
             raise RuntimeError("No stories selected — nothing to render")
         scripts, privacy = _fallback_policy(scripts, uploading)
+        from .look import with_rotation
+
+        for i, script in enumerate(scripts):  # LOOK_ACCENT_ROTATE: the day's videos alternate their accent colour
+            script.look = with_rotation(getattr(script, "look", None), i)
         update_run(out_dir, writer=scripts[0].writer, requested=wanted)
 
         log.info("Rendering %d shorts to %s", len(scripts), out_dir)

@@ -234,3 +234,24 @@ def test_a_trial_draft_is_shown_without_being_saved_and_the_default_result_is_ke
     _, plan = client.send_json("PUT", f"/api/plans/{ref}/videos/v01/look", {"look": {"preset": "cinematic-glass", "accent": "#ff3d8a"}})
     d = plan["videos"][0]["preview"]["draft"]
     assert d["trial"] is False and d["url"].endswith("/draft.mp4")
+
+
+def test_rotation_setting_is_validated_and_each_video_shows_its_colour(client, paths):
+    seed_plan(paths, n=3)
+    ref = DAY.isoformat()
+    for bad in ("blue", "#ff7a1a,nope", ",".join(["#ff7a1a"] * 9)):
+        status, data = client.send_json("PUT", "/api/settings", {"updates": {"LOOK_ACCENT_ROTATE": bad}})
+        assert status == 400 and "LOOK_ACCENT_ROTATE" in data["fields"], bad
+    rot = "#ff7a1a,#ff3d8a,#22d3ee"
+    assert client.send_json("PUT", "/api/settings", {"updates": {"VIDEO_STYLE": "explainer", "LOOK_PRESET": "cinematic-glass", "LOOK_ACCENT_ROTATE": rot}})[0] == 200
+    assert EnvStore(paths.env_path).read()["values"]["LOOK_ACCENT_ROTATE"] == rot
+    _, plan = client.get_json(f"/api/plans/{ref}")
+    assert [v["resolved"]["accent"] for v in plan["videos"]] == ["#ff7a1a", "#ff3d8a", "#22d3ee"]
+    assert [v["default_look"]["accent"] for v in plan["videos"]] == ["#ff7a1a", "#ff3d8a", "#22d3ee"]  # what a tile's editor starts from
+    # a custom style wins for that video only; the others keep alternating
+    _, plan = client.send_json("PUT", f"/api/plans/{ref}/videos/v02/look", {"look": {"accent": "#0e8a7d"}})
+    assert [v["resolved"]["accent"] for v in plan["videos"]] == ["#ff7a1a", "#0e8a7d", "#22d3ee"]
+    assert plan["videos"][1]["default_look"]["accent"] == "#ff3d8a"
+    # the colours reach the preview CLI as the trial look of that video
+    _, data = client.get_json("/api/looks")
+    assert data["rotation_default"] == ["#ff7a1a", "#ff3d8a", "#22d3ee", "#8b5cff", "#2ee6a6"]

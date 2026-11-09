@@ -128,10 +128,19 @@ export function mountPlanPanel(host, { onJobStarted }) {
 
   // per video: the style being edited (kept across re-renders) and which tile's editor is open
   const edits = new Map();
-  const defaultValue = () => valueFromLook(plan().default_look);
+  const defaultValue = (v) => valueFromLook(v.default_look || plan().default_look); // per video: it includes the colour its place in the day gives it
   const savedValue = (v) => valueFromLook(v.resolved);
   const editValue = (v) => edits.get(v.id) || savedValue(v);
   const isCustom = (v) => Object.keys(v.look || {}).length > 0;
+
+  // the animation colour this video will get (Dark glass), so a day's alternating colours are visible at a glance
+  function accentDot(v) {
+    const r = v.resolved || {};
+    if (r.style === "avatar" || !r.accent || r.theme !== "cinematic") return null;
+    const rotating = !v.look || v.look.accent === undefined;
+    return h("span", { class: "accent-dot", style: `--c:${r.accent}`, title: `Animation colour ${r.accent}${rotating ? " (from the default)" : " (set for this video)"}` },
+      h("i", { "aria-hidden": "true" }), h("span", { class: "faint small", text: r.accent }));
+  }
 
   function statusChip(v, prev) {
     if (v.status === "rendered") return h("span", { class: "chip good" }, icon("check"), v.rendered?.youtube ? "Uploaded" : "Rendered");
@@ -158,6 +167,7 @@ export function mountPlanPanel(host, { onJobStarted }) {
         h("h3", { text: v.title }),
         h("div", { class: "pv-meta" }, h("span", { class: "chip", text: v.badge }), statusChip(v, prev),
           h("span", { class: `chip${custom ? " active" : ""}`, title: custom ? "This video has its own style" : "It follows the default style", text: custom ? "Custom style" : "Default style" }),
+          accentDot(v),
           h("span", { class: "faint small", text: v.scenes ? `${v.scenes.length} scenes, ${v.words} words` : `${v.words} words` }),
           v.writer === "heuristic" ? h("span", { class: "chip warn", text: "Rule-based script" }) : null),
         h("p", { class: "pv-style small muted", text: describeValue(savedValue(v)) })));
@@ -179,7 +189,7 @@ export function mountPlanPanel(host, { onJobStarted }) {
     const rewriteBtn = h("button", { class: "btn small quiet", type: "button", disabled: blocked, onClick: () => withBusy(v, "rewrite", () => rewriteVideo(p.ref, v)) },
       busy && busyVideo.tier === "rewrite" ? spinner() : icon("refresh", "sm"), "Rewrite script…");
     const quickDraft = isOpen ? null : h("button", { class: "btn small", type: "button", disabled: blocked,
-      onClick: () => withBusy(v, "draft", () => startPreview(p.ref, v.id, "draft", false, { overrides: diffFromDefault(savedValue(v), defaultValue()), trial: true })) },
+      onClick: () => withBusy(v, "draft", () => startPreview(p.ref, v.id, "draft", false, { overrides: diffFromDefault(savedValue(v), defaultValue(v)), trial: true })) },
     busy && busyVideo.tier === "draft" ? spinner() : icon("play", "sm"), "Preview this video", costTag("free · 30–60 s"));
     const actions = h("div", { class: "pv-actions" }, toggle, quickDraft, studioBtn, h("span", { class: "grow" }), rewriteBtn);
 
@@ -215,7 +225,7 @@ export function mountPlanPanel(host, { onJobStarted }) {
   }
 
   function styleEditor(v, { blocked, busy }) {
-    const def = defaultValue();
+    const def = defaultValue(v);
     const saved = savedValue(v);
     const picker = stylePicker({ value: editValue(v), onChange: (val) => { edits.set(v.id, val); refreshButtons(); } });
     const diff = () => diffFromDefault(editValue(v), def);

@@ -18,7 +18,7 @@ and a narrator character at the bottom of the frame. An outro card
 asks viewers to comment.
 
 - **Runs itself:** a macOS `launchd` job writes, voices, renders and uploads the day's
-  videos at 7:00 AM, logging every stage. With a locally cloned voice, 10 videos take about
+  videos on a schedule (the time is in the launchd plist), logging every stage. With a locally cloned voice, 10 videos take about
   85 minutes on a laptop. Or, in approval mode (`DAILY_MODE=plan`), it only writes the
   day's plan and notifies you; you review it in the control panel and press Render.
 - **Two-stage story selection:** with a TypeSafe API key, Jev screens every candidate for
@@ -91,8 +91,11 @@ Three pages. Screenshots are in `docs/screenshots/panel-one-page/`.
      **Clean paper** and **Dark glass**, and for each two colours: the *background* and the
      *animation colour* (swatches or any hex, with a live preview; a pair that would be unreadable
      is adjusted and the page says so). Avatar offers the avatars you have (plus *Add avatar*) and
-     shows the one standard voice (changed in Settings). *Save as default* writes `VIDEO_STYLE`,
-     `LOOK_PRESET`, `LOOK_BG`, `LOOK_ACCENT`, `CHARACTER` to `.env`, which is what the 7:00 AM run
+     shows the one standard voice (changed in Settings). Dark glass also has *Alternate the animation
+     colour across the day's videos*: video 1 gets the first colour of the palette, video 2 the
+     second, and so on (`LOOK_ACCENT_ROTATE`, up to 8 colours; a custom style on a video wins), and
+     each tile shows the colour it will get. *Save as default* writes `VIDEO_STYLE`, `LOOK_PRESET`,
+     `LOOK_BG`, `LOOK_ACCENT`, `LOOK_ACCENT_ROTATE`, `CHARACTER` to `.env`, which is what the scheduled run
      and every new plan use.
   2. *Today's videos*: *Plan today's videos* picks the stories and writes the scripts (one writer
      call, about 3 cents) and stops; in [approval mode](#approval-mode) the scheduled job leaves the
@@ -122,7 +125,7 @@ See `docs/previews.md` for the preview tiers, timings and the look layering rule
 
 **Safety.** The panel listens on `127.0.0.1` only. It will only ever read or write these
 `.env` keys: `CHARACTER`, `VIDEO_STYLE`, `VIDEO_THEME`, `BACKGROUND_STYLE`, `VIDEOS_PER_DAY`,
-`DAILY_MODE`, `YOUTUBE_UPLOAD`, `YOUTUBE_PRIVACY`, `FALLBACK_UPLOAD`, `LOOK_PRESET`, `LOOK_BG`, `LOOK_ACCENT`. Comments, other lines and the file's
+`DAILY_MODE`, `YOUTUBE_UPLOAD`, `YOUTUBE_PRIVACY`, `FALLBACK_UPLOAD`, `LOOK_PRESET`, `LOOK_BG`, `LOOK_ACCENT`, `LOOK_ACCENT_ROTATE`. Comments, other lines and the file's
 permissions are left as they were. API keys and tokens are never sent to the browser or
 written to its logs; the panel only says whether one is set. Requests are checked for the
 loopback `Host`, a same-origin `Origin`, and a random per-launch token, so another web page
@@ -408,7 +411,7 @@ launchctl unload ~/Library/LaunchAgents/com.tldrbrainrot.daily.plist   # stop th
 ### Approval mode
 
 By default the scheduled run makes and posts everything on its own. Set `DAILY_MODE=plan`
-(Settings → *What the scheduled run does* → *Plan, then ask me*) and the 7:00 AM job stops
+(Settings → *What the scheduled run does* → *Plan, then ask me*) and the scheduled job stops
 after the planning step: it fetches the newsletters, picks the stories (skipping any already
 covered), writes the scripts (one writer call, about 3 cents) into `output/<date>/plan.json`,
 and sends the usual notification ("Daily plan finished: 3 video(s) planned ... waiting for
@@ -417,7 +420,7 @@ ready — review and render* until you have previewed, changed looks and pressed
 or *Render selected…* (or run `python -m newsletter_video.render_plan <date> --final`), which
 renders and uploads exactly as the full run would, under the same lock, watchdog and
 `status.json` bookkeeping, and skips any story covered since planning. A plan the day already
-has (made from the panel before 7:00) is kept, not replaced. *Run the full daily job now…* in
+has (made from the panel before the run) is kept, not replaced. *Run the full daily job now…* in
 the panel always runs the full job, whatever `DAILY_MODE` says. `DAILY_MODE=full` (or unset)
 is exactly the previous behaviour.
 
@@ -440,7 +443,7 @@ the reason. Set `NOTIFY_WEBHOOK_URL` to also get it on your phone: an
 | Failure | What happens |
 |---|---|
 | Bad `.env` (unknown `TTS_PROVIDER`, Voicebox without a profile id, uploads on without a sign-in, low disk, no `npx`) | Fails in the first second with one message listing every problem; nothing is rendered |
-| No network at 7 AM (asleep, DNS not up) | Waits up to 5 min, the scraper retries with backoff, then the run fails with a notification; rerun later |
+| No network at run time (asleep, DNS not up) | Waits up to 5 min, the scraper retries with backoff, then the run fails with a notification; rerun later |
 | TLDR page empty or changed | "No stories scraped": fails before any TTS/render work |
 | Jev (TypeSafe) down, rate-limited or erroring | Claude gets every candidate unranked (first call fails) or that story unranked (later call) |
 | Claude API error, refusal, `max_tokens`, bad JSON, a video that violates the schema or is far too long/short | Bad videos are dropped; if none are left, the rule-based writer takes over. With `YOUTUBE_UPLOAD=1` those fallback scripts are **not published**: by default (`FALLBACK_UPLOAD=skip`) the run stops with a notification and nothing is rendered, so the stories are tried again tomorrow; `private` renders and uploads them private for review; `public` is the old behaviour |

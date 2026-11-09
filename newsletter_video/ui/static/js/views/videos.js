@@ -5,7 +5,7 @@
 import { api } from "../api.js";
 import { h, icon, spinner, formatBytes, formatClock, formatDay, plural } from "../dom.js";
 import { costTag, toast } from "../components.js";
-import { state, subscribe, isRunning, loadPlans, loadPlan, isTestRef, notify, defaultPresetId, effectivePresetId } from "../store.js";
+import { state, subscribe, isRunning, loadPlans, loadPlan, isTestRef, notify, defaultPresetId, effectivePresetId, presetInfo } from "../store.js";
 import { planDay, runBatch, attempt, approxRender, WRITER_COST } from "../actions.js";
 import { mountRunPanel } from "./run.js";
 import { mountPlanPanel } from "./plan.js";
@@ -27,7 +27,8 @@ export function mountVideos(root) {
   // ---- default style for automatic videos ----
   const savedDefault = () => {
     const s = state.settings?.values || {};
-    return { style: s.VIDEO_STYLE || "explainer", preset: effectivePresetId(s.LOOK_PRESET), bg: s.LOOK_BG || "", accent: s.LOOK_ACCENT || "", character: s.CHARACTER || "" };
+    return { style: s.VIDEO_STYLE || "explainer", preset: effectivePresetId(s.LOOK_PRESET), bg: s.LOOK_BG || "", accent: s.LOOK_ACCENT || "", character: s.CHARACTER || "",
+      rotate: (s.LOOK_ACCENT_ROTATE || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean) };
   };
   let edited = savedDefault();
   const defaultHost = h("div");
@@ -61,7 +62,7 @@ export function mountVideos(root) {
     savingDefault = true;
     paintDefault();
     const e = edited;
-    const updates = { VIDEO_STYLE: e.style, CHARACTER: e.character, LOOK_PRESET: e.preset === defaultPresetId() ? "" : e.preset, LOOK_BG: e.bg, LOOK_ACCENT: e.accent };
+    const updates = { VIDEO_STYLE: e.style, CHARACTER: e.character, LOOK_PRESET: e.preset === defaultPresetId() ? "" : e.preset, LOOK_BG: e.bg, LOOK_ACCENT: e.accent, LOOK_ACCENT_ROTATE: e.preset === "cinematic-glass" || presetInfo(e.preset)?.cinematic ? (e.rotate || []).join(",") : "" };
     const ok = await attempt(async () => {
       state.settings = await api.put("/api/settings", { updates });
       notify();
@@ -75,7 +76,7 @@ export function mountVideos(root) {
   function mountPicker() {
     picker?.dispose();
     edited = savedDefault();
-    picker = stylePicker({ value: edited, onChange: (v) => { edited = v; paintDefault(); } });
+    picker = stylePicker({ rotation: true, value: edited, onChange: (v) => { edited = v; paintDefault(); } });
     defaultHost.replaceChildren(picker);
     paintDefault();
   }

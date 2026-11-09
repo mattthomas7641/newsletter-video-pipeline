@@ -304,3 +304,22 @@ def test_status_report(stubbed_pipeline, isolated_env, capsys):
     text = status.report(DAY)
     assert "01_story-0: rendered" in text and "finished" in text
     assert "no output folder" in status.report(date(2020, 1, 1))
+
+
+def test_unattended_run_alternates_the_accent_when_rotation_is_set(stubbed_pipeline, isolated_env, notifications, monkeypatch):
+    """The 7:30 job: every sidecar records its video's own colour, consecutive ones differ."""
+    monkeypatch.setenv("VIDEO_STYLE", "explainer")
+    monkeypatch.setenv("LOOK_PRESET", "cinematic-glass")
+    monkeypatch.setenv("LOOK_ACCENT_ROTATE", "#ff7a1a,#ff3d8a")
+    assert run_pipeline.main([DAY.isoformat()]) == 0
+    folder = isolated_env / DAY.isoformat()
+    accents = [json.loads(p.read_text())["look"]["accent"] for p in sorted(folder.glob("0*.json"))]
+    assert accents == ["#ff7a1a", "#ff3d8a", "#ff7a1a"]
+
+
+def test_unattended_run_without_rotation_records_no_accent(stubbed_pipeline, isolated_env, notifications, monkeypatch):
+    monkeypatch.setenv("LOOK_PRESET", "cinematic-glass")
+    monkeypatch.delenv("LOOK_ACCENT_ROTATE", raising=False)
+    assert run_pipeline.main([DAY.isoformat()]) == 0
+    folder = isolated_env / DAY.isoformat()
+    assert {json.loads(p.read_text())["look"]["accent"] for p in folder.glob("0*.json")} == {""}

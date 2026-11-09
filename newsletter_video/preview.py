@@ -156,7 +156,7 @@ def source_from_plan(folder: Path, vid: str, overrides: dict | None = None, tria
         from .look import compact, validate_look
 
         trial_look = compact(validate_look(overrides or {}))
-        look = resolve_look(overrides)
+        look = resolve_look(overrides, index=pm._position(entry))
         script.look = dict(look)
         try:
             day = date.fromisoformat(data.get("date", ""))
@@ -164,7 +164,7 @@ def source_from_plan(folder: Path, vid: str, overrides: dict | None = None, tria
             day = _day_of(folder)
         return Source(script, look, Path(folder).resolve(), vid, day, "plan",
                       fingerprint=pm.fingerprint(entry.get("script"), entry.get("scene_plan"), trial_look), trial_look=trial_look)
-    look = resolve_look(_saved_look(entry.get("look"), overrides), overrides)
+    look = resolve_look(_saved_look(entry.get("look"), overrides), overrides, index=pm._position(entry))
     script.look = dict(look)
     try:
         day = date.fromisoformat(data.get("date", ""))

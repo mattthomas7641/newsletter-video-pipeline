@@ -9,7 +9,7 @@ explicit final render later.
     python -m newsletter_video.plan_day 2026-11-07 --rewrite v02            # rewrite one video's script (paid)
 
 Nothing here voices or renders; the writer's cost (~$0.03 per call) is the
-only cost. The daily 7:00 AM job does not read plans: it keeps writing and
+only cost. The unattended daily job does not read plans: it keeps writing and
 rendering with the defaults, exactly as before.
 """
 from __future__ import annotations

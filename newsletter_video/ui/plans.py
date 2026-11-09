@@ -122,9 +122,11 @@ class PlanService:
         for entry in data["videos"]:
             overrides = entry.get("look") or {}
             try:
-                resolved = looks.resolve_look(overrides, environ=self._environ())
+                pos = pm._position(entry)
+                resolved = looks.resolve_look(overrides, environ=self._environ(), index=pos)
+                video_default = looks.resolve_look({}, environ=self._environ(), index=pos)
             except looks.LookError:
-                resolved = dict(defaults)
+                resolved = video_default = dict(defaults)
             plan = entry.get("scene_plan") or {}
             videos.append({
                 "id": entry["id"], "index": entry.get("index"), "title": entry.get("title", ""),
@@ -135,7 +137,7 @@ class PlanService:
                 "scenes": [s.get("type") for s in plan.get("scenes", [])] if plan else None,
                 "writer": entry.get("writer", ""), "status": entry.get("status", "planned"), "error": entry.get("error"),
                 "rendered": entry.get("rendered"), "look": {k: v for k, v in overrides.items() if k != "version"},
-                "resolved": resolved, "color_notes": color_notes(resolved), "look_key": look_key(resolved), "preview": self.preview_state(ref, entry["id"]),
+                "resolved": resolved, "default_look": video_default, "color_notes": color_notes(resolved), "look_key": look_key(resolved), "preview": self.preview_state(ref, entry["id"]),
             })
         return {"ref": ref, "kind": data.get("kind", "day"), "date": data.get("date"), "created": data.get("created"),
                 "updated": data.get("updated"), "writer": data.get("writer", ""), "default_look": defaults,
@@ -233,7 +235,7 @@ class PlanService:
         if sheet is None and clip is None:
             return None
         try:
-            resolved = looks.resolve_look(self._stored_look(folder, vid), environ=self._environ())
+            resolved = looks.resolve_look(self._stored_look(folder, vid), environ=self._environ(), index=self._position(folder, vid))
         except looks.LookError:
             return None
         key = look_key(resolved)
@@ -264,6 +266,15 @@ class PlanService:
             shutil.rmtree(out_dir / LOOKS_DIRNAME / old["key"], ignore_errors=True)
         write_json_atomic(out_dir / "looks.json", {"version": 1, "entries": kept[:MAX_KEPT_LOOKS]})
         return entry
+
+    def _position(self, folder: Path, vid: str) -> int | None:
+        if not vid.startswith("v"):
+            return None
+        data = pm.read_manifest(folder)
+        try:
+            return pm._position(pm.get_entry(data, vid)) if data else None
+        except pm.ManifestError:
+            return None
 
     def _stored_look(self, folder: Path, vid: str) -> dict:
         if vid.startswith("v"):

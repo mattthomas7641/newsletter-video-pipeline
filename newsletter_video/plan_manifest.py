@@ -241,4 +241,12 @@ def replace_script(folder: Path, vid: str, script: Script) -> dict:
 
 def resolved_look(entry: dict, run_overrides: dict | None = None, environ=None) -> dict:
     """default (environment) < run overrides < this video's look."""
-    return looks.resolve_look(run_overrides, entry.get("look"), environ=environ)
+    return looks.resolve_look(run_overrides, entry.get("look"), environ=environ, index=_position(entry))
+
+
+def _position(entry: dict) -> int | None:
+    """The video's 0-based place in its plan (its `index` is 1-based), for the accent rotation."""
+    try:
+        return max(0, int(entry.get("index")) - 1)
+    except (TypeError, ValueError):
+        return None

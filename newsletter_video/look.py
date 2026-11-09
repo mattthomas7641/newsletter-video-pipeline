@@ -10,7 +10,7 @@ Three layers, each only filling fields the layer above left unset:
 
 `resolve_look()` folds the layers into a complete look. `look_env()` turns a
 resolved look back into the environment variables the builders already read,
-so with nothing overridden the 7:00 AM job behaves exactly as before (see
+so with nothing overridden the daily job behaves exactly as before (see
 tests/test_look.py::test_default_look_leaves_the_environment_unchanged).
 
 A stored look is versioned (`LOOK_VERSION`) and validated on the way in:
@@ -200,11 +200,16 @@ def _effective_preset(pid: str) -> str:
     return d.id if d else ""
 
 
-def resolve_look(*layers: Mapping[str, Any] | None, environ: Mapping[str, str] | None = None) -> dict[str, str]:
+def resolve_look(*layers: Mapping[str, Any] | None, environ: Mapping[str, str] | None = None,
+                 index: int | None = None) -> dict[str, str]:
     """Default (environment) < preset < each layer in order; a layer's unset
     fields inherit. A preset named by the environment or any layer supplies
     its theme and recipe wherever no layer set them by hand, so a per-video
-    look can still override any field. Every layer is validated."""
+    look can still override any field. Every layer is validated.
+
+    `index` is the video's place in its day (0-based): with LOOK_ACCENT_ROTATE set, a Dark glass explainer
+    video no layer gave an accent gets palette[index % n], so the day's videos alternate colours and a
+    re-render keeps its own."""
     base = _base_from_env(environ)
     resolved: dict[str, Any] = dict(apply_preset(dict(base)))
     explicit: set[str] = set()
@@ -222,7 +227,33 @@ def resolve_look(*layers: Mapping[str, Any] | None, environ: Mapping[str, str] |
                 resolved[key] = clean[key]
                 if key != "preset":
                     explicit.add(key)
-    return apply_preset(resolved, explicit)
+    resolved = apply_preset(resolved, explicit)
+    if index is not None and "accent" not in explicit:
+        pal = rotation_palette(environ)
+        if pal and resolved.get("style") == "explainer" and resolved.get("theme") == "cinematic":
+            resolved["accent"] = pal[index % len(pal)]
+    return resolved
+
+
+def rotation_palette(environ: Mapping[str, str] | None = None) -> list[str]:
+    """LOOK_ACCENT_ROTATE as a list of colours ([] when rotation is off)."""
+    from .colors import parse_rotation
+
+    environ = os.environ if environ is None else environ
+    return parse_rotation(environ.get("LOOK_ACCENT_ROTATE", ""))
+
+
+def with_rotation(partial: Mapping[str, Any] | None, index: int, environ: Mapping[str, str] | None = None) -> dict[str, Any] | None:
+    """A partial look (a script's own `look`) with this video's rotation accent added when rotation applies
+    to it and the look did not choose an accent itself. With rotation off it is returned unchanged, so
+    the daily job without LOOK_ACCENT_ROTATE behaves exactly as before."""
+    if not rotation_palette(environ):
+        return dict(partial) if partial else partial  # type: ignore[return-value]
+    base = resolve_look(partial, environ=environ)
+    rotated = resolve_look(partial, environ=environ, index=index)
+    if rotated["accent"] == base["accent"]:
+        return dict(partial) if partial else partial  # type: ignore[return-value]
+    return {**(dict(partial) if partial else {}), "accent": rotated["accent"]}
 
 
 def look_env(look: Mapping[str, Any]) -> dict[str, str]:
