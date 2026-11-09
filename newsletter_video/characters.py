@@ -41,6 +41,9 @@ class Character:
     model_size: str | None = None
     instruct: str | None = None
     persona: str = ""
+    tts: str | None = None  # "kokoro" = a built-in Kokoro voice (kokoro_voice), no Voicebox clone needed
+    kokoro_voice: str | None = None
+    poses: tuple[Path, ...] = ()  # more cutouts of the same character; the video swaps between them (avatar is the first)
 
 
 def slugify(name: str) -> str:
@@ -61,6 +64,12 @@ def load(slug: str) -> Character:
     avatar = directory / data["avatar"] if data.get("avatar") else None
     if avatar is not None and not avatar.exists():
         raise RuntimeError(f"Character {slug!r} lists avatar {data['avatar']!r} but the file is missing.")
+    poses = []
+    for name in data.get("poses") or []:
+        pose = directory / str(name)
+        if not pose.exists():
+            raise RuntimeError(f"Character {slug!r} lists the pose {name!r} but the file is missing.")
+        poses.append(pose)
     return Character(
         slug=slug,
         name=data.get("name", slug),
@@ -71,6 +80,9 @@ def load(slug: str) -> Character:
         model_size=data.get("model_size"),
         instruct=data.get("instruct"),
         persona=data.get("persona", ""),
+        tts=data.get("tts") or None,
+        kokoro_voice=data.get("kokoro_voice") or None,
+        poses=tuple(poses),
     )
 
 
@@ -203,6 +215,31 @@ def add(name: str, avatar: Path, voice_audio: list[Path], voice_text: list[str] 
     return load(slug)
 
 
+def set_poses(slug: str, sources: list[Path]) -> Character:
+    """Replaces a character's pictures with these poses, cut out and aligned: the first becomes the main
+    avatar, the rest are the other poses the video swaps to. They must share one canvas size."""
+    from .cutout import cut_poses
+
+    character = load(slug)
+    for src in sources:
+        if not src.exists():
+            raise SystemExit(f"Pose image not found: {src}")
+    images = cut_poses(sources)
+    for old in character.directory.glob("pose-*.png"):
+        old.unlink()
+    images[0].save(character.directory / "avatar.png", "PNG")
+    names = []
+    for k, image in enumerate(images[1:], start=2):
+        image.save(character.directory / f"pose-{k}.png", "PNG")
+        names.append(f"pose-{k}.png")
+    manifest_path = character.directory / MANIFEST
+    manifest = json.loads(manifest_path.read_text())
+    manifest["avatar"] = "avatar.png"
+    manifest["poses"] = names
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    return load(slug)
+
+
 # --- selecting the active character ------------------------------------------
 
 def _set_env(value: str) -> None:
@@ -253,6 +290,10 @@ def main(argv: list[str] | None = None) -> None:
     p_use = sub.add_parser("use", help="set the active character (or 'none')")
     p_use.add_argument("name")
 
+    p_poses = sub.add_parser("poses", help="give a character several poses the video swaps between (first = main)")
+    p_poses.add_argument("name")
+    p_poses.add_argument("images", nargs="+", type=Path, help="same-size images on a plain background; the first is the main pose")
+
     p_say = sub.add_parser("say", help="hear a character's voice without rendering a video")
     p_say.add_argument("name")
     p_say.add_argument("text", nargs="?", default="Here are today's top tech stories, and one of them is wild.")
@@ -265,7 +306,7 @@ def main(argv: list[str] | None = None) -> None:
         if not characters:
             print("No characters yet. Add one: python -m newsletter_video.characters add NAME --avatar IMG --voice-audio CLIP")
         for c in characters:
-            voice = f"voice {c.voicebox_profile_id[:8]}" if c.voicebox_profile_id else "default voice"
+            voice = (f"Kokoro {c.kokoro_voice}" if c.tts == "kokoro" else f"voice {c.voicebox_profile_id[:8]}" if c.voicebox_profile_id else "default voice")
             print(f"{'*' if c.slug == current else ' '} {c.slug:<20} {c.name:<20} {voice}")
         print(f"\nActive: {current or '(none: legacy assets/character/ + VOICEBOX_PROFILE_ID)'}")
     elif args.cmd == "add":
@@ -284,6 +325,9 @@ def main(argv: list[str] | None = None) -> None:
             load(args.name)  # validates
             _set_env(args.name)
             print(f"Active character: {args.name}")
+    elif args.cmd == "poses":
+        character = set_poses(args.name, args.images)
+        print(f"{character.name} now has {1 + len(character.poses)} poses.")
     elif args.cmd == "say":
         load(args.name)
         print(f"Wrote {_say(args.name, args.text)}")

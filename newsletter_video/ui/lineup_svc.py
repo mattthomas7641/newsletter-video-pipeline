@@ -32,7 +32,7 @@ class LineupService:
         return Path(given) if given else self.paths.root / lu.FILE_NAME
 
     def _avatars(self) -> set[str]:
-        return {c["slug"] for c in self.characters.list()}
+        return {c["slug"] for c in self.characters.list()} | {""}
 
     def next_run(self, now: datetime | None = None) -> dict:
         """The date (and time of day) of the next automatic run: today while its time has not passed, else tomorrow."""

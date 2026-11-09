@@ -19,18 +19,22 @@ export const STYLE_NAMES = { explainer: "Explainer", avatar: "Avatar" };
 
 /** The value a plan's resolved look stands for. */
 export function valueFromLook(look) {
-  return { style: look.style || "explainer", preset: effectivePresetId(look.preset), bg: look.bg || "", accent: look.accent || "", character: look.character || "", mode: "one", rotate: [] };
+  return { style: look.style || "explainer", preset: effectivePresetId(look.preset), bg: look.bg || "", accent: look.accent || "", character: look.character || "", background: look.background === "none" ? "none" : "gameplay", mode: "one", rotate: [] };
 }
+
+export const BACKGROUND_CHOICES = [["gameplay", "Minecraft"], ["none", "Regular"]];
+const bgName = (v) => (v === "none" ? "regular" : "Minecraft");
 
 export function sameValue(a, b) {
   return a.style === b.style && effectivePresetId(a.preset) === effectivePresetId(b.preset) && (a.bg || "") === (b.bg || "")
     && (a.accent || "") === (b.accent || "") && (a.character || "") === (b.character || "")
+    && (a.background === "none" ? "none" : "gameplay") === (b.background === "none" ? "none" : "gameplay")
     && (a.mode || "one") === (b.mode || "one") && (a.rotate || []).join(",").toLowerCase() === (b.rotate || []).join(",").toLowerCase();
 }
 
 /** The words for a value: "Explainer · Clean paper · sage background, teal animations". */
 export function describeValue(v) {
-  if (v.style === "avatar") return `Avatar · ${characterLabel(v.character)}`;
+  if (v.style === "avatar") return `Avatar · ${characterLabel(v.character)} · ${bgName(v.background)} background`;
   const p = presetInfo(effectivePresetId(v.preset));
   const bits = ["Explainer", p ? p.name : "Clean paper"];
   if (v.mode && v.mode !== "one" && v.rotate?.length) bits.push(`${v.bg ? `background ${v.bg}, ` : ""}animations ${v.mode === "random" ? "random from" : "alternate through"} ${v.rotate.length} colours`);
@@ -170,7 +174,9 @@ export function stylePicker({ value, onChange = () => {}, name = nextId("sp"), a
 
   // ---- avatar: a few avatars and one standard voice ----
   function avatarPane() {
-    const chars = state.characters;
+    const real = state.characters.filter((c) => c.slug).sort((a, b) => Number(!!b.is_selected) - Number(!!a.is_selected));
+    const chars = real.length ? real : state.characters; // the old "Default" card only shows when no avatar has been set up
+    if (real.length && !real.some((c) => c.slug === (v.character || ""))) { v.character = real[0].slug; queueMicrotask(emit); }
     const cards = h("div", { class: "sp-chars", role: "radiogroup", "aria-label": "Avatar" },
       chars.map((c) => {
         const on = (v.character || "") === c.slug;
@@ -179,12 +185,21 @@ export function stylePicker({ value, onChange = () => {}, name = nextId("sp"), a
           h("input", { type: "radio", name: `${name}-char`, id, value: c.slug, checked: on, onChange: () => { v.character = c.slug; emit(); } }),
           h("span", { class: "art" }, c.avatar_url ? h("img", { src: c.avatar_url, alt: "", loading: "lazy" }) : h("span", { class: "none", text: "No image" }),
             h("span", { class: "tick", "aria-hidden": "true" }, icon("check"))),
-          h("strong", { text: c.slug ? c.name : "Default avatar" }));
+          h("strong", { text: c.slug ? c.name : "Default avatar" }),
+          h("span", { class: "faint small", text: c.voice?.label || "" }));
       }),
       allowAdd ? h("button", { class: "sp-char add", type: "button", onClick: openAdd }, h("span", { class: "art" }, icon("plus")), h("strong", { text: "Add avatar" })) : null);
     addHost = h("div", { class: "sp-add" });
-    return [cards, addHost, h("p", { class: "sp-voice" }, icon("voice", "sm"), h("span", {}, h("strong", { text: "Voice: " }), standardVoice()),
-      h("span", { class: "faint", text: " · one standard voice for every avatar. " }), h("a", { class: "link", href: "#/settings", text: "Change it in Settings" }))];
+    const chosen = chars.find((c) => c.slug === (v.character || "")) || chars[0];
+    const bgSeg = h("div", { class: "seg sp-bg", role: "radiogroup", "aria-label": "Background" },
+      BACKGROUND_CHOICES.map(([val, label]) => h("label", {},
+        h("input", { type: "radio", name: `${name}-bg`, value: val, checked: (v.background === "none" ? "none" : "gameplay") === val, onChange: () => { v.background = val; emit(); } }),
+        h("span", { class: "opt", text: label }))));
+    return [cards, addHost,
+      h("div", { class: "sp-voice" }, icon("voice", "sm"), h("span", {}, h("strong", { text: "Voice: " }), chosen?.voice?.label || "Standard narrator voice"),
+        h("span", { class: "faint", text: " · each avatar keeps its own voice." })),
+      h("div", { class: "sp-bgrow" }, h("strong", { text: "Background" }), bgSeg,
+        h("span", { class: "faint small", text: v.background === "none" ? "The plain graph-paper background." : "Minecraft parkour footage behind the avatar." }))];
   }
 
   let adder = null;
@@ -226,6 +241,7 @@ export function diffFromDefault(v, def) {
   if (v.style !== def.style) out.style = v.style;
   if (v.style === "avatar") {
     if ((v.character || "") !== (def.character || "")) out.character = v.character || "";
+    if ((v.background === "none" ? "none" : "gameplay") !== (def.background === "none" ? "none" : "gameplay")) out.background = v.background === "none" ? "none" : "gameplay";
     return out;
   }
   const samePreset = effectivePresetId(v.preset) === effectivePresetId(def.preset);

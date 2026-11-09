@@ -117,8 +117,8 @@ def _kokoro_in_process(text: str, out_path: Path, voice: str, speed: float) -> N
     soundfile.write(str(out_path), samples, rate)
 
 
-def _kokoro_backend(text: str, out_path: Path, speed: float | None = None) -> Path:
-    voice = os.environ.get("KOKORO_VOICE", DEFAULT_KOKORO_VOICE)
+def _kokoro_backend(text: str, out_path: Path, speed: float | None = None, voice: str | None = None) -> Path:
+    voice = voice or os.environ.get("KOKORO_VOICE", DEFAULT_KOKORO_VOICE)
     speed = float(speed or os.environ.get("KOKORO_SPEED", DEFAULT_KOKORO_SPEED))
     if KOKORO_MODEL.exists() and KOKORO_VOICES.exists():
         _kokoro_in_process(text, out_path, voice, speed)
@@ -440,7 +440,10 @@ def synthesize(text: str, out_path: Path, speed: float | None = None) -> Path:
     from .characters import active
 
     character = active()
-    if character and character.voicebox_profile_id:
+    kokoro_voice = None
+    if character and character.tts == "kokoro":
+        provider, kokoro_voice = "kokoro", character.kokoro_voice  # a character with a built-in voice always uses it
+    elif character and character.voicebox_profile_id:
         provider = "voicebox"  # a character with its own cloned voice always uses it
     else:
         provider = os.environ.get("TTS_PROVIDER", "kokoro")
@@ -451,7 +454,7 @@ def synthesize(text: str, out_path: Path, speed: float | None = None) -> Path:
     elif provider == "say":
         _say_backend(text, out_path)
     else:
-        _kokoro_backend(text, out_path, speed)
+        _kokoro_backend(text, out_path, speed, kokoro_voice)
     if os.environ.get("VOICE_EFFECT", DEFAULT_VOICE_EFFECT) == "cartoon":
         _cartoon_effect(out_path)
     check_audio(out_path, text)
