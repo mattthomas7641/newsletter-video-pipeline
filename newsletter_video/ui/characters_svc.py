@@ -58,6 +58,7 @@ class CharacterService:
             default_voice = {"kind": "missing", "label": "No Voicebox voice chosen yet"}
         else:
             default_voice = {"kind": "standard", "label": "Standard narrator voice"}
+        selected = (self.store.read()["values"].get("CHARACTER") or "")
         items = [{
             "slug": "", "name": "Default", "is_default": True,
             "avatar_url": f"/media/avatar/default?v={self._mtime(self.legacy_avatar())}" if self.legacy_avatar() else None,
@@ -65,12 +66,13 @@ class CharacterService:
             "note": "The original setup: the image in assets/character and the voice from your settings.",
         }]
         for c in self._characters():
-            cloned = bool(c.voicebox_profile_id)
+            cloned = bool(c.voicebox_profile_id) and c.tts != "kokoro"
+            label = f"Kokoro voice {c.kokoro_voice}" if c.tts == "kokoro" and c.kokoro_voice else (
+                "Cloned voice (Voicebox)" if cloned else "Standard narrator voice")
             items.append({
-                "slug": c.slug, "name": c.name, "is_default": False,
+                "slug": c.slug, "name": c.name, "is_default": False, "is_selected": c.slug == selected,
                 "avatar_url": f"/media/avatar/{c.slug}?v={self._mtime(c.avatar)}" if c.avatar else None,
-                "voice": {"kind": "cloned" if cloned else "standard",
-                          "label": "Cloned voice attached" if cloned else "Standard narrator voice"},
+                "voice": {"kind": "cloned" if cloned else "standard", "label": label},
                 "persona": c.persona or "",
             })
         return items

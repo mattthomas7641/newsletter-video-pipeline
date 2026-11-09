@@ -139,7 +139,7 @@ def test_the_sidecar_and_upload_record_say_which_format_a_video_was(tmp_path):
     meta = json.loads(write_metadata(script, mp4).read_text())
     assert meta["lineup"] == {"date": "2026-11-10", "slot": 2, "of": 10, "batch": 2, "batch_name": "Glass", "accent_mode": "alternate",
                               "format": "Dark glass", "style": "explainer", "preset": "cinematic-glass", "bg": "", "accent": PAL[0],
-                              "character": "", "overridden": False}
+                              "character": "", "background": "", "overridden": False}
     assert meta["look"]["preset"] == "cinematic-glass" and meta["look"]["accent"] == PAL[0]
     from newsletter_video.youtube_upload import _format_record
 
@@ -191,3 +191,33 @@ def test_the_daily_run_reads_the_lineup(monkeypatch, tmp_path, isolated_env):
     run_pipeline.main([DAY.isoformat()])
     assert built == [(2, "Dark glass", PAL[0])]
 
+
+
+# ---- avatar background: Minecraft or regular ------------------------------------------------
+
+def test_avatar_batches_choose_a_minecraft_or_regular_background():
+    doc = lu.validate({"version": 1, "total": 5, "batches": [
+        {"count": 2, "style": "avatar", "character": "puck", "background": "none"},
+        {"count": 3, "style": "avatar", "character": "peter-griffin"}]})
+    assert [b["background"] for b in doc["batches"]] == ["none", "gameplay"]  # unset means Minecraft, as before
+    slots = lu.expand({k: doc[k] for k in ("total", "order", "batches", "slots")}, date(2026, 11, 10))
+    assert [s["look"].get("background") for s in slots] == ["none", "gameplay", "none", "gameplay", "gameplay"]
+    assert slots[0]["look"]["character"] == "puck"
+
+
+def test_a_bad_background_is_refused_and_explainers_carry_none():
+    with pytest.raises(lu.LineupError):
+        lu.validate({"version": 1, "total": 1, "batches": [{"count": 1, "style": "avatar", "background": "space"}]})
+    doc = lu.validate({"version": 1, "total": 1, "batches": [{"count": 1, "style": "explainer", "preset": "paper"}]})
+    slot = lu.expand({k: doc[k] for k in ("total", "order", "batches", "slots")}, date(2026, 11, 10))[0]
+    assert "background" not in slot["look"]
+
+
+def test_a_slot_can_switch_its_avatar_background_and_the_label_says_so():
+    doc = lu.validate({"version": 1, "total": 2, "batches": [{"count": 2, "style": "avatar", "character": "puck"}],
+                           "slots": {"2": {"background": "none"}}})
+    slots = lu.expand({k: doc[k] for k in ("total", "order", "batches", "slots")}, date(2026, 11, 10))
+    assert [s["look"]["background"] for s in slots] == ["gameplay", "none"]
+    info = lu.lineup_info(slots[1], date(2026, 11, 10), 2)
+    assert info["background"] == "none"
+    assert lu.format_label(info) == "Avatar: puck · Regular"

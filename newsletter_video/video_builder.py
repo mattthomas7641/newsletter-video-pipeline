@@ -97,6 +97,39 @@ def character_image() -> Path | None:
     return images[0] if images else None
 
 
+def character_poses() -> list[Path]:
+    """The other cutouts of the active character (same canvas as the main one), for swapping mid-video."""
+    from .characters import active
+
+    character = active()
+    return list(character.poses) if character and character.avatar else []
+
+
+POSE_MIN_GAP_SECONDS = 2.0  # never flick between poses faster than this
+
+
+def pose_changes(n_poses: int, starts: list[float], seed: str) -> list[dict]:
+    """When the avatar swaps pose: the main pose (0) for the hook, then a different pose at each of `starts`
+    (each beat, then the outro), never the same one twice in a row and ending back on the main pose.
+    Deterministic for a given seed, so a re-render of the same video looks the same."""
+    import random
+
+    if n_poses < 2 or not starts:
+        return []
+    rng = random.Random(f"poses:{seed}")
+    changes, current, last_at = [], 0, 0.0
+    for i, at in enumerate(starts):
+        if at - last_at < POSE_MIN_GAP_SECONDS:
+            continue
+        if i == len(starts) - 1 and current != 0:
+            pick = 0
+        else:
+            pick = rng.choice([k for k in range(n_poses) if k != current])
+        changes.append({"at": round(at, 3), "pose": pick})
+        current, last_at = pick, at
+    return changes
+
+
 AVATAR_MAX_HEIGHT = 980  # px on the 1080x1920 canvas; the composition anchors it bottom-left
 AVATAR_MAX_WIDTH = 600  # keeps wide/square avatars from covering the cards and captions
 
@@ -448,6 +481,13 @@ def _build_short(script: Script, out_path: Path, audio_path: Path, work_dir: Pat
     if character is not None:
         payload["avatar"] = {"height": _avatar_height(character)}
         shutil.copy(character, assets / "character.png")
+        extra = character_poses()
+        if extra:  # several poses: the avatar swaps between them as the beats go by
+            for k, pose in enumerate(extra, start=2):
+                shutil.copy(pose, assets / f"pose-{k}.png")
+            starts = [c["start"] for c in payload["cards"]] + [payload["outro"]["start"]]
+            payload["avatar"]["poses"] = ["character.png"] + [f"pose-{k}.png" for k in range(2, 2 + len(extra))]
+            payload["avatar"]["changes"] = pose_changes(len(extra) + 1, starts, background_seed)
     variables_path.write_text(json.dumps({"story": json.dumps(payload)}))
 
     # Render into a side folder and move into place only when complete, so

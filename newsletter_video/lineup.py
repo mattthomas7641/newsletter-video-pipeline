@@ -40,7 +40,9 @@ ORDERS = ("interleave", "sequential")
 FILE_NAME = "lineup.json"
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-SLOT_FIELDS = ("style", "preset", "bg", "accent", "character")
+SLOT_FIELDS = ("style", "preset", "bg", "accent", "character", "background")
+BACKGROUNDS = ("gameplay", "none")  # avatar videos: Minecraft parkour footage, or the plain graph-paper background
+BACKGROUND_NAMES = {"gameplay": "Minecraft", "none": "Regular"}
 
 
 class LineupError(ValueError):
@@ -117,6 +119,7 @@ def validate_batch(raw: Any, i: int, characters: set[str] | None, errors: list[s
             errors.append(f"{where}: {mode} colours need a palette of at least 2 colours")
         out["palette"] = palette
         out["character"] = ""
+        out["background"] = ""
     else:
         character = str(raw.get("character") or "")
         if character and not _SLUG.match(character):
@@ -125,6 +128,11 @@ def validate_batch(raw: Any, i: int, characters: set[str] | None, errors: list[s
         if characters is not None and character not in characters:
             errors.append(f"{where}: the avatar {character or 'default'!r} doesn't exist")
         out["character"] = character
+        background = str(raw.get("background") or "gameplay").lower()
+        if background not in BACKGROUNDS:
+            errors.append(f"{where}: background must be one of {', '.join(BACKGROUNDS)}")
+            background = "gameplay"
+        out["background"] = background
         out.update(preset="", bg="", accent="", accent_mode="one", palette=[])
     return out
 
@@ -180,6 +188,11 @@ def _validate_override(raw: Any, where: str, characters: set[str] | None, errors
                 out["preset"] = value
         elif key in ("bg", "accent"):
             out[key] = _hex_or_blank(value, f"{where}: {key}", errors)
+        elif key == "background":
+            if value not in BACKGROUNDS:
+                errors.append(f"{where}: background must be one of {', '.join(BACKGROUNDS)}")
+            else:
+                out["background"] = value
         elif key == "character":
             value = str(value or "")
             if value and not _SLUG.match(value):
@@ -252,6 +265,7 @@ def default_from_environ(environ: Mapping[str, str] | None = None) -> dict:
     batch: dict[str, Any] = {"count": total, "style": style if style in STYLES else "explainer"}
     if batch["style"] == "avatar":
         batch["character"] = environ.get("CHARACTER", "")
+        batch["background"] = "none" if (environ.get("BACKGROUND_STYLE") or "").strip().lower() == "none" else "gameplay"
     else:
         preset = (environ.get("LOOK_PRESET") or "paper").lower()
         batch["preset"] = preset if preset in _preset_ids() else "paper"
@@ -305,7 +319,8 @@ def expand(lineup: Mapping[str, Any], day: date) -> list[dict]:
     for n, (bi, k) in enumerate(order, start=1):
         b = batches[bi]
         if b["style"] == "avatar":
-            look: dict[str, str] = {"style": "avatar", "character": b.get("character", "")}
+            look: dict[str, str] = {"style": "avatar", "character": b.get("character", ""),
+                                    "background": b.get("background") or "gameplay"}
         else:
             mode, palette = b.get("accent_mode", "one"), list(b.get("palette") or [])
             if mode == "alternate" and len(palette) >= 2:
@@ -318,10 +333,12 @@ def expand(lineup: Mapping[str, Any], day: date) -> list[dict]:
         over = (lineup.get("slots") or {}).get(str(n)) or {}
         look.update(over)
         if look.get("style") == "avatar":  # an override can switch a slot's format
-            look = {"style": "avatar", "character": look.get("character", "")}
+            look = {"style": "avatar", "character": look.get("character", ""),
+                    "background": look.get("background") or "gameplay"}
         else:
             look.setdefault("preset", "paper")
             look.pop("character", None)
+            look.pop("background", None)
         family = family_of(look)
         label = FAMILY_NAMES[family]
         slots.append({"slot": n, "batch": bi + 1, "batch_name": b.get("name") or "", "accent_mode": b.get("accent_mode", "one"),
@@ -335,17 +352,21 @@ def lineup_info(slot: Mapping[str, Any], day: date, total: int) -> dict:
     return {"date": day.isoformat(), "slot": slot["slot"], "of": total, "batch": slot["batch"], "batch_name": slot["batch_name"],
             "accent_mode": slot["accent_mode"], "format": slot["label"], "style": look.get("style", ""),
             "preset": look.get("preset", ""), "bg": look.get("bg", ""), "accent": look.get("accent", ""),
-            "character": look.get("character", ""), "overridden": bool(slot.get("overridden"))}
+            "character": look.get("character", ""), "background": look.get("background", ""),
+            "overridden": bool(slot.get("overridden"))}
 
 
 def format_label(info: Mapping[str, Any] | None, look: Mapping[str, Any] | None = None) -> str:
     """A video's format for the results table: from its lineup record, else from the look it rendered with."""
     src = dict(info or {})
     if not src.get("format") and look:
-        src = {"format": FAMILY_NAMES[family_of(look)], "character": look.get("character", ""), "style": look.get("style", "")}
+        src = {"format": FAMILY_NAMES[family_of(look)], "character": look.get("character", ""), "style": look.get("style", ""),
+               "background": look.get("background", "")}
     name = str(src.get("format") or "")
     if name == "Avatar" and src.get("character"):
         name = f"Avatar: {src['character']}"
+    if name.startswith("Avatar") and src.get("background") in BACKGROUND_NAMES:
+        name = f"{name} · {BACKGROUND_NAMES[src['background']]}"
     return name or "Unknown format"
 
 

@@ -24,7 +24,7 @@ def isolated_env(monkeypatch, tmp_path):
     """No keys, no uploads, no desktop notifications, output under tmp_path."""
     for key in ("ANTHROPIC_API_KEY", "TYPESAFE_API_KEY", "NOTIFY_WEBHOOK_URL", "YOUTUBE_SCHEDULE",
                 "VOICEBOX_PROFILE_ID", "ELEVENLABS_API_KEY", "VOICE_ID", "RUN_DEADLINE_MINUTES",
-                "FALLBACK_UPLOAD", "RENDER_TIMEOUT_SECONDS", "VOICEBOX_GENERATION_TIMEOUT"):
+                "FALLBACK_UPLOAD", "RENDER_TIMEOUT_SECONDS", "VOICEBOX_GENERATION_TIMEOUT", "CHARACTER"):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("NOTIFY_MACOS", "0")
     monkeypatch.setenv("BYTESIZE_LINEUP_FILE", str(tmp_path / "no-lineup.json"))  # a real lineup.json never leaks into tests

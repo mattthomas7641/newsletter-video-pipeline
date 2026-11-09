@@ -65,22 +65,22 @@ export function mountLineup(root) {
   const colourName = (preset, hex) => (swatches(preset, "accent_swatches").find((s) => s.hex === hex)?.name || hex || "its own colour").toLowerCase();
 
   function newBatch(kind, count, opts = {}) {
-    if (kind === "avatar") return { name: "", count, style: "avatar", preset: "", bg: "", accent: "", accent_mode: "one", palette: [], character: opts.character ?? "" };
+    if (kind === "avatar") return { name: "", count, style: "avatar", preset: "", bg: "", accent: "", accent_mode: "one", palette: [], character: opts.character ?? (state.characters.find((c) => c.is_selected)?.slug || state.characters.find((c) => c.slug)?.slug || ""), background: opts.background || "gameplay" };
     const p = presetInfo(kind === "glass" ? "cinematic-glass" : "paper");
     const palette = kind === "glass" ? [...(info?.rotation_default || [])] : (p?.colors?.accent_swatches || []).slice(0, 5).map((s) => s.hex);
     return { name: "", count, style: "explainer", preset: p?.id || "paper", bg: "", accent: opts.accent ?? "", accent_mode: opts.mode || "one", palette: opts.mode && opts.mode !== "one" ? palette : [], character: "" };
   }
 
   function batchValue(b) {
-    return { style: b.style, preset: b.preset || "paper", bg: b.bg || "", accent: b.accent || "", character: b.character || "", mode: b.accent_mode || "one", rotate: [...(b.palette || [])] };
+    return { style: b.style, preset: b.preset || "paper", bg: b.bg || "", accent: b.accent || "", character: b.character || "", background: b.background === "none" ? "none" : "gameplay", mode: b.accent_mode || "one", rotate: [...(b.palette || [])] };
   }
   function applyValue(b, v) {
-    b.style = v.style; b.preset = v.style === "avatar" ? "" : v.preset; b.bg = v.style === "avatar" ? "" : v.bg; b.character = v.style === "avatar" ? v.character : "";
+    b.style = v.style; b.preset = v.style === "avatar" ? "" : v.preset; b.bg = v.style === "avatar" ? "" : v.bg; b.character = v.style === "avatar" ? v.character : ""; b.background = v.style === "avatar" ? (v.background === "none" ? "none" : "gameplay") : "";
     b.accent = v.style === "avatar" ? "" : v.accent; b.accent_mode = v.style === "avatar" ? "one" : v.mode || "one"; b.palette = v.style === "avatar" ? [] : [...(v.rotate || [])];
   }
   const familyOf = (b) => (b.style === "avatar" ? "avatar" : b.preset === "cinematic-glass" ? "glass" : "paper");
   function colourText(b) {
-    if (b.style === "avatar") return b.character ? (state.characters.find((c) => c.slug === b.character)?.name || b.character) : "default avatar";
+    if (b.style === "avatar") return `${b.character ? (state.characters.find((c) => c.slug === b.character)?.name || b.character) : "default avatar"}, ${b.background === "none" ? "regular" : "Minecraft"} background`;
     if (b.accent_mode === "alternate") return "alternating colours";
     if (b.accent_mode === "random") return "random colours";
     return b.accent ? `${colourName(b.preset, b.accent)}` : "its own colour";
@@ -134,7 +134,7 @@ export function mountLineup(root) {
       const g = groups.get(s.batch) || { n: 0, s };
       g.n += 1; groups.set(s.batch, g);
     }
-    const parts = [...groups.values()].map((g) => `${g.n} ${FAMILY_SHORT[g.s.family]} (${g.s.family === "avatar" ? (g.s.look.character || "default avatar") : g.s.accent_mode === "alternate" ? "alternating" : g.s.accent_mode === "random" ? "random colours" : colourName(g.s.look.preset, g.s.look.accent)})`);
+    const parts = [...groups.values()].map((g) => `${g.n} ${FAMILY_SHORT[g.s.family]} (${g.s.family === "avatar" ? `${g.s.look.character ? (state.characters.find((c) => c.slug === g.s.look.character)?.name || g.s.look.character) : "default avatar"}, ${g.s.look.background === "none" ? "regular" : "Minecraft"} background` : g.s.accent_mode === "alternate" ? "alternating" : g.s.accent_mode === "random" ? "random colours" : colourName(g.s.look.preset, g.s.look.accent)})`);
     nextRun.replaceChildren(
       h("span", { class: "next-icon", "aria-hidden": "true" }, icon("film")),
       h("div", {}, h("strong", { text: `Next run: ${day}${at}` }),
@@ -371,12 +371,12 @@ export function mountLineup(root) {
 
   function slotEditor(s) {
     if (!s) return h("div");
-    const initial = { style: s.look.style, preset: s.look.preset || "paper", bg: s.look.bg || "", accent: s.look.accent || "", character: s.look.character || "", mode: "one", rotate: [] };
+    const initial = { style: s.look.style, preset: s.look.preset || "paper", bg: s.look.bg || "", accent: s.look.accent || "", character: s.look.character || "", background: s.look.background === "none" ? "none" : "gameplay", mode: "one", rotate: [] };
     let value = initial;
     const picker = stylePicker({ value: initial, onChange: (nv) => { value = nv; } });
     pickers.push(picker);
     const use = h("button", { class: "btn primary", type: "button", onClick: () => {
-      doc.slots[String(s.slot)] = value.style === "avatar" ? { style: "avatar", character: value.character }
+      doc.slots[String(s.slot)] = value.style === "avatar" ? { style: "avatar", character: value.character, background: value.background === "none" ? "none" : "gameplay" }
         : { style: "explainer", preset: value.preset, bg: value.bg, accent: value.accent };
       selected = null; note = ""; changedDoc();
     } }, `Use this for slot ${s.slot}`);
