@@ -252,6 +252,7 @@
         position: absolute;
         left: 0;
         top: 350px;
+        white-space: nowrap;
         font-weight: 700;
         font-size: 58px;
         letter-spacing: -0.02em;
@@ -371,6 +372,7 @@
         margin-bottom: 22px;
       }
       .vs-title {
+        white-space: nowrap;
         font-weight: 800;
         font-size: 76px;
         letter-spacing: -0.04em;
@@ -484,6 +486,12 @@
         font-weight: 800;
         font-size: 34px;
         letter-spacing: -0.02em;
+        white-space: nowrap;
+      }
+      .ch-val {
+        position: absolute;
+        font-size: 22px;
+        color: var(--ink);
         white-space: nowrap;
       }
       .ch-gap {
@@ -601,6 +609,7 @@
         position: absolute;
         left: 0;
         top: 10px;
+        white-space: nowrap;
         font-weight: 700;
         font-size: 52px;
         letter-spacing: -0.025em;
@@ -827,6 +836,17 @@
         el.classList.add(pal.light ? "light" : "dark");
       }
       const at = (o, fallback) => (o && typeof o.at === "number" ? o.at : fallback);
+      // Generated text varies in length: shrink a line's type (never below minPx) until it fits maxW.
+      function shrinkToFit(el, maxW, minPx, width) {
+        const w = width || (() => el.scrollWidth);
+        let size = parseFloat(getComputedStyle(el).fontSize);
+        while (w() > maxW && size > minPx) {
+          size -= 2;
+          el.style.fontSize = size + "px";
+        }
+        return size;
+      }
+      const fmt = (v, dec) => Number(v).toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec });
 
       // ---------------------------------------------------------------- scenes
       // Each builder gets (scene, stage, side, tl) and returns { exit(t) } — how
@@ -851,6 +871,9 @@
           return Math.max(...lines.map((el) => el.scrollWidth));
         };
         while (fit() > 880 && size > 60) size -= 4;
+        // ...and the block must fit the stage's height (4 lines of a long hook would spill into the eyebrow)
+        const tall = () => lines.reduce((a, el) => a + el.offsetHeight, 0);
+        while (tall() > 610 && size > 60) { size -= 4; fit(); }
         let underline = null;
         const emIdx = d.lines.findIndex((l) => l.em);
         if (d.underline && emIdx >= 0) {
@@ -893,14 +916,20 @@
       BUILD.stat = function (sc, stage, side, tl) {
         const d = sc.data;
         const num = h("div", "stat-num");
-        const digits = h("span", "stat-digits", (0).toFixed(d.decimals || 0));
+        const dec = d.decimals || 0;
+        const digits = h("span", "stat-digits", fmt(d.value, dec));
         const suffix = h("span", "stat-suffix", d.suffix || "");
         if (d.prefix) num.append(h("span", "", d.prefix));
         num.append(digits, suffix);
         const label = masked("stat-label", d.label);
         stage.append(num, label.m);
+        shrinkToFit(num, 900, 120); // measured at the final value, then reset to 0 for the count
+        digits.textContent = fmt(0, dec);
+        shrinkToFit(label.m, 930, 34, () => label.inner.scrollWidth);
         const dotsBox = h("div", "dots");
-        const n = d.dots || 20, perRow = 10, size = 52, gap = 34;
+        // dots: 0 = no unit chart (a made-up scale is worse than none); fill = how many of them the value reaches
+        const n = d.dots == null ? 20 : d.dots, perRow = 10, size = 52, gap = 34;
+        const filled = d.fill == null ? n : Math.max(0, Math.min(n, d.fill));
         const fills = [];
         for (let i = 0; i < n; i++) {
           const dot = h("div", "dot");
@@ -912,7 +941,8 @@
           fills.push({ dot, f });
         }
         const key = masked("dot-key mono", d.dot_label || "");
-        stage.append(dotsBox, key.m);
+        stage.append(dotsBox);
+        if (n && d.dot_label) stage.append(key.m);
         let src = null;
         if (d.source) {
           src = h("div", "source mono", d.source);
@@ -926,19 +956,20 @@
         const proxy = { v: 0 };
         tl.fromTo(proxy, { v: 0 }, {
           v: d.value, duration: COUNT, ease: "power3.out",
-          onUpdate: () => (digits.textContent = proxy.v.toFixed(d.decimals || 0)),
+          onUpdate: () => (digits.textContent = fmt(proxy.v, dec)),
         }, tc);
         tl.fromTo(num, { scale: 0.86 }, { scale: 1, duration: COUNT, ease: "power3.out" }, tc);
         tl.fromTo(suffix, { yPercent: 40, opacity: 0 }, { yPercent: 0, opacity: 1, duration: SETTLE.duration, ease: SETTLE.ease }, tc + COUNT * 0.55);
         tl.fromTo(label.inner, { yPercent: 110 }, { yPercent: 0, duration: 0.7, ease: "avx.out" }, t0 + 0.25);
-        tl.fromTo(fills.map((x) => x.dot), { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: "avx.out", stagger: 0.02 }, t0 + 0.2);
+        if (fills.length) tl.fromTo(fills.map((x) => x.dot), { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: "avx.out", stagger: 0.02 }, t0 + 0.2);
         // Dots fill in step with the counter's eased progress (power3.out over COUNT).
         fills.forEach(({ f }, i) => {
-          const p = (i + 1) / n; // value fraction at which this dot is reached
+          if (i >= filled) { tl.set(f, { scale: 0 }, t0); return; } // past the value: stays an empty ring
+          const p = (i + 1) / filled; // value fraction at which this dot is reached
           const tt = 1 - Math.cbrt(1 - p); // invert power3.out
           tl.fromTo(f, { scale: 0 }, { scale: 1, duration: 0.28, ease: "back.out(2)" }, tc + tt * COUNT - 0.12);
         });
-        tl.fromTo(key.inner, { yPercent: 110 }, { yPercent: 0, duration: 0.6, ease: "avx.out" }, tc + 0.3);
+        if (n && d.dot_label) tl.fromTo(key.inner, { yPercent: 110 }, { yPercent: 0, duration: 0.6, ease: "avx.out" }, tc + 0.3);
         if (src) tl.fromTo(src, { x: 30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.7, ease: "avx.out" }, tc + COUNT);
         return {
           exit(t) {
@@ -985,6 +1016,7 @@
           const title = masked("tl-title", nd.title);
           text.append(year.m, title.m);
           stage.append(node, text);
+          shrinkToFit(title.m, 630, 44, () => title.inner.scrollWidth);
           return { node, disc, ring, icon, year, title, text, y };
         });
         let sub = null;
@@ -994,13 +1026,15 @@
         }
         // "+2 years" bracket between the last two nodes, on the right.
         let bracket = null, blabel = null;
-        if (nodes.length >= 2) {
+        const yA = Number(d.nodes.length >= 2 ? d.nodes[d.nodes.length - 2].year : NaN);
+        const yB = Number(d.nodes.length >= 2 ? d.nodes[d.nodes.length - 1].year : NaN);
+        if (nodes.length >= 2 && /^\d{4}$/.test(String(d.nodes[d.nodes.length - 2].year)) && /^\d{4}$/.test(String(d.nodes[d.nodes.length - 1].year)) && yB > yA) {
           const a = nodes[nodes.length - 2].y, b = nodes[nodes.length - 1].y;
           const bx = 880;
           bracket = s("path", { d: `M${bx - 24},${a} L${bx},${a} L${bx},${b} L${bx - 24},${b}`, stroke: sc.pal.mute, "stroke-width": 3, fill: "none", "stroke-linejoin": "round" });
           svg.append(bracket);
-          const yrs = Number(d.nodes[d.nodes.length - 1].year) - Number(d.nodes[d.nodes.length - 2].year);
-          blabel = h("div", "tl-bracket-label mono", "+" + yrs + " yrs");
+          const yrs = yB - yA;
+          blabel = h("div", "tl-bracket-label mono", "+" + yrs + (yrs === 1 ? " yr" : " yrs"));
           blabel.style.left = bx - 150 + "px";
           blabel.style.top = (a + b) / 2 - 16 + "px";
           stage.append(blabel);
@@ -1045,7 +1079,8 @@
           tag.style.color = hot ? sc.pal.onAccent : sc.pal.ink;
           tag.style.border = hot ? "none" : `2px solid ${sc.pal.hair}`;
           const title = h("div", "vs-title", spec.title);
-          card.append(tag, title);
+          if (spec.tag) card.append(tag);
+          card.append(title);
           const items = spec.items.map((txt) => {
             const row = h("div", "vs-item");
             const b = h("div", "vs-bullet");
@@ -1054,16 +1089,22 @@
             card.append(row);
             return row;
           });
-          const pace = h("div", "vs-pace");
-          const pl = h("div", "vs-pace-label mono");
-          pl.append(h("span", "", "Pace"), h("span", "", hot ? "Fast" : "Slow"));
-          const track = h("div", "vs-track");
-          const fill = h("div", "vs-fill");
-          fill.style.background = hot ? sc.pal.accent : sc.pal.mute;
-          track.append(fill);
-          pace.append(pl, track);
-          card.append(pace);
+          // The pace bars are a claim (who is faster): only drawn when the data names them.
+          let fill = null;
+          if (d.pace) {
+            const pace = h("div", "vs-pace");
+            const pl = h("div", "vs-pace-label mono");
+            pl.append(h("span", "", d.pace.label || ""), h("span", "", (hot ? d.pace.right : d.pace.left) || ""));
+            const track = h("div", "vs-track");
+            fill = h("div", "vs-fill");
+            fill.style.background = hot ? sc.pal.accent : sc.pal.mute;
+            track.append(fill);
+            pace.append(pl, track);
+            card.append(pace);
+          }
           stage.append(card);
+          shrinkToFit(title, 356, 40);
+          items.forEach((row) => shrinkToFit(row, 356, 24));
           return { card, items, fill };
         };
         const L = mk(d.left, 0, false);
@@ -1075,14 +1116,15 @@
         // Anticipation: a small pull back the other way before each slide.
         tl.fromTo(R.card, { x: 620, rotation: 6, opacity: 1 }, { x: 0, rotation: 0, duration: 0.8, ease: "avx.out" }, tr);
         tl.fromTo(R.items, { x: 60, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: "avx.out", stagger: 0.12 }, tr + 0.3);
-        tl.fromTo(R.fill, { scaleX: 0 }, { scaleX: 0.92, duration: 0.7, ease: "power4.out" }, tr + 0.7);
+        if (R.fill) tl.fromTo(R.fill, { scaleX: 0 }, { scaleX: 0.92, duration: 0.7, ease: "power4.out" }, tr + 0.7);
         tl.fromTo(badge, { scale: 0, rotation: -40 }, { scale: 1, rotation: 0, duration: POP.duration, ease: POP.ease }, tlf - 0.2);
         tl.fromTo(L.card, { x: -620, rotation: -6 }, { x: 0, rotation: 0, duration: 0.8, ease: "avx.out" }, tlf);
         tl.fromTo(L.items, { x: -60, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: "avx.out", stagger: 0.12 }, tlf + 0.3);
-        tl.fromTo(L.fill, { scaleX: 0 }, { scaleX: 0.3, duration: 1.6, ease: "sine.inOut" }, tlf + 0.5);
+        if (L.fill) tl.fromTo(L.fill, { scaleX: 0 }, { scaleX: 0.3, duration: 1.6, ease: "sine.inOut" }, tlf + 0.5);
         if (d.verdict) {
           const stamp = h("div", "stamp mono", d.verdict.text);
           L.card.append(stamp);
+          shrinkToFit(stamp, 380, 18, () => stamp.offsetWidth);
           const tv = at(d.verdict, tlf + 0.8) - 0.05;
           tl.fromTo(stamp, { scale: 1.8, rotation: -14, opacity: 0 }, { scale: 1, rotation: -6, opacity: 1, duration: 0.32, ease: "power4.in" }, tv);
           tl.fromTo(L.card, { y: 0 }, { y: 10, duration: 0.07, ease: "power2.out", yoyo: true, repeat: 1, immediateRender: false }, tv + 0.32);
@@ -1097,14 +1139,15 @@
         };
       };
 
-      // 5. Line chart: gridlines, two series draw on, the gap between them
-      //    fills and gets bracketed, a callout card answers it.
+      // 5. Line chart: gridlines, one or two series draw on, the gap between two
+      //    of them fills and gets bracketed, a callout card answers it.
       BUILD.chart = function (sc, stage, side, tl) {
         const d = sc.data;
         const A = { x: 70, y: 90, w: 680, h: 420 };
         const all = d.series.flatMap((x) => x.values);
-        const max = Math.max(...all) * 1.12;
+        const max = Math.max(...all) * 1.12 || 1;
         const n = d.series[0].values.length;
+        const two = d.series.length > 1;
         const px = (i) => A.x + (i / (n - 1)) * A.w;
         const py = (v) => A.y + A.h - (v / max) * A.h;
         const svg = s("svg", { class: "ch-svg", viewBox: "0 0 936 640" });
@@ -1116,19 +1159,23 @@
           svg.append(ln);
           grid.push(ln);
         }
-        // Gap area between the two series (clipped wipe, left → right).
-        const top = d.series[0].values, bot = d.series[1].values;
-        const areaD = top.map((v, i) => (i ? "L" : "M") + px(i) + "," + py(v)).join(" ") + " " +
-          bot.map((v, i) => "L" + px(n - 1 - i) + "," + py(bot[n - 1 - i])).join(" ") + " Z";
-        const clip = s("clipPath", { id: "gapclip-" + sc.index });
-        const clipRect = s("rect", { x: A.x, y: 0, width: A.w, height: 640 });
-        clip.append(clipRect);
         const defs = s("defs", {});
-        defs.append(clip);
         svg.append(defs);
-        const area = s("path", { d: areaD, fill: sc.pal.accent, "fill-opacity": 0.16, "clip-path": `url(#gapclip-${sc.index})` });
-        svg.append(area);
+        const top = d.series[0].values, bot = two ? d.series[1].values : null;
+        // Gap area between the two series (clipped wipe, left → right).
+        let area = null, clipRect = null;
+        if (two) {
+          const areaD = top.map((v, i) => (i ? "L" : "M") + px(i) + "," + py(v)).join(" ") + " " +
+            bot.map((v, i) => "L" + px(n - 1 - i) + "," + py(bot[n - 1 - i])).join(" ") + " Z";
+          const clip = s("clipPath", { id: "gapclip-" + sc.index });
+          clipRect = s("rect", { x: A.x, y: 0, width: A.w, height: 640 });
+          clip.append(clipRect);
+          defs.append(clip);
+          area = s("path", { d: areaD, fill: sc.pal.accent, "fill-opacity": 0.16, "clip-path": `url(#gapclip-${sc.index})` });
+          svg.append(area);
+        }
         const colours = [sc.pal.accent, sc.pal.ink];
+        const vals = [];
         const lines = d.series.map((ser, si) => {
           const dd = ser.values.map((v, i) => (i ? "L" : "M") + px(i) + "," + py(v)).join(" ");
           const p = s("path", { d: dd, fill: "none", stroke: colours[si], "stroke-width": si ? 5 : 7, "stroke-linecap": "round", "stroke-linejoin": "round" });
@@ -1143,7 +1190,20 @@
           end.style.left = px(n - 1) + 22 + "px";
           end.style.top = py(ser.values[n - 1]) - 22 + (si ? 4 : -4) + "px";
           stage.append(end);
-          return { p, dots, end };
+          shrinkToFit(end, 170, 20, () => end.offsetWidth);
+          // Real data shows its numbers: the first and the last value of each series, above their dots.
+          const labels = [];
+          if (d.point_labels) {
+            [0, n - 1].forEach((i) => {
+              const lab = h("div", "ch-val mono", fmt(ser.values[i], Number.isInteger(ser.values[i]) ? 0 : 1));
+              lab.style.left = px(i) - 10 + "px";
+              lab.style.top = py(ser.values[i]) + (si ? 16 : -46) + "px";
+              stage.append(lab);
+              labels.push({ lab, i });
+            });
+          }
+          vals.push(...labels.map((x) => x.lab));
+          return { p, dots, end, labels };
         });
         (d.x_labels || []).forEach((t, i) => {
           const xl = h("div", "ch-axis-label mono", t);
@@ -1158,31 +1218,43 @@
         stage.append(yl);
         const note = h("div", "ch-note mono", d.note || "");
         if (d.note) stage.append(note);
-        // Bracket at the right edge spanning the gap.
-        const gx = px(n - 1) + 160, ya = py(top[n - 1]), yb = py(bot[n - 1]);
-        const br = s("path", { d: `M${gx - 18},${ya} Q${gx},${ya} ${gx},${ya + 20} L${gx},${(ya + yb) / 2 - 12} L${gx + 14},${(ya + yb) / 2} L${gx},${(ya + yb) / 2 + 12} L${gx},${yb - 20} Q${gx},${yb} ${gx - 18},${yb}`, fill: "none", stroke: sc.pal.ink, "stroke-width": 4, "stroke-linecap": "round", "stroke-linejoin": "round" });
-        svg.append(br);
-        const gapLabel = h("div", "ch-gap mono", d.gap ? d.gap.text : "");
-        gapLabel.style.left = gx - 150 + "px";
-        gapLabel.style.top = (ya + yb) / 2 - 16 + "px";
-        stage.append(gapLabel);
-        // Connector from the bracket down into the callout card (side zone).
-        const conn = s("path", { d: `M${gx + 14},${(ya + yb) / 2} C${gx + 40},${(ya + yb) / 2 + 160} ${gx - 20},${700} ${gx - 60},${760}`, fill: "none", stroke: sc.pal.accent, "stroke-width": 4, "stroke-linecap": "round", "stroke-dasharray": "2 12" });
-        // dashed: draw with a mask path instead of DrawSVG (dasharray is in use)
-        const connMaskId = "connmask-" + sc.index;
-        const mask = s("mask", { id: connMaskId, maskUnits: "userSpaceOnUse", x: -200, y: -200, width: 1400, height: 1400 });
-        const connReveal = s("path", { d: conn.getAttribute("d"), fill: "none", stroke: "#fff", "stroke-width": 14, "stroke-linecap": "round" });
-        mask.append(connReveal);
-        defs.append(mask);
-        conn.setAttribute("mask", `url(#${connMaskId})`);
-        svg.append(conn);
-        const call = h("div", "card callout");
-        call.append(h("div", "callout-k mono", "Investors"), h("div", "callout-t", d.callout ? d.callout.text : ""));
-        side.append(call);
+        // Bracket at the right edge spanning the gap (two series only).
+        const gx = px(n - 1) + 160;
+        const ya = py(top[n - 1]), yb = two ? py(bot[n - 1]) : ya;
+        let br = null, gapLabel = null;
+        if (two) {
+          br = s("path", { d: `M${gx - 18},${ya} Q${gx},${ya} ${gx},${ya + 20} L${gx},${(ya + yb) / 2 - 12} L${gx + 14},${(ya + yb) / 2} L${gx},${(ya + yb) / 2 + 12} L${gx},${yb - 20} Q${gx},${yb} ${gx - 18},${yb}`, fill: "none", stroke: sc.pal.ink, "stroke-width": 4, "stroke-linecap": "round", "stroke-linejoin": "round" });
+          svg.append(br);
+          if (d.gap) {
+            gapLabel = h("div", "ch-gap mono", d.gap.text);
+            gapLabel.style.left = gx - 150 + "px";
+            gapLabel.style.top = (ya + yb) / 2 - 16 + "px";
+            stage.append(gapLabel);
+          }
+        }
+        // Connector from the bracket (or the last point) down into the callout card (side zone).
+        let conn = null, connReveal = null, call = null;
+        if (d.callout) {
+          const sx = two ? gx + 14 : px(n - 1) + 12, sy = two ? (ya + yb) / 2 : ya + 12;
+          conn = s("path", { d: `M${sx},${sy} C${sx + 30},${sy + 160} ${gx - 20},${700} ${gx - 60},${760}`, fill: "none", stroke: sc.pal.accent, "stroke-width": 4, "stroke-linecap": "round", "stroke-dasharray": "2 12" });
+          // dashed: draw with a mask path instead of DrawSVG (dasharray is in use)
+          const connMaskId = "connmask-" + sc.index;
+          const mask = s("mask", { id: connMaskId, maskUnits: "userSpaceOnUse", x: -200, y: -200, width: 1400, height: 1400 });
+          connReveal = s("path", { d: conn.getAttribute("d"), fill: "none", stroke: "#fff", "stroke-width": 14, "stroke-linecap": "round" });
+          mask.append(connReveal);
+          defs.append(mask);
+          conn.setAttribute("mask", `url(#${connMaskId})`);
+          svg.append(conn);
+          call = h("div", "card callout");
+          if (d.callout.kicker) call.append(h("div", "callout-k mono", d.callout.kicker));
+          call.append(h("div", "callout-t", d.callout.text || ""));
+          side.append(call);
+        }
 
         const t0 = sc.start + 0.05;
         tl.fromTo(grid, { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.45, ease: "avx.out", stagger: 0.03 }, t0);
         tl.fromTo([yl, note], { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5, ease: "avx.out" }, t0 + 0.1);
+        let lastDrawn = t0;
         lines.forEach((ln, si) => {
           const ts = Math.max(t0 + 0.15, at(d.series[si], t0 + 0.2 + si * 0.4) - 0.1);
           const DUR = 1.1;
@@ -1191,19 +1263,28 @@
             const frac = i / (n - 1);
             tl.fromTo(c, { scale: 0, transformOrigin: "50% 50%" }, { scale: 1, duration: 0.3, ease: "back.out(2.5)" }, ts + frac * DUR * 0.92);
           });
+          ln.labels.forEach(({ lab, i }) => {
+            tl.fromTo(lab, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.35, ease: "avx.out" }, ts + (i / (n - 1)) * DUR * 0.92 + 0.1);
+          });
           tl.fromTo(ln.end, { opacity: 0, x: -14 }, { opacity: 1, x: 0, duration: 0.45, ease: "avx.out" }, ts + DUR - 0.1);
+          lastDrawn = Math.max(lastDrawn, ts + DUR);
         });
-        const tg = at(d.gap, t0 + 1.2) - 0.1;
-        tl.fromTo(clipRect, { attr: { width: 0 } }, { attr: { width: A.w }, duration: 0.7, ease: "avx.inOut" }, tg);
-        tl.fromTo(br, { drawSVG: "50% 50%" }, { drawSVG: "0% 100%", duration: 0.5, ease: "avx.inOut" }, tg + 0.2);
-        tl.fromTo(gapLabel, { opacity: 0, x: 12 }, { opacity: 1, x: 0, duration: 0.45, ease: "avx.out" }, tg + 0.4);
-        const tc = Math.max(tg + 0.5, at(d.callout, tg + 1) - 0.45);
-        tl.fromTo(connReveal, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.45, ease: "avx.inOut" }, tc);
-        tl.fromTo(call, { y: 40, opacity: 0, scale: 0.94 }, { y: 0, opacity: 1, scale: 1, duration: SETTLE.duration, ease: SETTLE.ease }, tc + 0.3);
+        let tg = lastDrawn;
+        if (two) {
+          tg = at(d.gap, t0 + 1.2) - 0.1;
+          tl.fromTo(clipRect, { attr: { width: 0 } }, { attr: { width: A.w }, duration: 0.7, ease: "avx.inOut" }, tg);
+          tl.fromTo(br, { drawSVG: "50% 50%" }, { drawSVG: "0% 100%", duration: 0.5, ease: "avx.inOut" }, tg + 0.2);
+          if (gapLabel) tl.fromTo(gapLabel, { opacity: 0, x: 12 }, { opacity: 1, x: 0, duration: 0.45, ease: "avx.out" }, tg + 0.4);
+        }
+        if (call) {
+          const tc = Math.max(tg + 0.5, at(d.callout, tg + 1) - 0.45);
+          tl.fromTo(connReveal, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.45, ease: "avx.inOut" }, tc);
+          tl.fromTo(call, { y: 40, opacity: 0, scale: 0.94 }, { y: 0, opacity: 1, scale: 1, duration: SETTLE.duration, ease: SETTLE.ease }, tc + 0.3);
+        }
         return {
           exit(t) {
-            tl.to([svg, ...stage.querySelectorAll(".ch-end, .ch-axis-label, .ch-note, .ch-gap")], { opacity: 0, y: -40, duration: 0.38, ease: "avx.in", stagger: 0.01 }, t);
-            tl.to(call, { x: 120, opacity: 0, duration: 0.38, ease: "avx.in" }, t);
+            tl.to([svg, ...stage.querySelectorAll(".ch-end, .ch-axis-label, .ch-note, .ch-gap, .ch-val")], { opacity: 0, y: -40, duration: 0.38, ease: "avx.in", stagger: 0.01 }, t);
+            if (call) tl.to(call, { x: 120, opacity: 0, duration: 0.38, ease: "avx.in" }, t);
           },
         };
       };
@@ -1225,6 +1306,8 @@
         };
         const A = chip(d.from, 0, 10, false);
         const B = chip(d.to, 250, 250, true);
+        shrinkToFit(A.querySelector(".p-name"), 936, 30, () => A.offsetWidth);
+        shrinkToFit(B.querySelector(".p-name"), 686, 30, () => B.offsetWidth);
         const svg = s("svg", { class: "rel-svg", viewBox: "0 0 936 640" });
         stage.insertBefore(svg, A);
         const arrow = s("path", { d: "M76,160 C70,260 120,300 236,302", fill: "none", stroke: sc.pal.accent, "stroke-width": 6, "stroke-linecap": "round" });
@@ -1240,6 +1323,13 @@
         const on = h("div", "hl-on", d.phrase.text);
         wrap.append(mark, text, on);
         stage.append(wrap);
+        {
+          let size = 168;
+          while (wrap.offsetWidth > 936 && size > 80) {
+            size -= 4;
+            text.style.fontSize = on.style.fontSize = size + "px";
+          }
+        }
 
         const ta = Math.max(sc.start + 0.05, at(d.from, sc.start + 0.2) - 0.2);
         const tv = at(d.verb, ta + 0.4);
@@ -1275,6 +1365,7 @@
           title.append(sp);
         });
         stage.append(title);
+        shrinkToFit(title, 930, 30, () => title.offsetWidth);
         const rows = d.items.map((it, i) => {
           const row = h("div", "li-row");
           row.style.top = 110 + i * 170 + "px";
@@ -1288,6 +1379,7 @@
           const rule = h("div", "li-rule");
           row.append(num, svg, txt.m, rule);
           stage.append(row);
+          shrinkToFit(txt.m, 730, 34, () => txt.inner.scrollWidth);
           return { row, num, circle, disc, tick, txt, rule };
         });
         const t0 = sc.start + 0.05;

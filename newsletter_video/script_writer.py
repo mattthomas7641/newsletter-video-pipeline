@@ -86,6 +86,10 @@ class Script:
     look: dict | None = field(default=None, repr=False)
     # Where this video came from in the day's lineup (lineup.py): batch, slot, format. None without a lineup.
     lineup: dict | None = field(default=None, repr=False)
+    # The avatar explainer's scene list (avx_writer.py), as avx_builder.build_avx takes it, without the
+    # per-video colours (the look adds those at render time). None for the other formats; hook, beats and
+    # outro then still hold the same spoken lines, so narration, metadata and uploads work unchanged.
+    avx_scenes: list | None = field(default=None, repr=False)
 
     @property
     def narration(self) -> str:
@@ -753,8 +757,15 @@ def build_scripts(editions: list[Edition], n_videos: int | None = None,
     jev_filtered = _jev_rank_candidates(llm_candidates, n_videos)
     if jev_filtered is not None:
         llm_candidates = jev_filtered
-    from .explainer_builder import explainer_mode  # VIDEO_STYLE=explainer: scene plans, see explainer_writer
+    from .explainer_builder import explainer_mode, video_style  # VIDEO_STYLE=explainer: scene plans, see explainer_writer
 
+    if video_style() == "avx":  # the avatar explainer: scene lists, see avx_writer
+        from .avx_writer import heuristic_avx_scripts, llm_avx_scripts
+
+        scripts = llm_avx_scripts(llm_candidates, n_videos) if llm_candidates else None
+        if scripts is not None:  # Claude ran; an empty list means every plan was rejected, not a fallback
+            return scripts
+        return heuristic_avx_scripts(_heuristic_scripts(editions, candidates, n_videos))
     if explainer_mode():
         from .explainer_writer import llm_explainer_scripts, structural_explainer_scripts
 

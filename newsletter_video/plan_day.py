@@ -109,7 +109,7 @@ def _overrides_from_args(args) -> dict:
 def add_look_arguments(parser: argparse.ArgumentParser) -> None:
     from .look import THEMES
 
-    parser.add_argument("--style", choices=("avatar", "explainer"), help="override VIDEO_STYLE for this run")
+    parser.add_argument("--style", choices=("avatar", "explainer", "avx"), help="override VIDEO_STYLE for this run")
     parser.add_argument("--character", help="override CHARACTER for this run ('' for the default narrator)")
     parser.add_argument("--theme", choices=THEMES, help="override VIDEO_THEME for this run")
     parser.add_argument("--background", choices=("gameplay", "none"), help="override BACKGROUND_STYLE for this run")

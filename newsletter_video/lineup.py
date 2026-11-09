@@ -34,7 +34,7 @@ LINEUP_VERSION = 1
 MAX_TOTAL = 20
 MAX_BATCHES = 10
 DEFAULT_TOTAL = 10
-STYLES = ("explainer", "avatar")
+STYLES = ("explainer", "avatar", "avx")  # avx: the avatar explainer (avx_builder.py)
 ACCENT_MODES = ("one", "alternate", "random")
 ORDERS = ("interleave", "sequential")
 FILE_NAME = "lineup.json"
@@ -97,12 +97,16 @@ def validate_batch(raw: Any, i: int, characters: set[str] | None, errors: list[s
         style = "explainer"
     out["style"] = style
     out["name"] = str(raw.get("name") or "").strip()[:40]
-    if style == "explainer":
-        preset = str(raw.get("preset") or "paper").lower()
-        if preset not in _preset_ids():
-            errors.append(f"{where}: preset must be one of {', '.join(_preset_ids())}")
-            preset = "paper"
-        out["preset"] = preset
+    if style in ("explainer", "avx"):
+        if style == "explainer":
+            preset = str(raw.get("preset") or "paper").lower()
+            if preset not in _preset_ids():
+                errors.append(f"{where}: preset must be one of {', '.join(_preset_ids())}")
+                preset = "paper"
+            out["preset"] = preset
+        else:
+            out["preset"] = ""
+        # avx: ONE plain ground for every scene of the video; blank = the house rhythm (avx_builder.HOUSE_RHYTHM)
         out["bg"] = _hex_or_blank(raw.get("bg"), f"{where}: bg", errors)
         mode = str(raw.get("accent_mode") or "one").lower()
         if mode not in ACCENT_MODES:
@@ -118,16 +122,10 @@ def validate_batch(raw: Any, i: int, characters: set[str] | None, errors: list[s
         if mode != "one" and len(palette) < 2:
             errors.append(f"{where}: {mode} colours need a palette of at least 2 colours")
         out["palette"] = palette
-        out["character"] = ""
+        out["character"] = _character(raw, where, characters, errors) if style == "avx" else ""
         out["background"] = ""
     else:
-        character = str(raw.get("character") or "")
-        if character and not _SLUG.match(character):
-            errors.append(f"{where}: character {character[:30]!r} is not an avatar name")
-            character = ""
-        if characters is not None and character not in characters:
-            errors.append(f"{where}: the avatar {character or 'default'!r} doesn't exist")
-        out["character"] = character
+        out["character"] = _character(raw, where, characters, errors)
         background = str(raw.get("background") or "gameplay").lower()
         if background not in BACKGROUNDS:
             errors.append(f"{where}: background must be one of {', '.join(BACKGROUNDS)}")
@@ -135,6 +133,17 @@ def validate_batch(raw: Any, i: int, characters: set[str] | None, errors: list[s
         out["background"] = background
         out.update(preset="", bg="", accent="", accent_mode="one", palette=[])
     return out
+
+
+def _character(raw: Mapping[str, Any], where: str, characters: set[str] | None, errors: list[str]) -> str:
+    """An avatar batch's (or avatar explainer batch's) narrator: a character folder name, "" for the default."""
+    character = str(raw.get("character") or "")
+    if character and not _SLUG.match(character):
+        errors.append(f"{where}: character {character[:30]!r} is not an avatar name")
+        return ""
+    if characters is not None and character not in characters:
+        errors.append(f"{where}: the avatar {character or 'default'!r} doesn't exist")
+    return character
 
 
 def _validate_core(raw: Any, characters: set[str] | None, errors: list[str], where: str = "") -> dict:
@@ -263,7 +272,9 @@ def default_from_environ(environ: Mapping[str, str] | None = None) -> dict:
         total = DEFAULT_TOTAL
     style = (environ.get("VIDEO_STYLE") or "explainer").lower()
     batch: dict[str, Any] = {"count": total, "style": style if style in STYLES else "explainer"}
-    if batch["style"] == "avatar":
+    if batch["style"] == "avx":
+        batch.update(character=environ.get("CHARACTER", ""), bg=environ.get("LOOK_BG", ""), accent=environ.get("LOOK_ACCENT", ""))
+    elif batch["style"] == "avatar":
         batch["character"] = environ.get("CHARACTER", "")
         batch["background"] = "none" if (environ.get("BACKGROUND_STYLE") or "").strip().lower() == "none" else "gameplay"
     else:
@@ -295,10 +306,21 @@ def _random_accent(day: date, batch: int, k: int, palette: list[str]) -> str:
 def family_of(look: Mapping[str, Any]) -> str:
     if look.get("style") == "avatar":
         return "avatar"
+    if look.get("style") == "avx":
+        return "avx"
     return "glass" if look.get("preset") == "cinematic-glass" else "paper"
 
 
-FAMILY_NAMES = {"paper": "Clean paper", "glass": "Dark glass", "avatar": "Avatar"}
+FAMILY_NAMES = {"paper": "Clean paper", "glass": "Dark glass", "avatar": "Avatar", "avx": "Avatar explainer"}
+
+
+def _avx_look(look: Mapping[str, Any]) -> dict[str, str]:
+    """An avatar explainer slot's look: its narrator (left out for the default, so the run's CHARACTER
+    narrates), one background colour ("" = the house rhythm) and the animation colour ("" = from the ground)."""
+    out = {"style": "avx", "bg": look.get("bg") or "", "accent": look.get("accent") or ""}
+    if look.get("character"):
+        out["character"] = look["character"]
+    return out
 
 
 def expand(lineup: Mapping[str, Any], day: date) -> list[dict]:
@@ -329,12 +351,17 @@ def expand(lineup: Mapping[str, Any], day: date) -> list[dict]:
                 accent = _random_accent(day, bi, k, palette)
             else:
                 accent = b.get("accent", "")
-            look = {"style": "explainer", "preset": b.get("preset") or "paper", "bg": b.get("bg", ""), "accent": accent}
+            if b["style"] == "avx":
+                look = _avx_look({**b, "accent": accent})
+            else:
+                look = {"style": "explainer", "preset": b.get("preset") or "paper", "bg": b.get("bg", ""), "accent": accent}
         over = (lineup.get("slots") or {}).get(str(n)) or {}
         look.update(over)
         if look.get("style") == "avatar":  # an override can switch a slot's format
             look = {"style": "avatar", "character": look.get("character", ""),
                     "background": look.get("background") or "gameplay"}
+        elif look.get("style") == "avx":
+            look = _avx_look(look)
         else:
             look.setdefault("preset", "paper")
             look.pop("character", None)
@@ -363,9 +390,9 @@ def format_label(info: Mapping[str, Any] | None, look: Mapping[str, Any] | None 
         src = {"format": FAMILY_NAMES[family_of(look)], "character": look.get("character", ""), "style": look.get("style", ""),
                "background": look.get("background", "")}
     name = str(src.get("format") or "")
-    if name == "Avatar" and src.get("character"):
-        name = f"Avatar: {src['character']}"
-    if name.startswith("Avatar") and src.get("background") in BACKGROUND_NAMES:
+    if name in ("Avatar", FAMILY_NAMES["avx"]) and src.get("character"):
+        name = f"{name}: {src['character']}"
+    if name.startswith("Avatar") and src.get("style") != "avx" and src.get("background") in BACKGROUND_NAMES:
         name = f"{name} · {BACKGROUND_NAMES[src['background']]}"
     return name or "Unknown format"
 
@@ -374,15 +401,18 @@ def format_label(info: Mapping[str, Any] | None, look: Mapping[str, Any] | None 
 
 def write_scripts(slots: list[dict], day: date, total: int, editions: list, covered: set[str],
                   build: Callable[..., list]) -> list:
-    """One writer call per format group (avatar cards, explainer scene plans, and a 3D look's own notes
-    differ per format), each asked for as many stories as that group has slots and told to skip the stories
+    """One writer call per format group (avatar cards, explainer scene plans, avatar explainer scene lists,
+    and a 3D look's own notes differ per format), each asked for as many stories as that group has slots and told to skip the stories
     the groups before it picked. Every script gets its slot's look and lineup record; returned in slot order."""
     from .look import applied
 
     groups: dict[tuple, list[dict]] = {}
     for s in slots:
         look = s["look"]
-        key = ("avatar",) if look.get("style") == "avatar" else ("explainer", look.get("preset", "paper"))
+        if look.get("style") in ("avatar", "avx"):  # avx: one call writes every avatar explainer slot's scene list
+            key: tuple = (look["style"],)
+        else:
+            key = ("explainer", look.get("preset", "paper"))
         groups.setdefault(key, []).append(s)
     taken = set(covered)
     produced: list[tuple[int, Any]] = []

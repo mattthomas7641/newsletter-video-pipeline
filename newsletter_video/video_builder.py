@@ -441,8 +441,12 @@ def build_short(script: Script, out_path: Path, audio_path: Path, work_dir: Path
 
 def _build_short(script: Script, out_path: Path, audio_path: Path, work_dir: Path,
                  kicker: str, background_seed: str) -> Path:
-    from .explainer_builder import explainer_mode  # VIDEO_STYLE=explainer: no avatar, no footage
+    from .explainer_builder import explainer_mode, video_style  # VIDEO_STYLE=explainer: no avatar, no footage
 
+    if video_style() == "avx":  # the avatar explainer: its own template and builder (avx_builder.py)
+        from .avx_builder import build_avx_short
+
+        return build_avx_short(script, out_path, audio_path, kicker, background_seed)
     if explainer_mode():
         from .explainer_builder import build_explainer_short
 

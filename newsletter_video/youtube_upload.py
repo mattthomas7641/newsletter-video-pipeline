@@ -125,6 +125,10 @@ def write_metadata(script: Script, video_path: Path, privacy: str | None = None)
         from .explainer_writer import plan_dict
 
         metadata["scene_plan"] = plan_dict(script.plan)
+    elif getattr(script, "avx_scenes", None):  # avatar explainer: the scene list that was rendered
+        from .avx_writer import plan_dict as avx_plan_dict
+
+        metadata["scene_plan"] = avx_plan_dict(script.avx_scenes)
     # The look this video was rendered with (resolved: defaults plus any
     # per-video overrides), so a preview or re-render can replay it exactly.
     from .look import LookError, is_empty, look_from_env, resolve_look

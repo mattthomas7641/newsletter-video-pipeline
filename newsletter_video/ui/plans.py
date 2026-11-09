@@ -134,7 +134,7 @@ class PlanService:
                 "words": sum(len(str(s.get("say", "")).split()) for s in plan.get("scenes", [])) if plan
                 else sum(len(str(b.get("say", "")).split()) for b in (entry.get("script") or {}).get("beats", []))
                 + len(str((entry.get("script") or {}).get("hook", "")).split()) + len(str((entry.get("script") or {}).get("outro", "")).split()),
-                "scenes": [s.get("type") for s in plan.get("scenes", [])] if plan else None,
+                "scenes": [s.get("style" if plan.get("style") == "avx" else "type") for s in plan.get("scenes", [])] if plan else None,
                 "writer": entry.get("writer", ""), "status": entry.get("status", "planned"), "error": entry.get("error"),
                 "rendered": entry.get("rendered"), "look": {k: v for k, v in overrides.items() if k != "version"},
                 "resolved": resolved, "default_look": video_default, "color_notes": color_notes(resolved), "look_key": look_key(resolved), "preview": self.preview_state(ref, entry["id"]),
@@ -510,7 +510,7 @@ def color_notes(resolved: dict) -> list[str]:
     """Plain-words notes on any colour the guard (colors.fit_colors) would adjust for this look."""
     from ..colors import fit_colors
 
-    if resolved.get("style") == "avatar" or not (resolved.get("bg") or resolved.get("accent")):
+    if resolved.get("style") in ("avatar", "avx") or not (resolved.get("bg") or resolved.get("accent")):  # avx: palette() guards
         return []
     return fit_colors(resolved.get("theme") or "light", resolved.get("bg") or None, resolved.get("accent") or None)["notes"]
 
