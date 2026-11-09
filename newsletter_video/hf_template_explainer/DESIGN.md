@@ -35,7 +35,8 @@ only element allowed to run under the safe zones.
 ## Colour tokens
 
 Defined once on `:root`; the dark set overrides them under `[data-theme="dark"]`
-(`VIDEO_THEME=light|dark`, default light). Contrast is WCAG AA at every size
+(`VIDEO_THEME=light|dark|cinematic`, default light; the cinematic set is
+described under "Cinematic look" below). Contrast is WCAG AA at every size
 used (`npx hyperframes check` audits it; 0 findings in both themes).
 
 | Token | Light | Dark | Role |
@@ -177,6 +178,61 @@ scene and the progress rule always moving, something meaningful moves every
 1–2 seconds. All motion is on the one paused GSAP timeline, driven from the
 plan's times, so every frame is a pure function of time (seek-safe,
 deterministic); counts and typing are discrete sets, never `onUpdate` state.
+
+## Style knobs (the style library)
+
+A scene may carry a validated `style` object from the style library
+(`newsletter_video/styles`, docs in `docs/style-library.md`): `transition`,
+`entrance`, `hold`, `type_treatment`, `background`, `ease`, `accent`, `speed`
+and `stagger`, every one a closed set whose `default` is exactly the behaviour
+above. The composition reads them in `build()`: the transition in (and the
+previous scene's exit) can become a cut, a left push, a right-to-left wipe
+behind `#wipe-v`, a zoom-through, a circle mask, a fade or an accent flash
+(`#flash`); text entrances can be a line slide, typewriter, scale-pop, fade,
+mask reveal, letter stagger or blur-in instead of the word wave; the hold can
+be a stronger push, parallax, a float or a pulse, or nothing; type treatments
+add `st-caps` / `st-oversized` / `st-sans` / `st-outline` / `st-band` classes
+before the fit pass; backgrounds switch the dot grid off or put an accent
+band (`#field`, the stage rows only, so chrome and captions keep their ground)
+behind the scene; `--accent` can be set per scene. Reveal cues still come from
+the voice. With no `style` on any scene the timeline is built exactly as
+before.
+
+## Cinematic look
+
+The second look family (`:root[data-theme="cinematic"]`, `docs/cinematic-look.md`):
+a near-black ground with a line grid above and a perspective grid floor below
+the stage, three drifting aurora fields (registry `aurora-drift`, adapted), an
+optional `mesh-gradient` shader block behind a scene (registry block, WebGPU,
+only mounted when asked for), a vignette and stepping film grain (registry
+`grain-overlay`, adapted, finite). The palette comes from the recipe
+(`story.palette`, up to four colours -> `--glow-1..4`); `--accent` is the first
+colour lifted to a text-safe tone so every accent text still clears AA, while
+`--glow-rgb` keeps it raw for halos. Headings switch to the heavy sans with a
+soft glow; the pictograms, lead bars, discs, rails and markers get halos; nodes,
+device frames and tiles become glass. The light default is untouched: without
+`theme: cinematic` or a cinematic recipe none of these rules apply.
+
+### Rich scenes (the cinematic look's own, valid in every theme)
+
+| Type | Head | Hero | Motion |
+|---|---|---|---|
+| object3d | title | Three.js, full-frame-width slot: `stack` (neon glass plates over a shader grid floor, reflections, a cube lifting out of the top plate), `bars` (dark-glass columns with lit caps), `orbit` (core cube, neon ring, satellites with beams), `cards`; labels are HTML pins projected from 3D anchors | drawn from the seek time (`hf-seek`) by one shared renderer: layers rise and spread, bars grow, nodes scale in on their cues; the camera orbits, climbs and dollies; a blurred copy of the canvas is screen-blended over it as bloom |
+| depth | label, title | Three.js: 2-4 glass planes at increasing distance with their text drawn on them, dust and grid floor for parallax | the camera dollies plane to plane on the cues with a lateral sway, passed planes dissolve before the lens, deeper ones sink into the dark |
+| kinetic | label | big numeral (420 px, glow) and 1-3 heavy caps lines | words land from below with scale on the line's cue; the spoken line glows (neon stack), an underline draws and sweeps |
+| glass | title | HUD panel: header with status dot, 2-4 key/value rows, scan | panel rises, rows arrive on cues, dot blinks, scan sweeps, accent walks the values |
+
+Limits that keep it fast and safe: at most 4 object3d scenes per video (they share one WebGL renderer),
+labels are HTML under hard caps, pinned to the 3D anchors (never inside the
+canvas; the depth scene's plane text is the exception, it is a texture), and the
+draft clip of a 38 s video with four 3D scenes renders in ~35 s.
+
+## Look presets
+
+`newsletter_video/looks/presets.json` names five looks (paper, cinematic
+dark glass, data focus, glow type, quiet editorial) as data: the
+theme, the knobs for the middle scenes, the scene types to prefer, the registry
+items used and a thumbnail. `look.preset` resolves one into `theme` + `recipe`.
 
 ## Why one file
 

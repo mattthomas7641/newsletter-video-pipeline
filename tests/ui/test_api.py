@@ -207,12 +207,13 @@ def test_sample_media_rejects_odd_names(client):
 # --- runs ---
 
 def test_start_test_run_via_api_ignores_unsaved_secrets_and_never_uploads(client, spawner):
-    status, data = client.send_json("POST", "/api/runs", {"kind": "test", "overrides": {
+    assert client.send_json("POST", "/api/runs", {"kind": "test"})[0] == 400  # a full render is never implicit
+    status, data = client.send_json("POST", "/api/runs", {"kind": "test", "confirm": True, "overrides": {
         "VIDEO_STYLE": "explainer", "YOUTUBE_UPLOAD": "1"}})
     assert status == 201 and data["job"]["kind"] == "test" and data["job"]["state"] == "running"
     env = spawner.calls[-1]["env"]
     assert env["YOUTUBE_UPLOAD"] == "0" and env["VIDEO_STYLE"] == "explainer"
-    status, data = client.send_json("POST", "/api/runs", {"kind": "test", "overrides": {"ANTHROPIC_API_KEY": "x"}})
+    status, data = client.send_json("POST", "/api/runs", {"kind": "test", "confirm": True, "overrides": {"ANTHROPIC_API_KEY": "x"}})
     assert status == 409 or status == 400  # blocked by the first run, or invalid; either way nothing started
 
 
@@ -226,7 +227,7 @@ def test_batch_needs_confirmation_and_is_refused_while_running(client, spawner):
 
 
 def test_runs_endpoint_reports_activity_and_latest(client):
-    client.send_json("POST", "/api/runs", {"kind": "test"})
+    client.send_json("POST", "/api/runs", {"kind": "test", "confirm": True})
     _, data = client.get_json("/api/runs")
     assert data["activity"][0]["source"] == "panel" and data["latest"]["kind"] == "test"
     assert "schedule" in data
@@ -238,7 +239,7 @@ def test_cancel_endpoint(client, paths, sleeper, app):
     spawner = FakeSpawner()
     spawner.pid = proc.pid
     app.jobs.spawner = spawner
-    _, data = client.send_json("POST", "/api/runs", {"kind": "test"})
+    _, data = client.send_json("POST", "/api/runs", {"kind": "test", "confirm": True})
     status, out = client.send_json("POST", f"/api/jobs/{data['job']['id']}/cancel", {})
     assert status == 200 and out["cancelled"] is True
     proc.wait(timeout=5)
@@ -247,7 +248,7 @@ def test_cancel_endpoint(client, paths, sleeper, app):
 
 
 def test_job_endpoint_streams_log_by_offset(client, app):
-    _, data = client.send_json("POST", "/api/runs", {"kind": "test"})
+    _, data = client.send_json("POST", "/api/runs", {"kind": "test", "confirm": True})
     job_id = data["job"]["id"]
     log = app.jobs.jobs_dir / job_id / "log.txt"
     log.write_text("2026-10-15 07:00:00,1 [INFO] Scraping editions: x\n")

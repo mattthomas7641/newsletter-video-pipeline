@@ -10,5 +10,36 @@
     "autoProxy": true
   },
   "authoringSkill": "faceless-explainer",
-  "registryItems": []
+  "registryItems": [
+    {
+      "name": "mesh-gradient",
+      "type": "hyperframes:block",
+      "target": "compositions/mesh-gradient.html"
+    },
+    {
+      "name": "grain-overlay",
+      "type": "hyperframes:component",
+      "target": "compositions/components/grain-overlay.html"
+    },
+    {
+      "name": "aurora-drift",
+      "type": "hyperframes:component",
+      "target": "compositions/components/aurora-drift.html"
+    },
+    {
+      "name": "camera-rig-depth-stack",
+      "type": "hyperframes:component",
+      "target": "compositions/components/camera-rig-depth-stack.html"
+    },
+    {
+      "name": "animated-bar-chart",
+      "type": "hyperframes:component",
+      "target": "compositions/components/animated-bar-chart.html"
+    },
+    {
+      "name": "caption-neon-glow",
+      "type": "hyperframes:component",
+      "target": "compositions/components/caption-neon-glow.html"
+    }
+  ]
 }

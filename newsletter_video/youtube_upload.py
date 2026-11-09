@@ -105,6 +105,16 @@ def write_metadata(script: Script, video_path: Path, privacy: str | None = None)
         from .explainer_writer import plan_dict
 
         metadata["scene_plan"] = plan_dict(script.plan)
+    # The look this video was rendered with (resolved: defaults plus any
+    # per-video overrides), so a preview or re-render can replay it exactly.
+    from .look import LookError, is_empty, look_from_env, resolve_look
+
+    try:
+        overrides = getattr(script, "look", None)
+        resolved = look_from_env() if is_empty(overrides) else resolve_look(overrides)
+        metadata["look"] = {"version": 1, **resolved}
+    except (LookError, ValueError):
+        pass  # an unreadable environment never blocks writing the sidecar
     path = video_path.with_suffix(".json")
     write_json_atomic(path, metadata)
     return path

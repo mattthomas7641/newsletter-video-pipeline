@@ -32,6 +32,7 @@ def main(argv: list[str] | None = None) -> int:
         print("\nStopped.")
     finally:
         server.server_close()
+        app.plans.stop_studio()  # the live Studio belongs to this panel; renders keep going
     return 0
 
 

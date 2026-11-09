@@ -1,24 +1,25 @@
-import { h, icon } from "./dom.js";
+import { h } from "./dom.js";
 import { mountSaveBar } from "./components.js";
 import { state, subscribe, loadAll, refreshRuns, isRunning, isDirty } from "./store.js";
-import { mountHome } from "./views/home.js";
-import { mountLook } from "./views/look.js";
-import { mountSettings } from "./views/settings.js";
 import { mountVideos } from "./views/videos.js";
+import { mountWorkbench } from "./views/workbench.js";
+import { mountSettings } from "./views/settings.js";
 
 const ROUTES = {
-  "/": { name: "home", title: "Studio", mount: mountHome },
-  "/look": { name: "look", title: "Look and voice", mount: mountLook },
+  "/": { name: "videos", title: "Videos", mount: mountVideos },
+  "/lab": { name: "lab", title: "Design lab", mount: mountWorkbench },
   "/settings": { name: "settings", title: "Settings", mount: mountSettings },
-  "/videos": { name: "videos", title: "Videos", mount: mountVideos },
 };
+// Older bookmarks and links keep working.
+const LEGACY = { "/styles": "/lab", "/workbench": "/lab", "/look": "/settings", "/videos": "/", "/daily": "/" };
 
 const viewHost = document.getElementById("view");
 let disposeView = null;
 let currentRoute = null;
 
 function route() {
-  const path = location.hash.replace(/^#/, "") || "/";
+  let path = location.hash.replace(/^#/, "") || "/";
+  if (LEGACY[path]) { path = LEGACY[path]; history.replaceState(null, "", `#${path}`); }
   return ROUTES[path] ? path : "/";
 }
 
@@ -53,21 +54,23 @@ function showLoadError() {
 const sideFoot = document.getElementById("side-foot");
 let sideKey = "";
 function renderSideFoot() {
-  let kind = "good", title = "Ready", text = "Nothing is running.";
+  let kind = "good", title = "Ready", text = "Nothing is running.", href = "#/";
   const latest = state.runs.latest;
   if (isRunning()) {
     kind = "busy";
-    title = latest?.kind === "batch" ? "Daily batch running" : latest?.kind === "test" ? "Test video running" : "A run is in progress";
+    title = { batch: "Daily batch running", test: "Test video running", plan: latest?.meta?.test ? "Planning a test video" : "Planning",
+      preview: "Preview rendering", render: "Final render running", rewrite: "Rewriting a script" }[latest?.kind] || "A job is in progress";
     text = latest?.stage || "Working";
+    href = latest?.meta?.test ? "#/lab" : "#/";
   } else if (isDirty()) {
-    kind = "warn"; title = "Unsaved changes"; text = "Save to use them in the next run.";
+    kind = "warn"; title = "Unsaved changes"; text = "Save to use them in the next run."; href = "#/settings";
   } else if (state.setup && state.setup.checks.some((c) => !c.ok && !c.optional)) {
-    kind = "warn"; title = "Setup needs attention"; text = "See Settings.";
+    kind = "warn"; title = "Setup needs attention"; text = "See Settings."; href = "#/settings";
   }
-  const key = `${kind}|${title}|${text}`;
+  const key = `${kind}|${title}|${text}|${href}`;
   if (key === sideKey) return;
   sideKey = key;
-  sideFoot.replaceChildren(h("a", { class: `side-note ${kind}`, href: kind === "warn" && !isDirty() ? "#/settings" : "#/" },
+  sideFoot.replaceChildren(h("a", { class: `side-note ${kind}`, href },
     h("span", { class: "dot" }), h("span", {}, h("strong", { text: title }), h("span", { class: "side-text", text }))));
 }
 subscribe(renderSideFoot);

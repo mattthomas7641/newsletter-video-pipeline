@@ -55,7 +55,7 @@ VIDEO_STYLES = ("avatar", "explainer")
 DEFAULT_STYLE = "explainer"
 EXPLAINER_MAX_TAIL = 1.0  # hold after the last word: short, the outro keeps animating to the end
 AUDIO_CACHE_DIRNAME = "_audio_cache"
-THEMES = ("light", "dark")
+THEMES = ("light", "dark", "cinematic")
 SCENE_LEAD_SECONDS = 0.2  # a scene lands this long before its first word is spoken
 CAPTION_WORDS = 4  # max words per lower-third chunk
 CAPTION_CHARS = 24  # ...or fewer, if the words are long
@@ -271,7 +271,7 @@ def caption_chunks(words: list[tuple[str, float]]) -> list[list[tuple[str, float
 
 
 def story_payload(plan: ScenePlan, per_line: list[list[tuple[str, float]]], speech_duration: float,
-                  kicker: str, tail: float, theme: str = "light") -> dict:
+                  kicker: str, tail: float, theme: str = "light", world: str | None = None) -> dict:
     """The `story` composition variable: scenes with absolute start/end
     times and reveal cues, plus lower-third caption chunks. `per_line` holds
     the real word times of each scene's spoken line, in order."""
@@ -307,8 +307,44 @@ def story_payload(plan: ScenePlan, per_line: list[list[tuple[str, float]]], spee
             entry["cues"] = cue_times([n["label"] + " " + n["text"] for n in f["nodes"]], words, start, end)
         elif scene.type == "device":
             entry["cues"] = cue_times(f["lines"], words, start, end)
+        elif scene.type == "object3d":
+            names = [p["label"] for p in f["series"]] if f.get("kind") == "bars" else [n["label"] + " " + n["text"] for n in f["nodes"]]
+            entry["cues"] = cue_times(names, words, start, end)
+        elif scene.type in ("depth", "glass"):
+            entry["cues"] = cue_times([n["label"] + " " + n["text"] for n in f["nodes"]], words, start, end)
+        elif scene.type == "kinetic":
+            entry["cues"] = cue_times(f["lines"], words, start, end)
+        if world:
+            from .world3d import scene_content
+
+            entry["w3"] = scene_content(scene)
+            entry["_words"] = (words, start, end)
         scenes.append(entry)
 
+    if world:
+        from .world3d import annotate
+
+        annotate([e["w3"] for e in scenes], world)
+        for e in scenes:
+            words, start, end = e.pop("_words")
+            c = e["w3"]
+            # when each part of the composition lands: its words are spoken
+            if c["items"] and c["comp"] in ("stack", "hub", "split", "path", "fan", "ladder", "ranked", "duel"):
+                parts = [(i["label"] + " " + i["text"]).strip() for i in c["items"]]
+            elif c["comp"] in ("typo3d", "typogrid") or c["comp"].startswith(("object:", "extrude:")):
+                parts = c["words"]  # the keyword the narration lands on: the highlight sweep
+            elif c["comp"] == "type-orbit":
+                parts = c["words"]
+            elif c["comp"] in ("bars",):
+                parts = [n["label"] or n["shown"] for n in c["numbers"]]
+            elif c["items"] and c["comp"] in ("stack", "hub", "split", "path", "fan"):
+                parts = [(i["label"] + " " + i["text"]).strip() for i in c["items"]]
+            else:
+                parts = []
+            c["cues"] = cue_times(parts, words, start, end) if parts else []
+            if c["cues"] and "cues" not in e:
+                e["cues"] = c["cues"]  # the preview times its stills by them
+    theme, palette = resolve_theme(plan, theme)
     all_words = [(w, t) for words in per_line for w, t in words]
     chunks = caption_chunks(all_words)
     captions = []
@@ -320,7 +356,42 @@ def story_payload(plan: ScenePlan, per_line: list[list[tuple[str, float]]], spee
             "start": chunk[0][1],
             "end": round(min(nxt, speech_duration), 3),
         })
-    return {"theme": theme, "kicker": kicker, "duration": duration, "scenes": scenes, "captions": captions}
+    out = {"theme": theme, "kicker": kicker, "duration": duration, "scenes": scenes, "captions": captions}
+    if world:
+        out["world"] = world
+    from .look import colors_for
+
+    colors = colors_for(theme)
+    if colors:  # the look's own ground / accent (look.py `bg`, `accent`); a shipped look has none
+        out["colors"] = colors
+        if colors.get("accent") and theme == "cinematic":
+            from .colors import palette_from_accent
+
+            out["palette"] = palette_from_accent(colors["accent"])
+    if palette and "palette" not in out:
+        out["palette"] = palette
+    return out
+
+
+def resolve_theme(plan: ScenePlan, theme: str) -> tuple[str, list[str]]:
+    """The whole-video theme and glow palette. A recipe is applied per
+    scene, but a look is a ground for the whole video: when any scene's
+    style carries `look: cinematic` the theme becomes "cinematic" and the
+    first such palette (else the accent) is the video's glow palette.
+    Without any cinematic style the theme is exactly what was asked."""
+    palette: list[str] = []
+    cinematic = theme == "cinematic"
+    for scene in plan.scenes:
+        st = scene.fields.get("style")
+        if not isinstance(st, dict):
+            continue
+        if st.get("look") == "cinematic":
+            cinematic = True
+        if not palette and st.get("palette"):
+            palette = [c for c in st["palette"] if isinstance(c, str)]
+        elif not palette and st.get("look") == "cinematic" and st.get("accent"):
+            palette = [st["accent"]]
+    return ("cinematic" if cinematic else theme), palette
 
 
 # --- rendering ------------------------------------------------------------------
@@ -395,7 +466,16 @@ def render_plan(plan: ScenePlan, out_path: Path, audio_path: Path, work_dir: Pat
     assets = work_dir / "assets"
     _pad_audio(audio_path, assets / "voice.wav", tail)
 
-    payload = story_payload(plan, per_line, speech_duration, kicker, tail, theme)
+    from .look import world_of
+
+    payload = story_payload(plan, per_line, speech_duration, kicker, tail, theme, world=world_of() or None)
+    return render_story(payload, out_path, work_dir)
+
+
+def render_story(payload: dict, out_path: Path, work_dir: Path) -> Path:
+    """Render a `story` payload with the composition already prepared in
+    `work_dir` (assets/voice.wav in place). Shared by the pipeline and the
+    style library's recreations, which build their own payloads."""
     variables_path = work_dir / "story.json"
     variables_path.write_text(json.dumps({"story": json.dumps(payload)}))
 
@@ -476,6 +556,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--write-plan", action="store_true",
                         help="ask Claude for a scene plan from the sidecar's script (one call)")
     parser.add_argument("--save-plan", type=Path, help="also write the plan used to this JSON file")
+    parser.add_argument("--style-plan", type=Path,
+                        help="a style plan from `python -m newsletter_video.styles plan --out ...` to apply to the scenes")
+    parser.add_argument("--style", action="store_true",
+                        help="ask the style library's planner for styles (needs a non-empty STYLE_LIBRARY)")
     parser.add_argument("--theme", choices=THEMES, help="override VIDEO_THEME")
     parser.add_argument("--date", type=date.fromisoformat, help="date for the kicker (default: sidecar folder)")
     parser.add_argument("--reuse-audio", action="store_true",
@@ -490,6 +574,15 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit("Invalid scene plan:\n  " + "\n  ".join(exc.errors))
     for note in plan.repairs:
         log.info("Plan repair: %s", note)
+    if args.style_plan:
+        from .styles.planner import apply_style_plan, style_plan_from_file
+
+        styled = apply_style_plan(plan, style_plan_from_file(args.style_plan, len(plan.scenes)))
+        log.info("Style plan: %d of %d scenes styled", styled, len(plan.scenes))
+    elif args.style:
+        from .styles import style_scene_plan
+
+        style_scene_plan(plan, str(meta.get("title", "")))
     if args.save_plan:
         args.save_plan.parent.mkdir(parents=True, exist_ok=True)
         args.save_plan.write_text(json.dumps({"scenes": plan.to_list()}, indent=2, ensure_ascii=False))
