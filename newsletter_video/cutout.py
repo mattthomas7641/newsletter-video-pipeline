@@ -19,6 +19,8 @@ BG_TOLERANCE = 24  # colour distance that still counts as the background
 POCKET_TOLERANCE = 30  # looser, for the small gaps the figure encloses (between arm and body)
 MIN_BG_AREA = 150  # pixels; smaller background-coloured specks are details of the drawing
 MIN_POCKET_AREA = 60
+MAX_FILLED_HOLE = 2500  # pixels; enclosed holes up to this size can be filled
+UPPER_BODY = 0.31  # holes whose centre is in the top share of the picture (head, collar) are always filled
 SHADOW_ZONE = 0.12  # the bottom share of the picture where a ground shadow can sit
 
 
@@ -73,6 +75,19 @@ def cutout(image: Image.Image) -> Image.Image:
     if kcount:  # the biggest piece is the figure; stray specks go
         ksizes = ndi.sum(keep, klabels, range(1, kcount + 1))
         keep = klabels == (1 + int(np.argmax(ksizes)))
+    # Small holes inside the figure's head and upper body (shading on a white collar that happens to match the
+    # background, a lens interior) are part of the drawing, not gaps: fill them. Gaps lower down (an arm held
+    # away from the body, a hand on the hip) are real and stay open, as does anything clearly background-coloured.
+    holes = ndi.binary_fill_holes(keep) & ~keep
+    hlabels, hcount = ndi.label(holes)
+    for i in range(1, hcount + 1):
+        part = hlabels == i
+        if part.sum() > MAX_FILLED_HOLE:
+            continue
+        ys = np.where(part)[0]
+        far_from_bg = np.sqrt(((rgb[part].mean(axis=0) - bg) ** 2).sum()) >= 16
+        if ys.mean() < height * UPPER_BODY or far_from_bg:
+            keep |= part
     keep = ndi.binary_erosion(keep, iterations=1)  # no fringe of background colour
     alpha = Image.fromarray((keep * 255).astype("uint8")).filter(ImageFilter.GaussianBlur(0.9))
     out = src.convert("RGBA")
