@@ -29,7 +29,7 @@ function frame(kind) {
 }
 
 /** The narrators and their voices (and, unless `narratorOnly`, the old style / background / theme
- * defaults). Mounted inside Settings (`embedded`); the default style itself is set on the Videos page. */
+ * defaults). Mounted inside Settings (`embedded`); the default style itself is set on the Lineup page. */
 export function mountLook(root, { embedded = false, narratorOnly = false } = {}) {
   const cleanup = [];
   const onCleanup = (fn) => cleanup.push(fn);

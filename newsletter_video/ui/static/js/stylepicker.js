@@ -19,13 +19,13 @@ export const STYLE_NAMES = { explainer: "Explainer", avatar: "Avatar" };
 
 /** The value a plan's resolved look stands for. */
 export function valueFromLook(look) {
-  return { style: look.style || "explainer", preset: effectivePresetId(look.preset), bg: look.bg || "", accent: look.accent || "", character: look.character || "", rotate: [] };
+  return { style: look.style || "explainer", preset: effectivePresetId(look.preset), bg: look.bg || "", accent: look.accent || "", character: look.character || "", mode: "one", rotate: [] };
 }
 
 export function sameValue(a, b) {
   return a.style === b.style && effectivePresetId(a.preset) === effectivePresetId(b.preset) && (a.bg || "") === (b.bg || "")
     && (a.accent || "") === (b.accent || "") && (a.character || "") === (b.character || "")
-    && (a.rotate || []).join(",").toLowerCase() === (b.rotate || []).join(",").toLowerCase();
+    && (a.mode || "one") === (b.mode || "one") && (a.rotate || []).join(",").toLowerCase() === (b.rotate || []).join(",").toLowerCase();
 }
 
 /** The words for a value: "Explainer · Clean paper · sage background, teal animations". */
@@ -33,7 +33,7 @@ export function describeValue(v) {
   if (v.style === "avatar") return `Avatar · ${characterLabel(v.character)}`;
   const p = presetInfo(effectivePresetId(v.preset));
   const bits = ["Explainer", p ? p.name : "Clean paper"];
-  if (v.rotate?.length) bits.push(`${v.bg ? `background ${v.bg}, ` : ""}animations alternate through ${v.rotate.length} colours`);
+  if (v.mode && v.mode !== "one" && v.rotate?.length) bits.push(`${v.bg ? `background ${v.bg}, ` : ""}animations ${v.mode === "random" ? "random from" : "alternate through"} ${v.rotate.length} colours`);
   else if (v.bg || v.accent) bits.push([v.bg ? `background ${v.bg}` : "", v.accent ? `animations ${v.accent}` : ""].filter(Boolean).join(", "));
   return bits.join(" · ");
 }
@@ -70,6 +70,7 @@ const standardVoice = () => {
 
 /** Builds the control. `onChange(value)` fires after each change the person makes. */
 export function stylePicker({ value, onChange = () => {}, name = nextId("sp"), allowAdd = true, rotation = false }) {
+  // `rotation`: also offer One colour / Alternate / Random for the animation colour (a batch of a lineup)
   let v = { ...value };
   const root = h("div", { class: "sp" });
   const notesHost = h("div", { class: "sp-notes", "aria-live": "polite" });
@@ -96,7 +97,7 @@ export function stylePicker({ value, onChange = () => {}, name = nextId("sp"), a
         const id = `${name}-look-${p.id}`;
         return h("label", { class: `sp-look${on ? " on" : ""}`, for: id },
           h("input", { type: "radio", name: `${name}-look`, id, value: p.id, checked: on,
-            onChange: () => { v.preset = p.id; v.bg = ""; v.accent = ""; v.rotate = rotation && p.cinematic ? [...(state.looks?.rotation_default || [])] : []; emit(); } }),
+            onChange: () => { v.preset = p.id; v.bg = ""; v.accent = ""; v.mode = rotation && p.cinematic ? "alternate" : "one"; v.rotate = v.mode === "one" ? [] : paletteFor(p); emit(); } }),
           presetThumb(p),
           h("span", { class: "sp-look-body" }, h("strong", { text: p.name }), h("span", { class: "help", text: p.good_for || p.description })),
           h("span", { class: "tick", "aria-hidden": "true" }, icon("check")));
@@ -129,9 +130,9 @@ export function stylePicker({ value, onChange = () => {}, name = nextId("sp"), a
           v[key] ? h("button", { class: "btn-link", type: "button", onClick: () => { v[key] = ""; emit(); } }, "Back to the look's own") : h("span", { class: "faint small", text: "the look's own" })));
     };
 
-    const rotating = rotation && dark && (v.rotate || []).length > 0;
+    const rotating = rotation && v.mode && v.mode !== "one" && (v.rotate || []).length >= 2;
     const preview = previewTile({ ...v, style: "explainer", accent: rotating ? v.rotate[0] : v.accent });
-    const rotationRow = rotation && dark ? rotationControl(rotating) : null;
+    const rotationRow = rotation ? rotationControl(p) : null;
     return [cards, h("div", { class: "sp-colors" },
       h("div", { class: "sp-colors-main" },
         control("bg", "Background", colors.bg_swatches || [], colors.bg, dark ? "A dark ground, so the light text stays readable." : "A light ground, so the dark text stays readable."),
@@ -141,25 +142,30 @@ export function stylePicker({ value, onChange = () => {}, name = nextId("sp"), a
       h("div", { class: "sp-preview-wrap" }, preview, h("span", { class: "help", text: "Live preview of the two colours." })))];
   }
 
-  // ---- Dark glass: alternate the animation colour across the day's videos ----
-  function rotationControl(on) {
-    const id = `${name}-rotate`;
-    const toggle = h("input", { type: "checkbox", id, role: "switch", checked: on,
-      onChange: () => { v.rotate = toggle.checked ? [...(state.looks?.rotation_default || [])] : []; emit(); } });
-    const head = h("div", { class: "sp-rot-head" },
-      h("label", { class: "switch" }, toggle, h("span", { class: "track" })),
-      h("label", { for: id, class: "label", text: "Alternate the animation colour across the day's videos" }));
-    if (!on) return h("div", { class: "sp-color-row sp-rot" }, head, h("p", { class: "help", text: "Off: every video uses the one animation colour below." }));
+  // ---- the animation colour mode: one colour, alternate through a palette, or a random colour per video ----
+  const paletteFor = (p) => (p?.cinematic ? [...(state.looks?.rotation_default || [])] : (p?.colors?.accent_swatches || []).slice(0, 5).map((x) => x.hex));
+  const MODES = [["one", "One colour"], ["alternate", "Alternate"], ["random", "Random"]];
+  function rotationControl(p) {
+    const mode = v.mode || "one";
+    const seg = h("div", { class: "seg sp-mode", role: "radiogroup", "aria-label": "Animation colour mode" },
+      MODES.map(([val, label]) => h("label", {},
+        h("input", { type: "radio", name: `${name}-mode`, value: val, checked: mode === val,
+          onChange: () => { v.mode = val; if (val !== "one" && (v.rotate || []).length < 2) v.rotate = paletteFor(p); emit(); } }),
+        h("span", { class: "opt", text: label }))));
+    const head = h("div", { class: "sp-rot-head" }, h("span", { class: "label", text: "Colour mode" }), seg);
+    if (mode === "one") return h("div", { class: "sp-color-row sp-rot" }, head);
     const list = v.rotate || [];
     const swatches = h("div", { class: "sp-swatches", role: "list", "aria-label": "Animation colours, in the order the videos use them" },
       list.map((hex, i) => h("span", { role: "listitem", class: "sp-rot-item" },
-        h("button", { class: "sw", type: "button", style: `--c:${hex}`, "aria-label": `Colour ${i + 1}, ${hex}. Remove it from the rotation`, title: `Video ${i + 1} uses ${hex}. Click to remove`,
+        h("button", { class: "sw", type: "button", style: `--c:${hex}`, "aria-label": `Colour ${i + 1}, ${hex}. Remove it`, title: `${hex}. Click to remove`,
           disabled: list.length <= 2, onClick: () => { v.rotate = list.filter((_, k) => k !== i); emit(); } }, h("span", { class: "sw-n", text: String(i + 1) })))));
-    const adder = h("input", { type: "color", class: "sp-color", value: "#ffffff", "aria-label": "Add a colour to the rotation",
+    const adder = h("input", { type: "color", class: "sp-color", value: "#ffffff", "aria-label": "Add a colour",
       disabled: list.length >= 8, onChange: () => { const hex = normaliseHex(adder.value); if (hex && !list.includes(hex)) { v.rotate = [...list, hex]; emit(); } } });
     return h("div", { class: "sp-color-row sp-rot" }, head,
-      h("p", { class: "help", text: `Video 1 uses the first colour, video 2 the second, and so on, starting again after ${list.length}. A video with a custom style keeps its own colour.` }),
-      swatches, h("div", { class: "sp-custom" }, adder, h("span", { class: "faint small", text: list.length >= 8 ? "8 colours is the most" : list.length <= 2 ? "Add a colour; two is the fewest" : "Pick a colour to add it" })));
+      h("p", { class: "help", text: mode === "alternate"
+        ? `Video 1 of the batch uses the first colour, video 2 the second, and so on, starting again after ${list.length}.`
+        : "Each video gets a random colour from this palette, chosen per day, so a re-render keeps it. Never the same twice in a row." }),
+      swatches, h("div", { class: "sp-custom" }, adder, h("span", { class: "faint small", text: list.length >= 8 ? "8 colours is the most" : list.length <= 2 ? "Pick a colour to add it; two is the fewest" : "Pick a colour to add it" })));
   }
 
   // ---- avatar: a few avatars and one standard voice ----

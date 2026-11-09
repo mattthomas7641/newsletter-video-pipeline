@@ -19,12 +19,12 @@ export function mountSettings(root, ctx) {
     savePill(onCleanup));
 
   // ---- narrators and voices ----
-  // The default style (explainer or avatar, its look and colours) is set on the Videos page.
+  // The default style (explainer or avatar, its look and colours) is set on the Lineup page.
   const lookHost = h("div", { class: "look-defaults" });
   const lookSection = h("section", { class: "section", "aria-labelledby": "look-h" },
     h("div", { class: "section-head" }, h("h2", { id: "look-h", text: "Narrators and voices" }),
       h("p", {}, "The avatars and the voice each one speaks with; hear a sample or add a new one. The default style for automatic videos is set on the ",
-        h("a", { class: "link", href: "#/", text: "Videos page" }), ".")),
+        h("a", { class: "link", href: "#/", text: "Lineup page" }), ".")),
     lookHost);
   onCleanup(mountLook(lookHost, { embedded: true, narratorOnly: true }));
 

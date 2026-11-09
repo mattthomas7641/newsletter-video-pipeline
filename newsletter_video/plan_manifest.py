@@ -111,6 +111,8 @@ def entry_from_script(script: Script, index: int, look_overrides: dict | None = 
         "scene_plan": None, "look": looks.compact(looks.validate_look(look_overrides or {})),
         "status": "planned", "rendered": None, "error": None, "updated": now_iso(),
     }
+    if getattr(script, "lineup", None):
+        entry["lineup"] = dict(script.lineup)
     plan = getattr(script, "plan", None)
     if plan is not None:
         from .explainer_writer import plan_dict
@@ -144,6 +146,8 @@ def script_from_entry(entry: dict) -> Script:
                         post_caption=str(entry.get("post_caption", "")), hashtags=list(entry.get("hashtags", [])),
                         writer=str(entry.get("writer") or ""))
     script.look = looks.validate_look(entry.get("look") or {})
+    if isinstance(entry.get("lineup"), dict):
+        script.lineup = dict(entry["lineup"])
     return script
 
 
@@ -232,6 +236,8 @@ def replace_script(folder: Path, vid: str, script: Script) -> dict:
         entry = get_entry(data, vid)
         fresh = entry_from_script(script, int(entry["index"]))
         fresh["look"] = entry.get("look") or looks.compact({})
+        if entry.get("lineup"):
+            fresh["lineup"] = entry["lineup"]
         fresh["status"], fresh["rendered"], fresh["error"] = "planned", None, None
         data["videos"][data["videos"].index(entry)] = fresh
         write_manifest(folder, data)

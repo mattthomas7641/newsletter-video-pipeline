@@ -1,5 +1,5 @@
 // The Design lab: for trying new designs, or seeing how a render looks without
-// drafting a video. Not part of the daily routine (that is the Videos page).
+// drafting a video. Not part of the daily routine (that is the Lineup page).
 // One guided flow in three stages.
 //   1. Look library: the presets, one card each. Picking one makes it the look
 //      of the test video (or of the test video about to be written).
@@ -16,6 +16,7 @@ import { planTest, startPreview, saveLook, openStudio, stopJob, rewriteVideo, re
 import { presetName, presetThumb, presetMark, presetGrid, presetSelect } from "../presets.js";
 import { mountRunPanel } from "./run.js";
 import { lookLabel, characterName, draftBlock } from "./plan.js";
+import { mountDayPlan } from "./dayplan.js";
 
 export function mountWorkbench(root) {
   const cleanup = [];
@@ -31,7 +32,7 @@ export function mountWorkbench(root) {
   const ledger = h("p", { class: "ledger", "aria-live": "polite" });
   const head = h("header", { class: "page-head" },
     h("div", {}, h("h1", { text: "Design lab" }),
-      h("p", { class: "lede" }, "For trying new designs, or seeing how a render looks without drafting a video: pick a look, write one throwaway test video, then compare looks on the same story with storyboards. Your daily videos are on the ", h("a", { class: "link", href: "#/", text: "Videos page" }), ". Only Render makes a real video.")),
+      h("p", { class: "lede" }, "For trying new designs, or seeing how a render looks without drafting a video: pick a look, write one throwaway test video, then compare looks on the same story with storyboards. Your daily videos are on the ", h("a", { class: "link", href: "#/", text: "Lineup page" }), ". Only Render makes a real video.")),
     ledger);
   const rail = h("ol", { class: "rail", "aria-label": "Where you are" });
   const next = h("p", { class: "rail-next" });
@@ -54,7 +55,12 @@ export function mountWorkbench(root) {
   const compareHost = h("div");
   const stage3 = stage(3, "Tweak and compare", tweakSub, null, compareHost);
 
-  root.append(head, rail, next, runHost, stage1, stage2, stage3);
+  // Plan review (approval mode) and the rendered videos: not the everyday page any more, kept working here.
+  const dayHost = h("div", { class: "day-plan" });
+  const dayDetails = h("details", { class: "panel day-details" },
+    h("summary", {}, h("strong", { text: "Plan review and rendered videos" }), h("span", { class: "faint small", text: " · for DAILY_MODE=plan (approval mode), planning by hand, and watching what was made" })), dayHost);
+  root.append(head, rail, next, runHost, stage1, stage2, stage3, dayDetails);
+  cleanup.push(mountDayPlan(dayHost));
   // jobs that belong to a test plan; once the plan list is known, a finished
   // job for a plan that no longer exists has nothing to show
   const runPanel = mountRunPanel(runHost, { accept: (job) => (Boolean(job.meta?.test) || isTestRef(job.meta?.ref))

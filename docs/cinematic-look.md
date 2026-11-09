@@ -139,6 +139,6 @@ Both looks take two colours (docs/previews.md, `newsletter_video/colors.py`): th
 animation colour. For Dark glass the accent becomes the glow palette (`colors.palette_from_accent`:
 the accent plus three neighbours round the hue wheel, the same shape as the shipped orange / magenta /
 violet / cyan set) and the ground sets `--bg`; for Clean paper they set `--bg` and `--accent`. Proof
-frames: `docs/screenshots/panel-one-page/render-paper-sage-teal.jpg` (paper, ground #e3ecdf, accent
+frames: `docs/screenshots/lineup/render-paper-sage-teal.jpg` (paper, ground #e3ecdf, accent
 #0e8a7d) and `render-glass-green-magenta.jpg` (glass, ground #06281b, accent #ff3d8a), both free
 `stills` runs of the same story.

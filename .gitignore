@@ -41,3 +41,6 @@ style_library/*/keyframes/
 style_library/*/contact_sheet.jpg
 style_library/*/analysis.json
 style_library/.partial/
+
+# The standing lineup (lineup.py): the owner's per-batch formats, local like .env
+lineup.json
