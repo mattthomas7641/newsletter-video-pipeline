@@ -44,3 +44,10 @@ style_library/.partial/
 
 # The standing lineup (lineup.py): the owner's per-batch formats, local like .env
 lineup.json
+
+# Avatar explainer template: per-render work files stay local
+newsletter_video/hf_template_avx/renders/
+newsletter_video/hf_template_avx/snapshots/
+newsletter_video/hf_template_avx/.thumbnails/
+newsletter_video/hf_template_avx/.hyperframes/
+newsletter_video/hf_template_avx/assets/
