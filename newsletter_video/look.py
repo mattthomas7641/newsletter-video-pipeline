@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from typing import Any, Iterator, Mapping
 
 LOOK_VERSION = 1
-STYLES = ("avatar", "explainer")
+STYLES = ("avatar", "explainer", "avx")  # avx: the avatar explainer (avx_builder.py)
 # "cinematic" is the explainer's dark look family (near-black ground, glow
 # accents, grid floor, vignette, grain); a recipe with `look: cinematic`
 # selects it on its own, so the theme field only needs it for an explicit choice.
@@ -292,7 +292,7 @@ def cinematic_requested(look: Mapping[str, Any] | None = None, environ: Mapping[
         resolved = dict(look) if look else look_from_env(environ)
     except LookError:
         return False
-    if resolved.get("style") == "avatar":
+    if resolved.get("style") in ("avatar", "avx"):
         return False
     if resolved.get("theme") == "cinematic":
         return True
@@ -313,6 +313,13 @@ def cinematic_requested(look: Mapping[str, Any] | None = None, environ: Mapping[
 
 def describe(look: Mapping[str, Any]) -> str:
     style = look.get("style", "?")
+    if style == "avx":  # the avatar explainer: a narrator, one plain ground (or the house rhythm) and an accent
+        return ", ".join([
+            "avatar explainer",
+            f"narrator {look['character']}" if look.get("character") else "default narrator",
+            f"background {look['bg']}" if look.get("bg") else "house rhythm backgrounds",
+            f"accent {look['accent']}" if look.get("accent") else "accent from each background",
+        ])
     bits = [style]
     if look.get("preset"):
         bits.append(f"preset {look['preset']}")
@@ -339,7 +346,7 @@ def world_of(look: Mapping[str, Any] | None = None, environ: Mapping[str, str] |
         resolved = dict(look) if look else look_from_env(environ)
     except LookError:
         return ""
-    if resolved.get("style") == "avatar":
+    if resolved.get("style") in ("avatar", "avx"):
         return ""
     try:
         from .looks import RECIPE_PREFIX, get_preset

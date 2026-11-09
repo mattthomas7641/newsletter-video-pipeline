@@ -51,7 +51,7 @@ from .video_builder import (
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = Path(__file__).resolve().parent / "hf_template_explainer"
 
-VIDEO_STYLES = ("avatar", "explainer")
+VIDEO_STYLES = ("avatar", "explainer", "avx")  # avx: the avatar explainer (avx_builder.py)
 DEFAULT_STYLE = "explainer"
 EXPLAINER_MAX_TAIL = 1.0  # hold after the last word: short, the outro keeps animating to the end
 AUDIO_CACHE_DIRNAME = "_audio_cache"
@@ -71,8 +71,8 @@ log = logging.getLogger("newsletter_video")
 
 
 def video_style() -> str:
-    """VIDEO_STYLE from the environment, validated: "explainer" (default)
-    or "avatar". Read at call time so a value from .env takes effect."""
+    """VIDEO_STYLE from the environment, validated: "explainer" (default),
+    "avatar" or "avx" (the avatar explainer). Read at call time so a value from .env takes effect."""
     style = os.environ.get("VIDEO_STYLE", DEFAULT_STYLE).strip().lower() or DEFAULT_STYLE
     if style not in VIDEO_STYLES:
         raise ValueError(f"VIDEO_STYLE={style!r} is not one of {', '.join(VIDEO_STYLES)}")
@@ -532,7 +532,7 @@ def _plan_from_sidecar(meta: dict, plan_path: Path | None, write_plan: bool) -> 
     if plan_path is not None:
         raw = json.loads(plan_path.read_text())
         return validate_plan(raw["scenes"] if isinstance(raw, dict) else raw)
-    if meta.get("scene_plan"):
+    if meta.get("scene_plan") and meta["scene_plan"].get("style") != "avx":  # an avx list is not an explainer plan
         return validate_plan(meta["scene_plan"]["scenes"])
     if write_plan:
         from .explainer_writer import replan_sidecar

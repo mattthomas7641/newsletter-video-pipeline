@@ -3,10 +3,13 @@ plain, changeable background colour while purpose-built motion graphics
 (kinetic type, count-ups, timelines, versus cards, charts, callouts, lists)
 play in the space above and to the right of him.
 
-Nothing here is wired into the daily pipeline yet. The composition lives in
-newsletter_video/hf_template_avx/ and is independent of hf_template and
-hf_template_explainer; this module only *reads* helpers from video_builder,
-tts, colors and characters.
+The composition lives in newsletter_video/hf_template_avx/ and is independent
+of hf_template and hf_template_explainer. In the pipeline it is the "avx"
+video style (look.STYLES, a lineup's "Avatar explainer" batch): avx_writer.py
+writes the scenes, video_builder._build_short calls build_avx_short, which
+colours the scenes from the video's look (apply_look: one ground for every
+scene, or the house rhythm) and renders with the same discipline as the other
+builders (wall-clock timeout, one retry, a .partial file moved into place).
 
 A video is a list of scenes. Each scene is one spoken line plus one graphic:
 
@@ -196,18 +199,26 @@ def _prepare_workdir(work_dir: Path) -> None:
 
 
 def _avatar_assets(assets: Path, seed: str, scene_starts: list[float],
-                   scene_poses: list[int | None] | None = None) -> dict | None:
-    from .characters import active
-    from .video_builder import pose_changes
+                   scene_poses: list[int | None] | None = None) -> dict:
+    """The narrator's poses as assets/pose-N.png and when to swap them. The active character (CHARACTER),
+    else the legacy image in assets/character; a pose a character does not have falls back to its main one."""
+    from .video_builder import _avatar_height, character_image, character_poses, pose_changes
 
-    character = active()
-    if not character or not character.avatar:
-        return None
-    shutil.copy(character.avatar, assets / "pose-1.png")
+    main = character_image()
+    if main is None:  # no avatar at all: an empty image, so the template's <img> still resolves
+        from PIL import Image
+
+        Image.new("RGBA", (4, 4), (0, 0, 0, 0)).save(assets / "pose-1.png")
+        return {"height": AVATAR_HEIGHT, "poses": ["pose-1.png"], "first": 0, "changes": []}
+    shutil.copy(main, assets / "pose-1.png")
     poses = ["pose-1.png"]
-    for k, pose in enumerate(character.poses, start=2):
+    for k, pose in enumerate(character_poses(), start=2):
         shutil.copy(pose, assets / f"pose-{k}.png")
         poses.append(f"pose-{k}.png")
+    if scene_poses:
+        scene_poses = [p if isinstance(p, int) and not isinstance(p, bool) and 0 <= p < len(poses) else 0
+                       for p in scene_poses]
+    height = min(AVATAR_HEIGHT, _avatar_height(main))
     if scene_poses and all(p is not None for p in scene_poses):
         # Chosen per scene (pointing at a chart, shrugging at a question...): one change per scene start.
         changes, current = [], scene_poses[0]
@@ -217,7 +228,7 @@ def _avatar_assets(assets: Path, seed: str, scene_starts: list[float],
                 current = pose
     else:
         changes = pose_changes(len(poses), scene_starts[1:], seed)
-    return {"height": AVATAR_HEIGHT, "poses": poses, "first": scene_poses[0] if scene_poses and scene_poses[0] else 0,
+    return {"height": height, "poses": poses, "first": scene_poses[0] if scene_poses and scene_poses[0] else 0,
             "changes": changes}
 
 
@@ -274,12 +285,52 @@ def payload_from_work(work_dir: Path) -> dict:
     return json.loads(json.loads((work_dir / "story.json").read_text())["story"])
 
 
-def build_avx(scenes: list[dict], out_path: Path, work_dir: Path, *, draft_labels: bool = False,
-              speed: float | None = None, seed: str = "avx", render: bool = True) -> dict:
-    """Voices the scenes (one TTS call), aligns words, writes the payload and
-    renders. Returns timing info. render=False stops after the payload (for
-    snapshots)."""
+MAX_SECONDS = 58.0  # a Short must stay under a minute: a longer voice track is re-voiced faster
+DRAFT_CRF = "20"
+
+
+def render(work_dir: Path, variables: Path, out_path: Path, log_path: Path, crf: str = DRAFT_CRF) -> Path:
+    """Renders the prepared work dir with the same discipline as the other builders
+    (video_builder._build_short, explainer_builder.render_story): a wall-clock cap per attempt
+    (RENDER_TIMEOUT_SECONDS) that kills the whole process tree, one retry, and the video written to a
+    .partial file that is moved into place only when complete. Raises CalledProcessError /
+    TimeoutExpired / RuntimeError exactly like them, so the per-video failure handling is identical.
+    The renderer's own log goes to `log_path` (grep it for 404 / media_load_failed)."""
+    from .supervisor import run_subprocess
     from .tts import HYPERFRAMES_VERSION, hyperframes_env, npx_path
+    from .video_builder import DEFAULT_RENDER_TIMEOUT_SECONDS, RENDER_ATTEMPTS
+
+    partial = out_path.parent / ".partial" / out_path.name
+    partial.parent.mkdir(parents=True, exist_ok=True)
+    partial.unlink(missing_ok=True)
+    npx = npx_path()
+    cmd = [npx, "--yes", f"hyperframes@{HYPERFRAMES_VERSION}", "render", str(work_dir), "--output", str(partial),
+           "--variables-file", str(variables), "--strict-variables", "--crf", str(crf)]
+    timeout = float(os.environ.get("RENDER_TIMEOUT_SECONDS", DEFAULT_RENDER_TIMEOUT_SECONDS))
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    for attempt in range(RENDER_ATTEMPTS):
+        try:
+            with open(log_path, "w") as fh:
+                run_subprocess(cmd, timeout=timeout, env=hyperframes_env(npx), stdout=fh, stderr=subprocess.STDOUT)
+            break
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            log.warning("Render attempt %d/%d of %s failed: %s", attempt + 1, RENDER_ATTEMPTS, out_path.name,
+                        type(exc).__name__)
+            if attempt == RENDER_ATTEMPTS - 1:
+                partial.unlink(missing_ok=True)
+                raise
+    if not partial.exists() or partial.stat().st_size == 0:
+        raise RuntimeError(f"Renderer exited cleanly but wrote no video for {out_path.name}")
+    partial.replace(out_path)
+    return out_path
+
+
+def build_avx(scenes: list[dict], out_path: Path, work_dir: Path, *, draft_labels: bool = False,
+              speed: float | None = None, seed: str = "avx", render_video: bool = True, crf: str = DRAFT_CRF,
+              audio_out: Path | None = None, log_path: Path | None = None) -> dict:
+    """Voices the scenes (one TTS call per scene), aligns words, writes the payload and
+    renders. Returns timing info. render_video=False stops after the payload (for
+    snapshots). `audio_out` keeps a copy of the narration (the pipeline's _audio/<date>/NN.wav)."""
     from .video_builder import _pad_audio
 
     for s in scenes:
@@ -290,6 +341,16 @@ def build_avx(scenes: list[dict], out_path: Path, work_dir: Path, *, draft_label
     raw = work_dir / "voice_raw.wav"
     t0 = time.time()
     per_line, length = _voice_scenes(scenes, raw, work_dir, speed)
+    if speed is None and length > MAX_SECONDS - TAIL_SECONDS:  # too long for a Short: re-voice a little faster
+        from .tts import base_speed
+        from .video_builder import MAX_SPEED
+
+        faster = min(base_speed() * length / (MAX_SECONDS - TAIL_SECONDS - 1.0), MAX_SPEED)
+        log.info("Avatar explainer: %.1fs of narration, re-voicing at speed %.2f", length, faster)
+        per_line, length = _voice_scenes(scenes, raw, work_dir, faster)
+    if audio_out is not None:
+        audio_out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(raw, audio_out)
     speech_end = max(t for line in per_line for _, t in line) + 0.6
     speech_end = min(max(speech_end, length), length + 0.2)
     payload_probe = build_payload(scenes, per_line, speech_end, draft_labels)
@@ -300,20 +361,86 @@ def build_avx(scenes: list[dict], out_path: Path, work_dir: Path, *, draft_label
     variables = work_dir / "story.json"
     variables.write_text(json.dumps({"story": json.dumps(payload)}))
     info = {"voice_seconds": round(time.time() - t0, 1), "duration": payload["duration"], "payload": payload}
-    if not render:
+    if not render_video:
         inject_default(work_dir, payload)  # Studio / `hyperframes snapshot` read the default
         return info
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    npx = npx_path()
-    cmd = [npx, "--yes", f"hyperframes@{HYPERFRAMES_VERSION}", "render", str(work_dir), "--output", str(out_path),
-           "--variables-file", str(variables), "--strict-variables", "--crf", "20"]
     t1 = time.time()
-    log_path = out_path.with_suffix(".render.log")
-    with open(log_path, "w") as fh:
-        subprocess.run(cmd, check=True, stdout=fh, stderr=subprocess.STDOUT, env=hyperframes_env(npx))
+    log_path = log_path or out_path.with_suffix(".render.log")
+    render(work_dir, variables, out_path, log_path, crf=crf)
     info["render_seconds"] = round(time.time() - t1, 1)
     info["render_log"] = str(log_path)
     return info
+
+
+# --- the pipeline: a video's look decides the colours ----------------------------------------
+
+LATE_CUE_PAUSE = 0.9
+
+
+def _late_cue(scene: dict) -> bool:
+    """Whether an element of the scene is cued on one of the last two words of its line (and only there)."""
+    toks = [_norm(w) for w in str(scene.get("say", "")).split()]
+    tail = {t for t in toks[-2:] if t}
+    cues = re.findall(r'"cue": "([^"]*)"', json.dumps(scene.get("data") or {}))
+    return any(c.split() and _norm(c.split()[0]) in tail and _norm(c.split()[0]) not in toks[:-2] for c in cues)
+
+
+def house_rhythm(n: int) -> list[str]:
+    """The draft's background rhythm for n scenes: light paper for the hook and the first beat, then the
+    blue, then near-black for the rest, and light again for the outro (L L M M D D D L for eight)."""
+    if n <= 0:
+        return []
+    if n <= 2:
+        return [LIGHT] * n
+    if n == 3:
+        return [LIGHT, MID, LIGHT]
+    rest = n - 3
+    mids = rest // 2
+    return [LIGHT, LIGHT] + [MID] * mids + [DARK] * (rest - mids) + [LIGHT]
+
+
+def apply_look(scenes: list[dict], bg: str = "", accent: str = "") -> list[dict]:
+    """Copies of `scenes` coloured for one video: `bg` set = that one plain ground for every scene (scenes
+    then change with each graphic's own directional exit, no wipes); blank = the house rhythm, with a wipe
+    (iris, the outro a shutter) wherever the ground changes. `accent` set = that animation colour on every
+    scene (palette() keeps it readable on each ground); blank = each ground's own accent."""
+    bg = normalise_hex(bg or "") or ""
+    accent = normalise_hex(accent or "") or ""
+    grounds = [bg] * len(scenes) if bg else house_rhythm(len(scenes))
+    out = []
+    for i, (scene, ground) in enumerate(zip(scenes, grounds)):
+        s = copy.deepcopy(scene)
+        if "pause_after" not in s and _late_cue(s):
+            s["pause_after"] = LATE_CUE_PAUSE  # its last element lands at the end of the line: let it be seen
+        s["bg"] = ground
+        if accent:
+            s["accent"] = accent
+        else:
+            s.pop("accent", None)
+        s.pop("transition", None)  # derived from the grounds in build_payload: a cut on the same ground
+        if not bg and i == len(scenes) - 1 and i and grounds[i - 1] != ground:
+            s["transition"] = "shutter"
+        out.append(s)
+    return out
+
+
+def build_avx_short(script, out_path: Path, audio_path: Path, kicker: str = "", seed: str = "avx") -> Path:
+    """The avatar explainer counterpart of video_builder.build_short, called from it per video (so
+    numbering, isolation, the sidecar and status.json stay the caller's). The look is already in the
+    environment (look.applied): CHARACTER narrates, LOOK_BG / LOOK_ACCENT colour the scenes."""
+    from .avx_writer import scenes_for
+
+    scenes = apply_look(scenes_for(script), os.environ.get("LOOK_BG", ""), os.environ.get("LOOK_ACCENT", ""))
+    work_dir = audio_path.parent.parent / "_hf_work_avx"
+    from .video_builder import RENDER_CRF
+
+    log.info("Avatar explainer: rendering %r (%d scenes: %s; %s)", getattr(script, "title", "?"), len(scenes),
+             ", ".join(s["style"] for s in scenes),
+             f"background {scenes[0]['bg']}" if len({s['bg'] for s in scenes}) == 1 else "house rhythm")
+    build_avx(scenes, out_path, work_dir, seed=seed, crf=RENDER_CRF, audio_out=audio_path,
+              log_path=audio_path.with_suffix(".render.log"))
+    return out_path
 
 
 # --- the draft: one story, eight scenes, eight styles, three backgrounds ----
@@ -345,6 +472,7 @@ DRAFT_SCENES: list[dict] = [
                         "cue": "Rivals"},
               "left": {"title": "Apple", "tag": "Safe", "items": ["Small features", "Privacy first", "Ship when ready"],
                        "cue": "Apple"},
+              "pace": {"label": "Pace", "right": "Fast", "left": "Slow"},
               "verdict": {"text": "Played it safe", "cue": "safe"}}},
     {"style": "chart", "pose": 1, "label": "Line chart + callout", "bg": DARK, "eyebrow": "What investors see",
      "say": "Investors can see that gap growing, and now they want a real plan.",
@@ -353,7 +481,7 @@ DRAFT_SCENES: list[dict] = [
               "series": [{"name": "Rivals", "values": [2, 9, 18, 30, 44], "cue": "Investors"},
                          {"name": "Apple", "values": [0, 1, 5, 8, 11], "cue": "can"}],
               "gap": {"text": "The gap", "cue": "gap"},
-              "callout": {"text": "Show us the plan", "cue": "plan"}}},
+              "callout": {"kicker": "Investors", "text": "Show us the plan", "cue": "plan"}}},
     {"style": "relation", "pose": 0, "pause_after": 0.6, "label": "Relationship + marker callout", "bg": DARK, "eyebrow": "Inside Apple",
      "say": "So Cook is pushing software chief Craig Federighi to think bigger.",
      "data": {"from": {"name": "Tim Cook", "role": "CEO", "initials": "TC", "cue": "Cook"},
@@ -392,7 +520,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     out = Path(args.out)
     work = Path(args.work) if args.work else DRAFT_DIR / "_work"
-    info = build_avx(DRAFT_SCENES, out, work, draft_labels=True, speed=args.speed, render=not args.no_render)
+    info = build_avx(DRAFT_SCENES, out, work, draft_labels=True, speed=args.speed, render_video=not args.no_render)
     summary = {k: v for k, v in info.items() if k != "payload"}
     summary["scenes"] = [(s["style"], s["start"], s["end"], s["pal"]["bg"]) for s in info["payload"]["scenes"]]
     print(json.dumps(summary, indent=1))

@@ -94,7 +94,17 @@ class Source:
         plan = getattr(self.script, "plan", None)
         if plan is not None and self.look.get("style") == "explainer":
             return plan.lines
+        if self.look.get("style") == "avx":
+            return [s["say"] for s in self.avx_scenes]
         return [self.script.hook] + [b.say for b in self.script.beats] + [self.script.outro]
+
+    @property
+    def avx_scenes(self) -> list[dict]:
+        """The avatar explainer scenes coloured for this look (its own list, or a structural one)."""
+        from .avx_builder import apply_look
+        from .avx_writer import scenes_for
+
+        return apply_look(scenes_for(self.script), self.look.get("bg") or "", self.look.get("accent") or "")
 
     @property
     def kicker(self) -> str:
@@ -243,6 +253,10 @@ def voice_timing(source: Source) -> tuple[Path, list[list[tuple[str, float]]], f
 
 def build_payload(source: Source, per_line, speech: float) -> dict:
     style = source.look["style"]
+    if style == "avx":
+        from . import avx_builder
+
+        return avx_builder.build_payload(source.avx_scenes, per_line, speech)
     if style == "explainer":
         plan = eb.plan_for(source.script)
         tail = min(eb.EXPLAINER_MAX_TAIL, max(vb.TAIL_SECONDS, vb.MIN_VIDEO_SECONDS + 0.2 - speech))
@@ -273,6 +287,14 @@ def prepare_workdir(source: Source, payload: dict, audio: Path | None, work_dir:
     style = source.look["style"]
     if style == "explainer":
         eb._prepare_workdir(work_dir)
+    elif style == "avx":
+        from . import avx_builder
+
+        avx_builder._prepare_workdir(work_dir)
+        with applied(source.look):  # CHARACTER: whose poses
+            payload["avatar"] = avx_builder._avatar_assets(work_dir / "assets", f"{source.day.isoformat()}-{source.key}",
+                                                           [s["start"] for s in payload["scenes"]],
+                                                           [s.get("pose") for s in source.avx_scenes])
     else:
         vb._prepare_workdir(work_dir)
     assets = work_dir / "assets"
@@ -321,6 +343,13 @@ def still_times(payload: dict, style: str) -> list[Still]:
     """When each scene is fully built: after its entrance and its last
     reveal cue, with a margin, but before its exit. Plus the opening frame."""
     stills: list[Still] = []
+    if style == "avx":  # each scene once its last cued element has landed, before it exits
+        for i, s in enumerate(payload["scenes"]):
+            cues = re.findall(r'"at": ([0-9.]+)', json.dumps(s["data"]))
+            built = max([s["start"] + 1.6] + [float(c) + 0.9 for c in cues])
+            at = max(min(built, s["end"] - 0.45), s["start"] + 0.6)
+            stills.append(Still(round(at, 2), i, f"{i + 1} · {s['style']}", s["pal"]["bg"]))
+        return stills
     if style == "explainer":
         scenes = payload["scenes"]
         first = scenes[0]

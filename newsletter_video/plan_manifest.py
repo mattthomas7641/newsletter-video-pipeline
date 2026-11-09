@@ -118,6 +118,10 @@ def entry_from_script(script: Script, index: int, look_overrides: dict | None = 
         from .explainer_writer import plan_dict
 
         entry["scene_plan"] = plan_dict(plan)
+    elif getattr(script, "avx_scenes", None):  # the avatar explainer: its scene list, so a render needs no writer call
+        from .avx_writer import plan_dict as avx_plan_dict
+
+        entry["scene_plan"] = avx_plan_dict(script.avx_scenes)
     return entry
 
 
@@ -128,7 +132,17 @@ def script_from_entry(entry: dict) -> Script:
     stories = [story_from_dict(s) for s in entry.get("stories", [])]
     raw = entry.get("script") or {}
     plan_raw = entry.get("scene_plan")
-    if plan_raw and plan_raw.get("scenes"):
+    from .avx_writer import is_avx_plan
+
+    if is_avx_plan(plan_raw):  # the avatar explainer's scene list, checked for shape again on the way out
+        from .avx_writer import script_from_scenes, validate_scenes
+
+        scenes, _ = validate_scenes(plan_raw["scenes"], strict=False)
+        script = script_from_scenes(scenes, str(entry.get("title") or raw.get("title") or "Untitled"),
+                                    str(entry.get("badge") or raw.get("badge") or "NEWS"), stories,
+                                    str(entry.get("post_caption", "")), list(entry.get("hashtags", [])),
+                                    writer=str(entry.get("writer") or "claude"))
+    elif plan_raw and plan_raw.get("scenes"):
         from .explainer_writer import script_from_plan
         from .scene_plan import validate_plan
 

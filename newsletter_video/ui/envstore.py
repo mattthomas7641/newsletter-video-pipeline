@@ -81,7 +81,7 @@ def _rotation(value: str) -> str | None:
 
 
 SCHEMA: dict[str, Field] = {f.key: f for f in [
-    Field("VIDEO_STYLE", "avatar", _one_of("avatar", "explainer"), ("avatar", "explainer")),
+    Field("VIDEO_STYLE", "avatar", _one_of("avatar", "explainer", "avx"), ("avatar", "explainer", "avx")),
     Field("VIDEO_THEME", "light", _one_of("light", "dark"), ("light", "dark")),
     Field("CHARACTER", "", _slug_or_blank),
     Field("BACKGROUND_STYLE", "gameplay", _one_of("gameplay", "none"), ("gameplay", "none")),

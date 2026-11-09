@@ -9,8 +9,8 @@ import { toast, costTag, ago } from "../components.js";
 import { state, subscribe, isRunning, presets, presetInfo, notify } from "../store.js";
 import { stylePicker, previewTile, describeValue } from "../stylepicker.js";
 
-const FAMILY = { paper: "Clean paper", glass: "Dark glass", avatar: "Avatar" };
-const FAMILY_SHORT = { paper: "Paper", glass: "Glass", avatar: "Avatar" };
+const FAMILY = { paper: "Clean paper", glass: "Dark glass", avatar: "Avatar", avx: "Avatar explainer" };
+const FAMILY_SHORT = { paper: "Paper", glass: "Glass", avatar: "Avatar", avx: "Avatar explainer" };
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
@@ -78,7 +78,7 @@ export function mountLineup(root) {
     b.style = v.style; b.preset = v.style === "avatar" ? "" : v.preset; b.bg = v.style === "avatar" ? "" : v.bg; b.character = v.style === "avatar" ? v.character : ""; b.background = v.style === "avatar" ? (v.background === "none" ? "none" : "gameplay") : "";
     b.accent = v.style === "avatar" ? "" : v.accent; b.accent_mode = v.style === "avatar" ? "one" : v.mode || "one"; b.palette = v.style === "avatar" ? [] : [...(v.rotate || [])];
   }
-  const familyOf = (b) => (b.style === "avatar" ? "avatar" : b.preset === "cinematic-glass" ? "glass" : "paper");
+  const familyOf = (b) => (b.style === "avatar" ? "avatar" : b.style === "avx" ? "avx" : b.preset === "cinematic-glass" ? "glass" : "paper");
   function colourText(b) {
     if (b.style === "avatar") return `${b.character ? (state.characters.find((c) => c.slug === b.character)?.name || b.character) : "default avatar"}, ${b.background === "none" ? "regular" : "Minecraft"} background`;
     if (b.accent_mode === "alternate") return "alternating colours";
