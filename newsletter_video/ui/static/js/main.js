@@ -1,12 +1,12 @@
 import { h } from "./dom.js";
 import { mountSaveBar } from "./components.js";
 import { state, subscribe, loadAll, refreshRuns, isRunning, isDirty } from "./store.js";
-import { mountVideos } from "./views/videos.js";
+import { mountLineup } from "./views/lineup.js";
 import { mountWorkbench } from "./views/workbench.js";
 import { mountSettings } from "./views/settings.js";
 
 const ROUTES = {
-  "/": { name: "videos", title: "Videos", mount: mountVideos },
+  "/": { name: "lineup", title: "Lineup", mount: mountLineup },
   "/lab": { name: "lab", title: "Design lab", mount: mountWorkbench },
   "/settings": { name: "settings", title: "Settings", mount: mountSettings },
 };
