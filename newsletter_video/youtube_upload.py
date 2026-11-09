@@ -209,7 +209,13 @@ def _youtube_client(creds):
     from google_auth_httplib2 import AuthorizedHttp
     from googleapiclient.discovery import build
 
-    http = AuthorizedHttp(creds, http=httplib2.Http(timeout=UPLOAD_HTTP_TIMEOUT_SECONDS))
+    base = httplib2.Http(timeout=UPLOAD_HTTP_TIMEOUT_SECONDS)
+    # A resumable upload answers every chunk but the last with 308 "Resume Incomplete" and
+    # no Location header. Newer httplib2 treats 308 as a redirect and raises
+    # RedirectMissingLocation on it, which aborted every file bigger than one chunk and left
+    # an empty video behind on the channel. Let the upload library see the 308 itself.
+    base.redirect_codes = frozenset(base.redirect_codes) - {308}
+    http = AuthorizedHttp(creds, http=base)
     return build("youtube", "v3", http=http, cache_discovery=False)
 
 

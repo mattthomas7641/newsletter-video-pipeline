@@ -241,3 +241,21 @@ def test_corrupt_record_file_does_not_crash(fake_youtube, isolated_env):
     folder = _day_folder(isolated_env, n=1)
     (folder / "uploads.json").write_text("{not json")
     assert upload_day(DAY) == ["vid1"]
+
+
+def test_client_does_not_treat_308_resume_incomplete_as_a_redirect(monkeypatch):
+    """Chunked uploads get 308 with no Location for every chunk but the last; httplib2 must
+    not follow it, or every video larger than one chunk fails and leaves an empty shell."""
+    import httplib2
+    captured = {}
+
+    def fake_authorized_http(creds, http):
+        captured["http"] = http
+        return http
+
+    monkeypatch.setattr("google_auth_httplib2.AuthorizedHttp", fake_authorized_http)
+    monkeypatch.setattr("googleapiclient.discovery.build", lambda *a, **k: object())
+    youtube_upload._youtube_client(object())
+    assert isinstance(captured["http"], httplib2.Http)
+    assert 308 not in captured["http"].redirect_codes
+    assert 302 in captured["http"].redirect_codes
