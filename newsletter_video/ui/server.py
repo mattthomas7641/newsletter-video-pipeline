@@ -18,12 +18,16 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from newsletter_video.look import LookError
+from newsletter_video.looks import load_presets
+
 from . import history, security
 from .characters_svc import CharacterService
 from .config import PROJECT_ROOT, UIPaths
 from .envstore import SCHEMA, EnvStore, SettingsError
 from .jobs import JobManager, Spawner, default_spawner
-from .runs import RunBlocked, RunService
+from .plans import PlanError, PlanService
+from .runs import RUN_KINDS, RunBlocked, RunService
 
 log = logging.getLogger("newsletter_video.ui")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -84,6 +88,24 @@ def feature_support(root: Path) -> dict[str, bool]:
     return {key: key in sources for key in SCHEMA}
 
 
+def looks_payload() -> dict:
+    """The look library for the panel: every preset with its thumbnail served
+    from the guarded static folder, and which one is the pipeline's default."""
+    presets = []
+    default = ""
+    for p in load_presets():
+        thumb = p.thumbnail if p.thumbnail and (STATIC_DIR / p.thumbnail).is_file() else ""
+        presets.append({"id": p.id, "name": p.name, "description": p.description, "good_for": p.good_for,
+                        "default": p.default, "theme": p.look.get("theme") or "light", "recipe": p.recipe_id,
+                        "cinematic": p.cinematic, "emphasis": list(p.emphasis), "colors": dict(p.colors),
+                        "thumbnail": f"/static/{thumb}" if thumb else None})
+        if p.default:
+            default = p.id
+    from newsletter_video.colors import DEFAULT_ROTATION
+
+    return {"presets": presets, "default": default, "rotation_default": list(DEFAULT_ROTATION)}
+
+
 class App:
     def __init__(self, paths: UIPaths, guard: security.Guard, spawner: Spawner = default_spawner,
                  lister=None, voicebox=None):
@@ -95,6 +117,7 @@ class App:
         kwargs = {"lister": lister} if lister else {}
         self.runs = RunService(paths, self.jobs, self.store, **kwargs)
         self.characters = CharacterService(paths, self.jobs, self.store, **({"voicebox": voicebox} if voicebox else {}))
+        self.plans = PlanService(paths, self.jobs, self.store, self.runs, characters=self.characters)
         self.support = feature_support(paths.root)
         self._schedule_cache: tuple[float, dict] | None = None
         self.index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
@@ -118,8 +141,10 @@ class App:
             return error(409, str(exc))
         except SettingsError as exc:
             return error(400, "Some settings aren't valid.", fields=exc.errors)
-        except security.UploadError as exc:
+        except (security.UploadError, PlanError) as exc:
             return error(400, str(exc))
+        except LookError as exc:
+            return error(400, "That look isn't valid: " + "; ".join(exc.errors))
         except KeyError:
             return error(404, "Not found.")
         except Exception:  # noqa: BLE001
@@ -153,6 +178,20 @@ class App:
             return json_response({"today": history.day_summary(self.paths, today),
                                   "days": [d for d in history.recent_days(self.paths, today) if d["date"] != today.isoformat()],
                                   "previews": history.previews(self.paths)})
+        if path == "/api/plans":
+            return json_response({"plans": self.plans.list_plans(date.today())})
+        if path == "/api/looks":
+            return json_response(looks_payload())
+        m = re.fullmatch(r"/api/plans/([A-Za-z0-9-]+)", path)
+        if m:
+            return json_response(self.plans.describe(m.group(1)))
+        m = re.fullmatch(r"/media/plan/([A-Za-z0-9-]+)/([^/]+)/(.+)", path)
+        if m:
+            target = self.plans.preview_file(m.group(1), unquote(m.group(2)), unquote(m.group(3)))
+            if not target:
+                return error(404, "Not found.")
+            ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+            return Response(200, content_type=ctype, file=target, headers={"Cache-Control": "no-cache"})
         m = re.fullmatch(r"/api/jobs/([a-z0-9]+)", path)
         if m:
             return self._job(m.group(1), int((req.query.get("since") or ["0"])[0] or 0))
@@ -224,10 +263,15 @@ class App:
         view = self.jobs.get(job_id)
         if view is None:
             return error(404, "That job isn't known (it may be from an older session).")
-        data = self.runs.describe(view) if view.kind in ("test", "batch") else view.to_json()
+        data = self.runs.describe(view) if view.kind in RUN_KINDS else view.to_json()
         payload = {"job": data, "log": self.jobs.log(job_id, since)}
         if view.kind == "add" and view.state != "running":
             payload["outcome"] = self.characters.add_outcome(view)
+        if view.kind == "preview" and view.state != "running":
+            try:
+                payload["outcome"] = self.plans.preview_state(view.meta.get("ref", ""), view.meta.get("video", ""))
+            except KeyError:
+                payload["outcome"] = {}
         if view.kind == "sample":
             payload["job"]["url"] = view.meta.get("url") if view.state == "done" else None
             payload["job"]["error_tail"] = self.jobs.tail(job_id, 4) if view.state in ("failed", "interrupted") else []
@@ -260,6 +304,8 @@ class App:
             data = self._read_json(req)
             kind = data.get("kind")
             if kind == "test":
+                if data.get("confirm") is not True:  # a full render, like the batch: never implicit
+                    return error(400, "A full test render needs confirmation. Use a plan and a preview instead.")
                 overrides = data.get("overrides") or {}
                 if not isinstance(overrides, dict):
                     return error(400, "overrides must be an object.")
@@ -274,6 +320,54 @@ class App:
             return json_response({"job": self.runs.describe(job)}, 201)
         if path == "/api/characters" and req.method == "POST":
             return self._add_character(req)
+        if path == "/api/plans" and req.method == "POST":
+            data = self._read_json(req)
+            overrides = data.get("overrides") or {}
+            if not isinstance(overrides, dict):
+                return error(400, "overrides must be an object.")
+            videos = data.get("videos")
+            if videos is not None and (isinstance(videos, bool) or not isinstance(videos, int)):
+                return error(400, "videos must be a whole number.")
+            ref = data.get("ref")
+            if ref is not None and not isinstance(ref, str):
+                return error(400, "ref must be a date or null for a test plan.")
+            job = self.plans.start_plan(ref, videos, overrides)
+            return json_response({"job": self.runs.describe(job)}, 201)
+        m = re.fullmatch(r"/api/plans/([A-Za-z0-9-]+)/videos/([^/]+)/look", path)
+        if m and req.method == "PUT":
+            look = self._read_json(req).get("look")
+            if not isinstance(look, dict):
+                return error(400, "look must be an object.")
+            return json_response(self.plans.set_look(m.group(1), unquote(m.group(2)), look))
+        m = re.fullmatch(r"/api/plans/([A-Za-z0-9-]+)/videos/([^/]+)/preview", path)
+        if m and req.method == "POST":
+            data = self._read_json(req)
+            overrides = data.get("overrides") or {}
+            if not isinstance(overrides, dict):
+                return error(400, "overrides must be an object.")
+            job = self.plans.start_preview(m.group(1), unquote(m.group(2)), str(data.get("tier") or "stills"),
+                                           voice=data.get("voice") is True, overrides=overrides, trial=data.get("trial") is True)
+            return json_response({"job": self.runs.describe(job)}, 201)
+        m = re.fullmatch(r"/api/plans/([A-Za-z0-9-]+)/videos/([^/]+)/studio", path)
+        if m and req.method == "POST":  # free and local: no confirmation, just the usual token guard
+            overrides = self._read_json(req).get("overrides") or {}
+            if not isinstance(overrides, dict):
+                return error(400, "overrides must be an object.")
+            return json_response(self.plans.start_studio(m.group(1), unquote(m.group(2)), overrides), 201)
+        m = re.fullmatch(r"/api/plans/([A-Za-z0-9-]+)/videos/([^/]+)/rewrite", path)
+        if m and req.method == "POST":
+            if self._read_json(req).get("confirm") is not True:
+                return error(400, "Rewriting a script needs confirmation (it costs a writer call).")
+            job = self.plans.start_rewrite(m.group(1), unquote(m.group(2)))
+            return json_response({"job": self.runs.describe(job)}, 201)
+        m = re.fullmatch(r"/api/plans/([A-Za-z0-9-]+)/render", path)
+        if m and req.method == "POST":
+            data = self._read_json(req)
+            only = data.get("only")
+            if only is not None and not isinstance(only, list):
+                return error(400, "only must be a list of video ids.")
+            job = self.plans.start_render(m.group(1), only, data.get("confirm") is True)
+            return json_response({"job": self.runs.describe(job)}, 201)
         m = re.fullmatch(r"/api/characters/([^/]*)/sample", path)
         if m and req.method == "POST":
             return json_response(self.characters.start_sample(unquote(m.group(1))), 202)
@@ -300,6 +394,12 @@ class App:
         return json_response({"job": job.to_json()}, 202)
 
 
+def body_limit(path: str) -> int:
+    """How large a request body may be. The same small cap everywhere: the
+    panel accepts character pictures and voice clips, nothing bigger."""
+    return security.MAX_BODY_BYTES
+
+
 # --- HTTP plumbing -------------------------------------------------------------
 
 def make_handler(app: App):
@@ -314,14 +414,24 @@ def make_handler(app: App):
             sys.stderr.write(f"  {self.command} {path} -> {args[1] if len(args) > 1 else ''}\n")
 
         def _dispatch(self):
+            parts = urlsplit(self.path)
+            if self.command in ("POST", "PUT"):
+                # Host/Origin/token are checked on the headers alone, before a
+                # single body byte is read: a cross-site 300 MB upload is
+                # refused without being received (App.handle checks again).
+                is_api = parts.path.startswith("/api/") or parts.path.startswith("/media/")
+                rejection = app.guard.check(self.command, self.headers, api=is_api)
+                if rejection:
+                    self._send(error(*rejection))
+                    self.close_connection = True
+                    return
             length = int(self.headers.get("Content-Length") or 0)
-            limit = security.MAX_BODY_BYTES if self.command in ("POST", "PUT") else 0
+            limit = body_limit(parts.path) if self.command in ("POST", "PUT") else 0
             if length > limit:
                 self._send(error(413, "That request is too large."))
                 self.close_connection = True
                 return
             body = self.rfile.read(length) if length else b""
-            parts = urlsplit(self.path)
             req = Request(self.command, self.path, parse_qs(parts.query), self.headers, body)
             self._send(app.handle(req))
 

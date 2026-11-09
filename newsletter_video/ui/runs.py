@@ -4,7 +4,7 @@ Two kinds of run:
 - "test":  one video, never uploaded, written to output/_previews/<id>/ (a
            folder the real pipeline's story-history scan, upload step and
            cleanup all ignore because it isn't a dated folder).
-- "batch": today's real run, exactly as the 7:00 AM job would do it.
+- "batch": today's real run, exactly as the scheduled job would do it.
 
 Only one run at a time. Besides panel-started jobs we also refuse when
 something else is already running the pipeline: a live process (the
@@ -32,14 +32,30 @@ LOCKFILE_CANDIDATES = (
     "output/.pipeline.lock", "output/pipeline.lock", "output/.run.lock",
     ".pipeline.lock", "pipeline.lock",
 )
-PIPELINE_MARKERS = ("newsletter_video.run_pipeline", "newsletter_video.ui.preview_runner")
+PIPELINE_MARKERS = ("newsletter_video.run_pipeline", "newsletter_video.ui.preview_runner",
+                    "newsletter_video.render_plan", "newsletter_video.plan_day", "newsletter_video.preview")
+# Every job kind that renders, voices, fetches or calls the writer. Only one
+# of these runs at a time: a draft render beside a final render would starve
+# this machine's memory, and two writer calls for the same day make no sense.
+HEAVY_KINDS = ("test", "batch", "plan", "rewrite", "preview", "render")
+RUN_KINDS = ("test", "batch", "plan", "rewrite", "preview", "render")
+KIND_LABELS = {"test": "A test video", "batch": "Today's batch", "plan": "A plan", "rewrite": "A script rewrite",
+               "preview": "A preview", "render": "A final render"}
 
 STAGES = [  # (log fragment, label, step)
     ("Scraping editions", "Reading today's newsletters", 1),
+    ("Fetching stories", "Reading today's newsletters", 1),
     ("Fetched", "Reading today's newsletters", 1),
     ("Selecting top stories", "Choosing stories and writing scripts", 2),
     ("Script '", "Choosing stories and writing scripts", 2),
+    ("Rewriting the script", "Rewriting the script", 2),
+    ("Planned ", "Plan written", 4),
+    ("Rewrote ", "Script rewritten", 4),
     ("Rendering", "Voicing and rendering the video", 3),
+    ("Voice: ", "Voicing and rendering the video", 3),
+    ("Explainer: rendering", "Voicing and rendering the video", 3),
+    ("Stills: ", "Storyboard ready", 4),
+    ("Draft: ", "Draft clip ready", 4),
     ("Done:", "Rendering finished", 4),
     ("YouTube", "Uploading to YouTube", 4),
 ]
@@ -132,8 +148,8 @@ class RunService:
 
     def activity(self) -> list[Activity]:
         found: list[Activity] = []
-        for job in self.jobs.active(kinds=("test", "batch")):
-            found.append(Activity("panel", "A test video" if job.kind == "test" else "Today's batch", None))
+        for job in self.jobs.active(kinds=HEAVY_KINDS):
+            found.append(Activity("panel", KIND_LABELS.get(job.kind, "A job"), None))
         ours = self.jobs.wrapper_pids() | {os.getpid()}
         for pid, ppid, command in self.lister():
             if pid in ours or ppid in ours or "newsletter_video.ui.jobwrap" in command:
@@ -160,6 +176,10 @@ class RunService:
             if first.source == "panel":
                 raise RunBlocked(f"{first.label} is already being made. Wait for it to finish, or stop it first.")
             raise RunBlocked(f"{first.label}. Wait for it to finish before starting another.")
+
+    def guard(self) -> None:
+        """Public: refuse to start anything heavy while something heavy runs."""
+        self._guard()
 
     # --- starting ---
 
@@ -194,7 +214,8 @@ class RunService:
             "uploads": saved["YOUTUBE_UPLOAD"] == "1",
             "privacy": saved["YOUTUBE_PRIVACY"],
         }
-        return self.jobs.create("batch", argv, self._env({}), meta)
+        # The button promises the whole job with no review step, whatever DAILY_MODE the scheduled run uses.
+        return self.jobs.create("batch", argv, self._env({"DAILY_MODE": "full"}), meta)
 
     # --- reporting ---
 
@@ -225,7 +246,7 @@ class RunService:
     def latest(self) -> JobView | None:
         jobs = self.jobs.list(limit=15)
         for job in jobs:
-            if job.kind in ("test", "batch"):
+            if job.kind in RUN_KINDS:
                 return job
         return None
 

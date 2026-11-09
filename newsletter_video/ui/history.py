@@ -86,7 +86,7 @@ def day_summary(paths: UIPaths, day: date) -> dict:
     whole = _json(folder / "status.json")
     videos, seen = [], set()
     stems = {p.stem for p in folder.glob("*.mp4")} | {
-        p.stem for p in folder.glob("*.json") if p.name not in ("uploads.json", "status.json")
+        p.stem for p in folder.glob("*.json") if p.name not in ("uploads.json", "status.json", "plan.json")
         and not p.name.endswith(".status.json")} if folder.is_dir() else set()
     for stem in sorted(stems):
         mp4 = folder / f"{stem}.mp4"

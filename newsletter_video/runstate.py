@@ -16,14 +16,26 @@ from pathlib import Path
 
 STATUS_FILE = "status.json"
 # Files in a day folder that are not a video's sidecar metadata.
-NON_SIDECAR_JSON = {"uploads.json", STATUS_FILE}
+NON_SIDECAR_JSON = {"uploads.json", STATUS_FILE, "plan.json"}  # plan.json: a planned, not yet rendered, day
 _INDEX_RE = re.compile(r"^(\d{2,})_")
 
 
 def write_json_atomic(path: Path, data) -> None:
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False))
-    os.replace(tmp, path)
+    """Temp file with a unique name (two writers never share one), then
+    rename: a reader sees the old file or the new one, never a half."""
+    import tempfile
+
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(data, indent=2, ensure_ascii=False))
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def read_json(path: Path, default=None):

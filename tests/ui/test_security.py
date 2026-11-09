@@ -184,3 +184,23 @@ def test_oversized_body_is_refused_before_reading(client):
 def test_oversized_json_body_is_refused(client):
     status, body = client.send_json("PUT", "/api/settings", {"updates": {"VIDEOS_PER_DAY": "1" * 70000}})
     assert status == 400
+
+
+def test_cross_site_post_is_refused_before_the_body_is_read(client):
+    """The guard runs on the headers alone: a foreign-origin upload that
+    announces a huge body gets its 403 without the server waiting for (or
+    reading) a single body byte."""
+    import http.client
+
+    conn = http.client.HTTPConnection("127.0.0.1", client.port, timeout=5)
+    conn.putrequest("POST", "/api/characters", skip_host=True)
+    conn.putheader("Host", f"127.0.0.1:{client.port}")
+    conn.putheader("Origin", "https://evil.example")
+    conn.putheader("X-UI-Token", client.token)
+    conn.putheader("Content-Type", "multipart/form-data; boundary=x")
+    conn.putheader("Content-Length", str(200 * 1024 * 1024))
+    conn.endheaders()  # no body follows
+    resp = conn.getresponse()  # would time out if the server waited for the body
+    assert resp.status == 403
+    resp.read()
+    conn.close()

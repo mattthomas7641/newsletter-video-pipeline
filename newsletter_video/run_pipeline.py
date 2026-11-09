@@ -4,6 +4,11 @@ one script + TTS + HyperFrames render per story.
 Usage:
     python -m newsletter_video.run_pipeline               # today
     python -m newsletter_video.run_pipeline 2026-09-22    # a specific date
+
+DAILY_MODE=plan (approval mode) stops after the planning step: the day's
+plan.json is written and a notification says it is ready to review in the
+control panel. Nothing is voiced, rendered or uploaded until Render is
+pressed there (or `python -m newsletter_video.render_plan DATE --final`).
 """
 from __future__ import annotations
 
@@ -117,17 +122,65 @@ def _fallback_policy(scripts, uploading: bool) -> tuple[list, str | None]:
     )
 
 
+DAILY_MODES = ("full", "plan")
+
+
+def daily_mode() -> str:
+    """DAILY_MODE: `full` (default) plans, renders and uploads in one go;
+    `plan` (approval mode) only writes the day's plan.json and notifies,
+    leaving the render to an explicit Render in the control panel."""
+    mode = os.environ.get("DAILY_MODE", "full").strip().lower() or "full"
+    if mode not in DAILY_MODES:
+        raise ConfigError(f"DAILY_MODE={mode!r} must be one of {list(DAILY_MODES)}")
+    return mode
+
+
+def plan_only(target_date: date, out_dir: Path, wanted: int) -> list[Path]:
+    """Approval mode: the planning step alone (one writer call, plan.json
+    for the control panel), then stop. A plan the day already has (made
+    from the panel, or by an earlier run) is kept, never replaced, because
+    its looks may have been reviewed and changed by hand. Nothing is voiced,
+    rendered or uploaded here; render_plan --final does that on request,
+    skipping any story covered in the meantime."""
+    from . import plan_manifest as pm
+    from .plan_day import plan  # plan_day imports this module, so resolve it lazily
+
+    data = pm.read_manifest(out_dir)
+    if data and data.get("videos"):
+        log.info("%s already has a plan with %d video(s); keeping it (plan again from the panel to replace it)",
+                 target_date, len(data["videos"]))
+    elif wanted:
+        data = plan(target_date, out_dir, wanted)
+    else:
+        log.info("Every video for %s is already made; nothing to plan", target_date)
+        data = None
+    videos = (data or {}).get("videos", [])
+    waiting = sum(1 for v in videos if v.get("status") != "rendered")
+    update_run(out_dir, mode="plan", planned=len(videos), waiting_review=waiting, writer=(data or {}).get("writer"))
+    clean_old_outputs(target_date)
+    return []
+
+
 def run(target_date: date | None = None) -> list[Path]:
     load_dotenv(PROJECT_ROOT / ".env")
     target_date = target_date or date.today()
     validate_config(PROJECT_ROOT, OUTPUT_DIR, TOKEN)
     from .explainer_builder import video_style
 
-    log.info("Video style: %s", video_style())  # raises now if VIDEO_STYLE is misspelled
+    mode = daily_mode()  # raises now if DAILY_MODE is misspelled
+    log.info("Video style: %s; daily mode: %s", video_style(), mode)  # raises now if VIDEO_STYLE is misspelled
     source = get_source()  # SOURCE=tldr (default); raises now if misspelled
     out_dir = OUTPUT_DIR / target_date.isoformat()
     uploading = os.environ.get("YOUTUBE_UPLOAD") == "1"
-    update_run(out_dir, started=now_iso(), finished=None, error=None)
+    update_run(out_dir, started=now_iso(), finished=None, error=None, mode=mode)
+
+    # Resume rather than redo: a re-run on the same day (after a crash, a
+    # watchdog kill or a manual retry) only makes the videos still missing.
+    n_videos = int(os.environ.get("VIDEOS_PER_DAY", 3))
+    already = len(sidecars(out_dir))
+    wanted = max(0, n_videos - already)
+    if mode == "plan":
+        return plan_only(target_date, out_dir, wanted)
 
     if not _wait_for_network():
         log.warning(
@@ -135,11 +188,6 @@ def run(target_date: date | None = None) -> list[Path]:
             NETWORK_WAIT_TIMEOUT_SECONDS,
         )
 
-    # Resume rather than redo: a re-run on the same day (after a crash, a
-    # watchdog kill or a manual retry) only makes the videos still missing.
-    n_videos = int(os.environ.get("VIDEOS_PER_DAY", 3))
-    already = len(sidecars(out_dir))
-    wanted = max(0, n_videos - already)
     paths: list[Path] = []
     if already:
         log.info("%d video(s) already made for %s; making %d more", already, target_date, wanted)
@@ -168,6 +216,10 @@ def run(target_date: date | None = None) -> list[Path]:
         if not scripts:
             raise RuntimeError("No stories selected — nothing to render")
         scripts, privacy = _fallback_policy(scripts, uploading)
+        from .look import with_rotation
+
+        for i, script in enumerate(scripts):  # LOOK_ACCENT_ROTATE: the day's videos alternate their accent colour
+            script.look = with_rotation(getattr(script, "look", None), i)
         update_run(out_dir, writer=scripts[0].writer, requested=wanted)
 
         log.info("Rendering %d shorts to %s", len(scripts), out_dir)
@@ -201,6 +253,11 @@ def run_summary(out_dir: Path, minutes: float) -> str:
     uploaded = sum(1 for v in videos if v.get("status") == "uploaded")
     failed = [name for name, v in state["videos"].items() if v.get("status") == "failed"]
     parts = [f"{rendered} video(s) made", f"{uploaded} uploaded", f"{minutes:.0f} min"]
+    if state["run"].get("mode") == "plan":  # approval mode: the plan is the product
+        waiting = state["run"].get("waiting_review") or 0
+        parts = [f"{waiting} video(s) planned for {out_dir.name} and waiting for your review, nothing rendered"
+                 if waiting else f"nothing to plan for {out_dir.name} (every video is already made)",
+                 "review and render them in the control panel (./ui.sh, Studio page)", f"{minutes:.0f} min"]
     if state["run"].get("writer") == "heuristic":
         parts.append("rule-based scripts (Claude unavailable)")
     if failed:
@@ -248,7 +305,17 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     d = date.fromisoformat(argv[0]) if argv else date.today()
     load_dotenv(PROJECT_ROOT / ".env")
-    out_dir = OUTPUT_DIR / d.isoformat()
+    # The notification's title says which kind of run ended; run() still validates the value.
+    label = "Daily plan" if os.environ.get("DAILY_MODE", "").strip().lower() == "plan" else "Pipeline"
+    return supervised(OUTPUT_DIR / d.isoformat(), lambda: run(d), label=label)
+
+
+def supervised(out_dir: Path, work, label: str = "Pipeline") -> int:
+    """Runs `work()` under the pipeline's hardening: the lockfile (one run
+    at a time), the run-level watchdog, status.json bookkeeping and a
+    notification whichever way it ends. Shared by the daily run and by
+    render_plan (the panel's explicit final renders), so both behave the
+    same under failure. Returns the process exit code."""
     started = time.monotonic()
 
     def minutes() -> float:
@@ -277,21 +344,21 @@ def main(argv: list[str] | None = None) -> int:
         ),
     ).start()
     try:
-        run(d)
+        work()
     except ConfigError as exc:
         log.error("%s", exc)
-        notify("Pipeline not started", str(exc))
+        notify(f"{label} not started", str(exc))
         return EXIT_CONFIG
     except Exception as exc:
-        log.exception("Pipeline failed")
+        log.exception("%s failed", label)
         update_run(out_dir, finished=now_iso(), error=f"{type(exc).__name__}: {exc}"[:500])
-        notify("Pipeline failed", f"{type(exc).__name__}: {str(exc)[:400]}\nSo far: {run_summary(out_dir, minutes())}")
+        notify(f"{label} failed", f"{type(exc).__name__}: {str(exc)[:400]}\nSo far: {run_summary(out_dir, minutes())}")
         return 1
     else:
         summary = run_summary(out_dir, minutes())
         update_run(out_dir, finished=now_iso(), error=None)
         failed = any(v.get("status") in ("failed", "upload_failed") for v in load_state(out_dir)["videos"].values())
-        notify("Pipeline finished with problems" if failed else "Pipeline finished", summary, ok=not failed)
+        notify(f"{label} finished with problems" if failed else f"{label} finished", summary, ok=not failed)
         return 0
     finally:
         watchdog.cancel()

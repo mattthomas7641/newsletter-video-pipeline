@@ -64,6 +64,41 @@ export function mountSaveBar(slot) {
   render();
 }
 
+// ---- confirmation: the one modal in the panel, for steps that cost money or make real videos ----
+
+export function confirmDialog({ title, body, confirmLabel, tone = "primary" }) {
+  return new Promise((resolve) => {
+    const dialog = h("dialog", { "aria-labelledby": "dlg-title" },
+      h("form", { method: "dialog" },
+        h("h2", { id: "dlg-title", text: title }), body,
+        h("div", { class: "actions" },
+          h("button", { class: "btn quiet", value: "cancel", type: "submit" }, "Cancel"),
+          h("button", { class: `btn ${tone}`, value: "ok", type: "submit" }, confirmLabel))));
+    dialog.addEventListener("close", () => { resolve(dialog.returnValue === "ok"); dialog.remove(); });
+    document.body.append(dialog);
+    dialog.showModal();
+  });
+}
+
+// ---- a cost or time tag next to an action: "free · 15 s", "about 3 cents" ----
+
+export function costTag(text, tone = "") {
+  return h("span", { class: `cost${tone ? ` ${tone}` : ""}`, text });
+}
+
+// ---- "2 min ago" from an epoch in seconds ----
+
+export function ago(epochSeconds) {
+  if (!epochSeconds) return "";
+  const s = Math.max(0, Math.round(Date.now() / 1000 - epochSeconds));
+  if (s < 45) return "just now";
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const hrs = Math.round(m / 60);
+  if (hrs < 24) return `${hrs} h ago`;
+  return `${Math.round(hrs / 24)} d ago`;
+}
+
 // ---- a note that a setting is not read by this version of the pipeline yet ----
 
 export function notYetNote(supported) {

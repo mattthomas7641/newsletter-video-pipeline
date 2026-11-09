@@ -151,6 +151,8 @@ the spoken line, in order, so each appears as it is said.
 quotes someone.
 - outro: closes every video. `text` is the closing line the viewer reads; its `say` is the \
 spoken outro, at most 14 words: a reason to comment or follow, tied to the topic.
+- object3d, depth, kinetic and glass are the rich scenes of the cinematic look. Use them only \
+when a "Look: cinematic" note follows below; otherwise never.
 Pictograms (`icon`): each stands for something; pick the one that means what the scene is \
 about, use '' when none fits, never a filler, and never the same icon in two scenes in a row. \
 Questions and calls to comment use "comment" or "question" (the outro always gets "comment"). \
@@ -193,6 +195,37 @@ EXPLAINER_WRITER_SYSTEM = EXPLAINER_WRITER_SYSTEM.replace(
     "{ICON_LIST}", "\n".join(f"- {name}: {meaning}" for name, meaning in ICON_MEANINGS.items()) + "\n"
 )
 
+CINEMATIC_NOTE = """
+Look: cinematic
+- This video renders in the cinematic look: a near-black ground with a perspective grid floor, \
+glowing accents in the reference's colours, vignette and grain. Think of a dark 3D motion-graphics \
+explainer about infrastructure, networks, hardware or security. The rich scenes below now fit; use \
+2-3 of them across the video, mixed with the regular library, and still keep every rule above.
+- object3d: a 3D hero drawn with Three.js. `kind` "stack" (2-5 glowing layers bottom to top, each a \
+`label` and short `text`: tiers, versions, protocol layers, a pipeline), "bars" (2-5 3D columns from \
+`series` numbers, a `unit`, a `highlight`), "orbit" (a `center` with 3-5 `nodes` circling it: an \
+ecosystem, dependencies, a platform and its users) or "cards" (2-4 floating cards: products, teams, \
+options). At most 4 object3d scenes per video. Use the data from the stories, never decoration.
+- depth: 2-4 layered planes the camera pushes through, front to back, each with a `label` and \
+`text`: a chain of causes, a sequence of steps, "behind this is this". Deepest layer is the point.
+- kinetic: glowing kinetic type: 1-3 `lines` under 24 characters that land one by one, an optional \
+big `value` (a numeral or a short word under 4 characters, e.g. "5", "3x", "OSI") and a small `label`. \
+A chapter title, a punchline, the single phrase to remember.
+- glass: a glassy HUD panel with a header `label` and 2-4 rows (`nodes`: label is the key, text is \
+the value under 22 characters): a spec sheet, a routing table, a price list, a status readout.
+"""
+
+THREE_D_NOTE = """
+This look is a 3D look: every scene, whatever its type, is drawn in 3D from its content. Give it real \
+content to draw. The icon you pick chooses the 3D object, so pick the icon that NAMES the thing the scene \
+is about (chip, brain, robot, dollar or money, lock or shield, cloud, database, globe, users, box); never \
+an icon just to decorate. Put the real figures in the words (a stat's value, a comparison's numbers, a \
+chart's series) because figures become 3D bars, towers and gauges; use lists, timelines and diagrams with \
+short real labels because they become exploded stacks and hubs; and keep statements short with an \
+emphasised phrase because they are set as glowing type in depth. Do not invent numbers or labels for the \
+sake of the visual.
+"""
+
 _EXPLAINER_SCHEMA = {
     "type": "object",
     "properties": {
@@ -220,22 +253,40 @@ _EXPLAINER_SCHEMA = {
 
 def _system_prompt() -> str:
     """The explainer prompt plus the active character's persona (tone only;
-    the avatar image is irrelevant in this style)."""
+    the avatar image is irrelevant in this style), plus the cinematic
+    scene notes when the resolved look (theme or pinned recipe) asks for
+    the cinematic look."""
+    prompt = EXPLAINER_WRITER_SYSTEM
     try:
         from .characters import active
 
         character = active()
     except Exception:  # a missing CHARACTER folder is reported by run_pipeline, not here
         character = None
-    if not (character and character.persona):
-        return EXPLAINER_WRITER_SYSTEM
-    return (
-        EXPLAINER_WRITER_SYSTEM
-        + f"\nNarrator character\n- The narrator is {character.name}: {character.persona.rstrip('. ')}. "
-        "This shapes the tone and word choice of the spoken lines only. Every fact, number and "
-        "claim must still come from the stories, and the word budget, scene rules and caps above "
-        "still apply.\n"
-    )
+    if character and character.persona:
+        prompt += (
+            f"\nNarrator character\n- The narrator is {character.name}: {character.persona.rstrip('. ')}. "
+            "This shapes the tone and word choice of the spoken lines only. Every fact, number and "
+            "claim must still come from the stories, and the word budget, scene rules and caps above "
+            "still apply.\n"
+        )
+    try:
+        from .look import cinematic_requested, look_from_env, threed_requested
+        from .looks import get_preset
+
+        three_d = threed_requested()
+        if cinematic_requested() or three_d:
+            prompt += CINEMATIC_NOTE
+            log.info("Explainer writer: offering the rich 3D scenes (the look is cinematic or 3D)")
+        if three_d:
+            prompt += THREE_D_NOTE
+        preset = get_preset(look_from_env().get("preset") or "")
+        if preset and preset.emphasis:
+            prompt += (f"\nLook preset: {preset.name}\n- {preset.description} Prefer these scene types where "
+                       f"the story supports them: {', '.join(preset.emphasis)}. Every rule above still applies.\n")
+    except Exception as exc:  # noqa: BLE001 - the look never blocks writing
+        log.warning("Could not resolve the look for the writer (%s: %s); writing the paper look", type(exc).__name__, exc)
+    return prompt
 
 
 def _call_writer(user: str) -> dict | None:
@@ -327,6 +378,29 @@ def _validated_videos(user: str, n_videos: int) -> list[tuple[dict, ScenePlan]] 
     return accepted
 
 
+def _apply_style_library(plan: ScenePlan, title: str) -> None:
+    """With a non-empty style library (STYLE_LIBRARY), one planner call per
+    video chooses recipes from the owner's references for each scene; the
+    plan is untouched otherwise, and on any failure. STYLE_RECIPE (the
+    look's recipe policy) can switch this off ("none") or pin one recipe
+    instead of asking the planner ("auto", the default)."""
+    try:
+        from .styles import library_enabled, style_scene_plan
+
+        policy = os.environ.get("STYLE_RECIPE", "auto").strip().lower() or "auto"
+        if policy == "none":
+            return
+        if policy != "auto":
+            from .styles.planner import apply_recipe_policy
+
+            apply_recipe_policy(plan, policy)
+            return
+        if library_enabled():
+            style_scene_plan(plan, title)
+    except Exception as exc:  # noqa: BLE001 - styling never blocks a video
+        log.warning("Style library skipped for %r (%s: %s)", title, type(exc).__name__, exc)
+
+
 def llm_explainer_scripts(candidates: list[Story], n_videos: int) -> list[ExplainerScript] | None:
     """The explainer counterpart of script_writer._llm_scripts: one call
     for the day's videos. Videos whose plan fails validation are skipped
@@ -347,6 +421,7 @@ def llm_explainer_scripts(candidates: list[Story], n_videos: int) -> list[Explai
     scripts = []
     for video, plan in accepted:
         ids = [i for i in video.get("story_ids", []) if isinstance(i, int) and 0 <= i < len(candidates)]
+        _apply_style_library(plan, str(video.get("title", "")))
         scripts.append(script_from_plan(plan, str(video.get("title", "")).strip() or "Untitled",
                                         str(video.get("badge", "NEWS")), [candidates[i] for i in ids],
                                         str(video.get("post_caption", "")), list(video.get("hashtags", []))))

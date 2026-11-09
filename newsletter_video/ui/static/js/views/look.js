@@ -28,7 +28,9 @@ function frame(kind) {
   return holder;
 }
 
-export function mountLook(root, ctx) {
+/** The narrators and their voices (and, unless `narratorOnly`, the old style / background / theme
+ * defaults). Mounted inside Settings (`embedded`); the default style itself is set on the Videos page. */
+export function mountLook(root, { embedded = false, narratorOnly = false } = {}) {
   const cleanup = [];
   const onCleanup = (fn) => cleanup.push(fn);
   const sampleUi = new Map(); // slug -> {button, status}
@@ -37,9 +39,9 @@ export function mountLook(root, ctx) {
   let addPanel = null;
 
   // ---- header ----
-  const head = h("header", { class: "page-head" },
+  const head = embedded ? null : h("header", { class: "page-head" },
     h("div", {}, h("h1", { text: "Look and voice" }),
-      h("p", { class: "lede", text: "Choose what your videos look like and who narrates them. Saved choices apply from the next video, including the 7:00 AM run." })),
+      h("p", { class: "lede", text: "Choose what your videos look like and who narrates them. Saved choices apply from the next video, including the scheduled run." })),
     savePill(onCleanup));
 
   // ---- style cards ----
@@ -88,7 +90,8 @@ export function mountLook(root, ctx) {
     h("div", { class: "section-head" }, h("h2", { id: "theme-h", text: "Colors" }),
       h("p", { text: "Light or dark graphics for explainer videos." })), themeSeg, themeNote);
 
-  root.append(head, styleSection, narratorSection, bgSection, themeSection);
+  root.append(...[head, styleSection, narratorSection, bgSection, themeSection].filter(Boolean));
+  if (embedded) for (const s of [styleSection, narratorSection, bgSection, themeSection]) s.classList.add("sub");
 
   // ---- characters gallery ----
   function characterCard(c) {
@@ -227,8 +230,9 @@ export function mountLook(root, ctx) {
     narratorText.textContent = style === "avatar"
       ? "Pick who appears on screen. Their voice comes with them, so there is no separate voice to choose."
       : "Explainer videos don't show a character, but whoever you pick still supplies the voice and writing style.";
-    bgSection.hidden = style !== "avatar";
-    themeSection.hidden = style !== "explainer";
+    bgSection.hidden = narratorOnly || style !== "avatar";
+    themeSection.hidden = narratorOnly || style !== "explainer";
+    styleSection.hidden = narratorOnly;
 
     missingNote.replaceChildren();
     if (state.loaded && selected && !known) {
@@ -257,6 +261,6 @@ export function mountLook(root, ctx) {
   return () => {
     stopAudio();
     cleanup.forEach((fn) => fn());
-    root.replaceChildren();
+    if (!embedded) root.replaceChildren();
   };
 }

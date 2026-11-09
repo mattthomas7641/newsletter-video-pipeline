@@ -81,6 +81,9 @@ class Script:
     post_caption: str = ""  # text for the YouTube description / TikTok caption
     hashtags: list[str] = field(default_factory=list)
     writer: str = ""  # "claude" or "heuristic": run_pipeline refuses to publish fallback scripts publicly
+    # Per-video look overrides (see look.py): None or empty means "the
+    # defaults from .env", which is what the unattended daily run always uses.
+    look: dict | None = field(default=None, repr=False)
 
     @property
     def narration(self) -> str:

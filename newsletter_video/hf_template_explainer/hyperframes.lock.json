@@ -1,0 +1,10 @@
+{
+  "compositions/components/animated-bar-chart.html": "ceae5ee442ace07edfc115ed509982805c311e0c57a07517d3c95e1d60c898f2",
+  "compositions/components/aurora-drift.html": "bf700650e032fc4f81ece1b88ab0bfb92f042f4ae40a4be02509b6e50be34c23",
+  "compositions/components/camera-rig-depth-stack.html": "d0ab77610390dd1e30ac53347b06e3d6aa432ac972989c18df8593d2a2b6b19e",
+  "compositions/components/caption-neon-glow.html": "dc9d43d58879e1422837c213aa7f8921ca43b58f4e9c77f8463232585e05034c",
+  "compositions/components/grain-overlay.html": "97a0da8f26feca9574abcf08b8186cef10ea4819b2aeabc30547ae16ed9ae80d",
+  "compositions/lib/shaders.iife.js": "6ad60b5fe00c6f092ddc9ccc6138743d89401e2886d550b275fc8ce0d0345f2d",
+  "compositions/lib/shaders.THIRD-PARTY-LICENSES.txt": "ace6fbd142afaa20894b285ab6d4e20f164f6ec8557978d23db36197f1bc067c",
+  "compositions/mesh-gradient.html": "da0dee21b885a921cde44792a26539635fe15042f35e09ef0556c04532bee7b3"
+}

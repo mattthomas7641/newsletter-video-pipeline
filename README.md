@@ -18,8 +18,9 @@ and a narrator character at the bottom of the frame. An outro card
 asks viewers to comment.
 
 - **Runs itself:** a macOS `launchd` job writes, voices, renders and uploads the day's
-  videos at 7:00 AM, logging every stage. With a locally cloned voice, 10 videos take about
-  85 minutes on a laptop.
+  videos on a schedule (the time is in the launchd plist), logging every stage. With a locally cloned voice, 10 videos take about
+  85 minutes on a laptop. Or, in approval mode (`DAILY_MODE=plan`), it only writes the
+  day's plan and notifies you; you review it in the control panel and press Render.
 - **Two-stage story selection:** with a TypeSafe API key, Jev screens every candidate for
   scope and newsworthiness first, so Claude only sees the shortlist (see
   [Story selection with Jev](#story-selection-with-jev)).
@@ -81,36 +82,54 @@ Everything above can be set up by clicking instead of editing files. Start the p
 ```
 
 It opens `http://127.0.0.1:8765` in your browser (another port is used if that one is busy)
-and needs nothing beyond the packages already in `requirements.txt`. Light or dark follows
-your system. Press Ctrl+C in the terminal to stop it; anything already running keeps going.
+and needs nothing beyond the packages already in `requirements.txt`. The panel is always light. Press Ctrl+C in the terminal to stop it; anything already running keeps going.
 
-- **Studio.** *Make a test video* renders exactly one video with the choices currently on
-  screen, saved or not, and never uploads it. It writes to `output/_previews/<id>/`, a folder
-  the real run's story history, YouTube step and clean-up all ignore, so a test can't be
-  posted by accident or use up a story. Progress and the log stream live, then the video
-  plays inline. *Run today's batch…* asks for confirmation, then runs the real pipeline with
-  your saved settings, as the 7:00 AM job would. Only one run at a time: the panel refuses to
-  start if it, the scheduled job or a terminal is already running one.
-- **Look and voice.** Pick *Avatar* or *Explainer*. Avatar shows the character gallery and the
-  gameplay/plain background; Explainer shows light/dark. Selecting a character selects their
-  voice, and *Hear voice* plays a short sample through the same code a real run uses. *Add a
-  character* takes a name, a picture (it warns when there is no transparent background),
-  voice recordings to clone (5 to 30 seconds of clean, single-speaker speech each) or an
-  existing Voicebox voice, and an optional personality. Cloning runs in the background.
-- **Settings.** Videos per day, YouTube upload and privacy, and what happens to videos made by
-  the fallback writer. Changes are only written when you press *Save*, and apply from the next
-  run, including the scheduled one, because they live in `.env`.
-- **Videos.** Test videos and the last two weeks of daily videos, with YouTube links where
-  uploads were recorded. A *Setup check* in Settings shows whether Voicebox, an API key and
-  the YouTube sign-in are present (never their values).
+Three pages. Screenshots are in `docs/screenshots/panel-one-page/`.
+
+- **Videos** (the landing page): everything about the daily videos on one page.
+  1. *Default style for automatic videos*: **Explainer | Avatar**. Explainer offers two looks,
+     **Clean paper** and **Dark glass**, and for each two colours: the *background* and the
+     *animation colour* (swatches or any hex, with a live preview; a pair that would be unreadable
+     is adjusted and the page says so). Avatar offers the avatars you have (plus *Add avatar*) and
+     shows the one standard voice (changed in Settings). Dark glass also has *Alternate the animation
+     colour across the day's videos*: video 1 gets the first colour of the palette, video 2 the
+     second, and so on (`LOOK_ACCENT_ROTATE`, up to 8 colours; a custom style on a video wins), and
+     each tile shows the colour it will get. *Save as default* writes `VIDEO_STYLE`, `LOOK_PRESET`,
+     `LOOK_BG`, `LOOK_ACCENT`, `LOOK_ACCENT_ROTATE`, `CHARACTER` to `.env`, which is what the scheduled run
+     and every new plan use.
+  2. *Today's videos*: *Plan today's videos* picks the stories and writes the scripts (one writer
+     call, about 3 cents) and stops; in [approval mode](#approval-mode) the scheduled job leaves the
+     plan here with a *Plan ready: review and render* banner. Each video is a tile with its status
+     (planned / drafted / rendered / uploaded) and a *Default style* or *Custom style* chip.
+     *Style for this video* opens the same style control, prefilled; *Preview this video* renders
+     a draft clip of that style (free, about 30-60 s, nothing is saved), shown beside the saved
+     style's draft; *Use this style for this video* saves it for that video only, *Reset to
+     default* removes it. *Open in Studio* serves the live composition; *Rewrite script…* is a
+     separate, confirmed, paid writer call. *Render all…* / *Render selected…* is the only step
+     that makes real videos: full quality, voiced, with confirmation, under the same lock,
+     watchdog and status bookkeeping as the daily job, uploading only if uploads are on. Stories
+     covered since planning are skipped. *Run the full daily job now…* runs the unattended job as
+     before. Below: today's rendered videos and, folded away, the last two weeks.
+- **Design lab**: for trying new designs, or seeing how a render looks without drafting a video.
+  Pick a look, *Make a test video* (one throwaway video from today's newsletter, never uploaded),
+  then compare storyboards of the same story in two looks side by side; every look control is next
+  to it and each change re-captures the storyboard (free, about 15 s). Not part of the daily flow.
+- **Settings.** The narrators and their voices (*Hear voice*, *Add a character*),
+  videos per day, what the scheduled run does (make everything, or plan and ask you), YouTube
+  upload and privacy, what happens to videos made by the fallback writer, and a *Setup check*
+  showing whether Voicebox, an API key and the YouTube sign-in are present (never their values).
+  Changes are only written when you press *Save*, and apply from the next run, including the
+  scheduled one, because they live in `.env`.
+
+See `docs/previews.md` for the preview tiers, timings and the look layering rules.
 
 **Safety.** The panel listens on `127.0.0.1` only. It will only ever read or write these
 `.env` keys: `CHARACTER`, `VIDEO_STYLE`, `VIDEO_THEME`, `BACKGROUND_STYLE`, `VIDEOS_PER_DAY`,
-`YOUTUBE_UPLOAD`, `YOUTUBE_PRIVACY`, `FALLBACK_UPLOAD`. Comments, other lines and the file's
+`DAILY_MODE`, `YOUTUBE_UPLOAD`, `YOUTUBE_PRIVACY`, `FALLBACK_UPLOAD`, `LOOK_PRESET`, `LOOK_BG`, `LOOK_ACCENT`, `LOOK_ACCENT_ROTATE`. Comments, other lines and the file's
 permissions are left as they were. API keys and tokens are never sent to the browser or
 written to its logs; the panel only says whether one is set. Requests are checked for the
 loopback `Host`, a same-origin `Origin`, and a random per-launch token, so another web page
-can't drive it. Uploaded pictures and recordings are checked by content, size-capped and
+can't drive it. The reference-video style library is a command-line feature only (see *Style library* below); the panel no longer uploads or analyses reference videos. Uploaded pictures and recordings are checked by content, size-capped and
 stored under generated names.
 
 ## Configuration (`.env`)
@@ -131,11 +150,13 @@ Copy `.env.example` to `.env`. Everything is optional:
 | `SOURCE` | Where stories come from: `tldr` (default, the only source so far; see `newsletter_video/sources/`) |
 | `VIDEO_THEME` | Explainer style only: `light` (default) or `dark` |
 | `BACKGROUND_STYLE` | Avatar style only: `gameplay` (default) or `none` for the plain graph-paper background |
+| `DAILY_MODE` | What the scheduled run does: `full` (default) plans, renders and uploads in one go; `plan` only writes the day's plan and notifies you (see [Approval mode](#approval-mode)) |
 | `YOUTUBE_UPLOAD` | `1` uploads each day's videos after rendering |
 | `YOUTUBE_PRIVACY`, `YOUTUBE_SCHEDULE` | Visibility and timed publishing (once your API project is audited) |
 | `FALLBACK_UPLOAD` | What to do with rule-based fallback scripts when uploads are on: `skip` (default: make none, notify), `private` or `public` |
 | `NOTIFY_WEBHOOK_URL`, `NOTIFY_WEBHOOK_FORMAT`, `NOTIFY_MACOS` | Where run notifications go (see [When things fail](#when-things-fail)) |
 | `RUN_DEADLINE_MINUTES`, `RENDER_TIMEOUT_SECONDS`, `VOICEBOX_GENERATION_TIMEOUT` | Wall-clock limits: whole run (default 240), one render attempt (1200), one Voicebox clip (420) |
+| `STYLE_LIBRARY`, `STYLE_VISION*`, `STYLE_RECREATE_ROUNDS`, `STYLE_PLANNER_*` | The style library folder (`off` to disable) and the model/budget settings for analysing references and planning styles (see [Style library](#style-library-teach-the-look-by-example)) |
 
 Videos land between 40 and 45 seconds: Claude aims for 100–110 words, and if the voiceover
 still runs long or short it's re-voiced slightly faster or slower. Prices and units are
@@ -201,6 +222,29 @@ The composition is `newsletter_video/hf_template_explainer/index.html`; its desi
 `newsletter_video/hf_template_explainer/DESIGN.md`. Validate it after changes with
 `npx hyperframes check` in that folder (lint, layout, motion and WCAG contrast), and run the
 validator tests with `./venv/bin/python -m pytest tests/` (`pytest` is the only extra dependency).
+
+### Style library: teach the look by example
+
+Drop videos you like into `style_library/inbox/` and add them; the system splits
+each into scenes, measures its motion (transitions, entrances, easing, stagger,
+holds, pacing), palette, layout and audio, has Claude describe each scene in the
+explainer's own vocabulary, recreates it with placeholder content using the
+explainer composition, scores the fidelity, and keeps the result as reusable
+**recipes**. From then on the writer makes one extra call per video that picks
+recipes per scene from the library (the planner), and the composition renders
+them through a small set of validated style knobs. Empty library or
+`STYLE_LIBRARY=off`: nothing changes.
+
+```bash
+./venv/bin/python -m newsletter_video.styles add style_library/inbox/clip.mp4 --name punchy-type --notes "big words, hard cuts"
+./venv/bin/python -m newsletter_video.styles search "kinetic type with wipe transitions"
+./venv/bin/python -m newsletter_video.styles plan --story output/2026-10-13/07_x.json --out /tmp/style.json
+./venv/bin/python -m newsletter_video.explainer_builder output/2026-10-13/07_x.json --out /tmp/07.mp4 --style-plan /tmp/style.json
+```
+
+Costs about $0.15 per reference and $0.02 per planned video; `docs/style-library.md`
+has the design, the eval and the limits. Study only material you have the right
+to use; clips never leave your machine and are never committed.
 
 ## Customizing
 
@@ -364,6 +408,22 @@ launchctl unload ~/Library/LaunchAgents/com.tldrbrainrot.daily.plist   # stop th
 `run_daily.sh` wraps the run in `caffeinate -i` so the Mac doesn't idle-sleep during the
 ~100 minutes it takes (a closed lid still sleeps it; the run just resumes on wake).
 
+### Approval mode
+
+By default the scheduled run makes and posts everything on its own. Set `DAILY_MODE=plan`
+(Settings → *What the scheduled run does* → *Plan, then ask me*) and the scheduled job stops
+after the planning step: it fetches the newsletters, picks the stories (skipping any already
+covered), writes the scripts (one writer call, about 3 cents) into `output/<date>/plan.json`,
+and sends the usual notification ("Daily plan finished: 3 video(s) planned ... waiting for
+your review"). Nothing is voiced, rendered or uploaded. The Videos page then shows *Plan
+ready — review and render* until you have previewed, changed looks and pressed *Render all…*
+or *Render selected…* (or run `python -m newsletter_video.render_plan <date> --final`), which
+renders and uploads exactly as the full run would, under the same lock, watchdog and
+`status.json` bookkeeping, and skips any story covered since planning. A plan the day already
+has (made from the panel before the run) is kept, not replaced. *Run the full daily job now…* in
+the panel always runs the full job, whatever `DAILY_MODE` says. `DAILY_MODE=full` (or unset)
+is exactly the previous behaviour.
+
 ## When things fail
 
 The run is unattended, so every outcome is reported and every stage has a time limit.
@@ -383,7 +443,7 @@ the reason. Set `NOTIFY_WEBHOOK_URL` to also get it on your phone: an
 | Failure | What happens |
 |---|---|
 | Bad `.env` (unknown `TTS_PROVIDER`, Voicebox without a profile id, uploads on without a sign-in, low disk, no `npx`) | Fails in the first second with one message listing every problem; nothing is rendered |
-| No network at 7 AM (asleep, DNS not up) | Waits up to 5 min, the scraper retries with backoff, then the run fails with a notification; rerun later |
+| No network at run time (asleep, DNS not up) | Waits up to 5 min, the scraper retries with backoff, then the run fails with a notification; rerun later |
 | TLDR page empty or changed | "No stories scraped": fails before any TTS/render work |
 | Jev (TypeSafe) down, rate-limited or erroring | Claude gets every candidate unranked (first call fails) or that story unranked (later call) |
 | Claude API error, refusal, `max_tokens`, bad JSON, a video that violates the schema or is far too long/short | Bad videos are dropped; if none are left, the rule-based writer takes over. With `YOUTUBE_UPLOAD=1` those fallback scripts are **not published**: by default (`FALLBACK_UPLOAD=skip`) the run stops with a notification and nothing is rendered, so the stories are tried again tomorrow; `private` renders and uploads them private for review; `public` is the old behaviour |

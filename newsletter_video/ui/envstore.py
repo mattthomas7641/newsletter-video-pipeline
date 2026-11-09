@@ -50,22 +50,66 @@ def _slug_or_blank(value: str) -> str | None:
     return None if value == "" or _SLUG.match(value) else "must be a character folder name or blank"
 
 
+def _preset(value: str) -> str | None:
+    """LOOK_PRESET: blank (the template's own look) or the id of a preset in
+    newsletter_video/looks/presets.json. Checked against the file itself, so a
+    preset that is renamed or removed can't linger as a default."""
+    if value == "":
+        return None
+    from newsletter_video.looks import preset_ids
+
+    ids = preset_ids()
+    return None if value in ids else f"must be blank or one of: {', '.join(ids)}"
+
+
+def _colour(value: str) -> str | None:
+    """LOOK_BG / LOOK_ACCENT: blank (the look's own colour) or a #rrggbb colour."""
+    from newsletter_video.colors import HEX
+
+    return None if value == "" or HEX.match(value) else "must be blank or a colour like #1f49d6"
+
+
+def _rotation(value: str) -> str | None:
+    """LOOK_ACCENT_ROTATE: blank (rotation off) or up to 8 comma-separated #rrggbb colours."""
+    from newsletter_video.colors import parse_rotation
+
+    try:
+        parse_rotation(value, strict=True)
+    except ValueError as exc:
+        return f"must be blank or colours like #ff7a1a,#22d3ee ({exc})"
+    return None
+
+
 SCHEMA: dict[str, Field] = {f.key: f for f in [
     Field("VIDEO_STYLE", "avatar", _one_of("avatar", "explainer"), ("avatar", "explainer")),
     Field("VIDEO_THEME", "light", _one_of("light", "dark"), ("light", "dark")),
     Field("CHARACTER", "", _slug_or_blank),
     Field("BACKGROUND_STYLE", "gameplay", _one_of("gameplay", "none"), ("gameplay", "none")),
     Field("VIDEOS_PER_DAY", "3", _int_between(1, 20)),
+    # What the scheduled run does: full = plan, render and upload in one go (the original
+    # behaviour); plan = write the day's plan.json, notify, and wait for a Render in the panel.
+    Field("DAILY_MODE", "full", _one_of("full", "plan"), ("full", "plan")),
     Field("YOUTUBE_UPLOAD", "0", _one_of("0", "1"), ("0", "1")),
     Field("YOUTUBE_PRIVACY", "private", _one_of("private", "unlisted", "public"),
           ("private", "unlisted", "public")),
     Field("FALLBACK_UPLOAD", "0", _one_of("0", "1"), ("0", "1")),
+    # The default look preset for new videos (docs/cinematic-look.md): blank
+    # keeps the template's own look, exactly as before presets existed.
+    Field("LOOK_PRESET", "", _preset),
+    # The two colours of that look (colors.py): the ground and the accent. Blank = the look's own.
+    Field("LOOK_BG", "", _colour),
+    Field("LOOK_ACCENT", "", _colour),
+    # Dark glass: the day's videos alternate through these accents (look.with_rotation); blank = one accent for all.
+    Field("LOOK_ACCENT_ROTATE", "", _rotation),
 ]}
 
 # Keys the panel may only ever report as present/missing.
 SECRET_KEYS = ("ANTHROPIC_API_KEY", "TYPESAFE_API_KEY", "ELEVENLABS_API_KEY", "NOTIFY_WEBHOOK_URL")
-# Read-only context the panel may display (never written, never secret).
-READ_ONLY_KEYS = ("TTS_PROVIDER",)
+# Read-only context the panel may display or resolve looks with (never
+# written, never secret). STYLE_LIBRARY / STYLE_RECIPE belong to the daily
+# job's style library (docs/style-library.md); the panel shows the look they
+# produce but no longer edits them.
+READ_ONLY_KEYS = ("TTS_PROVIDER", "STYLE_LIBRARY", "STYLE_RECIPE")
 # Non-secret keys whose mere presence is reported.
 PRESENCE_KEYS = ("VOICEBOX_PROFILE_ID",)
 _SECRETISH = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD|PASSWD|WEBHOOK|CREDENTIAL)", re.IGNORECASE)

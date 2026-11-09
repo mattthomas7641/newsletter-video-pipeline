@@ -1,6 +1,7 @@
 import { h, icon, spinner, nextId, formatClock } from "../dom.js";
 import { savePill, notYetNote } from "../components.js";
 import { state, subscribe, value, setDraft, loadSetup } from "../store.js";
+import { mountLook } from "./look.js";
 
 const PRIVACY = [
   ["private", "Private", "Only you can see them until you publish."],
@@ -14,8 +15,18 @@ export function mountSettings(root, ctx) {
 
   const head = h("header", { class: "page-head" },
     h("div", {}, h("h1", { text: "Settings" }),
-      h("p", { class: "lede", text: "Everyday options for the daily run. Nothing changes until you save, and saved changes apply from the next run." })),
+      h("p", { class: "lede", text: "Defaults for every new video and the daily run. Nothing changes until you save, and saved changes apply from the next run." })),
     savePill(onCleanup));
+
+  // ---- narrators and voices ----
+  // The default style (explainer or avatar, its look and colours) is set on the Videos page.
+  const lookHost = h("div", { class: "look-defaults" });
+  const lookSection = h("section", { class: "section", "aria-labelledby": "look-h" },
+    h("div", { class: "section-head" }, h("h2", { id: "look-h", text: "Narrators and voices" }),
+      h("p", {}, "The avatars and the voice each one speaks with; hear a sample or add a new one. The default style for automatic videos is set on the ",
+        h("a", { class: "link", href: "#/", text: "Videos page" }), ".")),
+    lookHost);
+  onCleanup(mountLook(lookHost, { embedded: true, narratorOnly: true }));
 
   // ---- videos per day ----
   const perDayId = nextId("perday");
@@ -40,6 +51,15 @@ export function mountSettings(root, ctx) {
     const next = Math.min(20, Math.max(1, Number(value("VIDEOS_PER_DAY")) + delta));
     setDraft("VIDEOS_PER_DAY", next);
   }
+
+  // ---- daily mode (approval mode) ----
+  const modeName = nextId("mode");
+  const modeSeg = h("div", { class: "seg", role: "radiogroup", "aria-labelledby": `${modeName}-l` },
+    [["full", "Make everything"], ["plan", "Plan, then ask me"]].map(([v, label]) => h("label", {},
+      h("input", { type: "radio", name: modeName, value: v, onChange: () => setDraft("DAILY_MODE", v) }),
+      h("span", { class: "opt", text: label }))));
+  const modeHelp = h("p", { class: "help" });
+  const modeNote = h("div");
 
   // ---- upload ----
   const uploadId = nextId("upload");
@@ -75,7 +95,8 @@ export function mountSettings(root, ctx) {
       h("div", { class: "row" },
         h("div", {}, h("label", { class: "label", for: perDayId, text: "Videos per day" }), perDayHelp),
         h("div", { class: "control" }, h("div", { class: "stepper" }, minus, perDay, plus), perDayError)),
-      row("Runs at", "sched-l", h("p", { class: "help", id: "sched-help" }), h("span", { class: "chip", id: "sched-chip" }))));
+      row("Runs at", "sched-l", h("p", { class: "help", id: "sched-help" }), h("span", { class: "chip", id: "sched-chip" })),
+      row("What the scheduled run does", `${modeName}-l`, modeHelp, modeSeg, modeNote)));
 
   const youtube = h("section", { class: "section", "aria-labelledby": "yt-h" },
     h("div", { class: "section-head" }, h("h2", { id: "yt-h", text: "YouTube" })),
@@ -105,7 +126,7 @@ export function mountSettings(root, ctx) {
       h("p", { text: "What this computer has ready. Only whether something is present is shown, never the secret itself." })),
     checksHost, h("div", { class: "form-actions" }, recheck));
 
-  root.append(head, production, youtube, writer, setup);
+  root.append(head, lookSection, production, youtube, writer, setup);
 
   async function runCheck() {
     recheck.disabled = true;
@@ -136,6 +157,12 @@ export function mountSettings(root, ctx) {
     plus.disabled = Number(perDayValue) >= 20;
     const n = Number(perDayValue);
     perDayHelp.textContent = `Each video takes roughly 8 minutes to make, so ${n === 1 ? "one video" : `${n} videos`} ${n === 1 ? "takes" : "take"} about ${approxTime(n)}.`;
+
+    for (const input of modeSeg.querySelectorAll("input")) input.checked = input.value === value("DAILY_MODE");
+    modeHelp.textContent = value("DAILY_MODE") === "plan"
+      ? "Approval mode: it only picks the stories and writes the scripts, then notifies you. Nothing is voiced, rendered or uploaded until you press Render on the Today's videos page."
+      : "Writes, voices, renders and uploads every video in one go, with no review step.";
+    modeNote.replaceChildren(notYetNote(state.settings?.supported?.DAILY_MODE) || "");
 
     const uploading = value("YOUTUBE_UPLOAD") === "1";
     uploadBox.checked = uploading;
@@ -177,7 +204,7 @@ export function mountSettings(root, ctx) {
     } else {
       chip.textContent = "Not scheduled";
       chip.className = "chip";
-      help.textContent = "No scheduled job was found. You can still run the batch by hand from the Studio page.";
+      help.textContent = "No scheduled job was found. You can still run the batch by hand from the Today's videos page.";
     }
     renderChecks();
   }

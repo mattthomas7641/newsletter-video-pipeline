@@ -188,8 +188,10 @@ def test_batch_uses_saved_settings_and_plain_run_pipeline(runs, spawner):
     argv = spawner.calls[0]["argv"]
     assert argv[1:] == ["-m", "newsletter_video.run_pipeline"]
     assert job.meta == {"videos": 3, "uploads": False, "privacy": "private"}
-    # nothing overridden: the real .env decides, exactly like the 7am job
+    # nothing else overridden: the real .env decides, like the 7am job, except that the
+    # button promises the whole job, so approval mode never turns it into a plan-only run
     env = spawner.calls[0]["env"]
+    assert env["DAILY_MODE"] == "full"
     assert "BYTESIZE_TEST_RUN" not in env
     assert env.get("YOUTUBE_UPLOAD") == os.environ.get("YOUTUBE_UPLOAD")
     assert env.get("VIDEOS_PER_DAY") == os.environ.get("VIDEOS_PER_DAY")
