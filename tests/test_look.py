@@ -7,6 +7,7 @@ import os
 import pytest
 
 from newsletter_video import look as looks
+from newsletter_video import plan_manifest as pm
 from newsletter_video import video_builder
 from tests.conftest import make_script
 
@@ -165,3 +166,61 @@ def test_another_preset_starts_from_its_own_colours_not_the_defaults():
     mixed = looks.resolve_look({"preset": "paper", "accent": "#0e8a7d"}, environ=env)
     assert mixed["accent"] == "#0e8a7d" and mixed["bg"] == ""
     assert looks.resolve_look({"preset": "cinematic-glass"}, environ=env)["bg"] == "#04140d"  # the same look keeps its colours
+
+
+ROT = "#ff7a1a,#ff3d8a,#22d3ee"
+GLASS_ENV = {"VIDEO_STYLE": "explainer", "LOOK_PRESET": "cinematic-glass", "LOOK_ACCENT_ROTATE": ROT}
+
+
+def test_accent_rotation_alternates_wraps_and_is_stable():
+    accents = [looks.resolve_look({}, environ=GLASS_ENV, index=i)["accent"] for i in range(7)]
+    assert accents == ["#ff7a1a", "#ff3d8a", "#22d3ee", "#ff7a1a", "#ff3d8a", "#22d3ee", "#ff7a1a"]
+    assert all(a != b for a, b in zip(accents, accents[1:]))  # consecutive videos always differ
+    assert looks.resolve_look({}, environ=GLASS_ENV, index=1)["accent"] == accents[1]  # a re-render keeps its colour
+    assert looks.resolve_look({}, environ=GLASS_ENV)["accent"] == ""  # no position, no rotation
+
+
+def test_rotation_is_off_by_default_and_only_for_dark_glass_explainers():
+    env = {k: v for k, v in GLASS_ENV.items() if k != "LOOK_ACCENT_ROTATE"}
+    assert looks.resolve_look({}, environ={**env, "LOOK_ACCENT": "#abcdef"}, index=3)["accent"] == "#abcdef"  # the single colour
+    assert looks.resolve_look({}, environ={**env}, index=3)["accent"] == ""
+    paper = {**GLASS_ENV, "LOOK_PRESET": "paper"}
+    assert looks.resolve_look({}, environ=paper, index=1)["accent"] == ""
+    assert looks.resolve_look({"preset": "paper"}, environ=GLASS_ENV, index=1)["accent"] == ""  # a video that chose paper
+    assert looks.resolve_look({"style": "avatar"}, environ=GLASS_ENV, index=1)["accent"] == ""
+    assert looks.resolve_look({}, environ={**GLASS_ENV, "LOOK_ACCENT": "#abcdef"}, index=1)["accent"] == "#ff3d8a"  # rotation beats the single colour
+
+
+def test_a_custom_style_accent_wins_over_the_rotation():
+    assert looks.resolve_look({"accent": "#0e8a7d"}, environ=GLASS_ENV, index=1)["accent"] == "#0e8a7d"
+    assert looks.resolve_look({"accent": ""}, environ=GLASS_ENV, index=1)["accent"] == ""  # "the look's own colour" is a choice too
+    assert looks.resolve_look({"preset": "cinematic-glass"}, {"accent": "#0e8a7d"}, environ=GLASS_ENV, index=2)["accent"] == "#0e8a7d"
+
+
+def test_with_rotation_feeds_the_daily_and_plan_render_paths(monkeypatch):
+    monkeypatch.setenv("LOOK_PRESET", "cinematic-glass")
+    monkeypatch.setenv("LOOK_ACCENT_ROTATE", ROT)
+    monkeypatch.setenv("VIDEO_STYLE", "explainer")
+    monkeypatch.delenv("LOOK_ACCENT", raising=False)
+    assert [looks.with_rotation(None, i)["accent"] for i in range(4)] == ["#ff7a1a", "#ff3d8a", "#22d3ee", "#ff7a1a"]
+    assert looks.with_rotation({"accent": "#0e8a7d"}, 1) == {"accent": "#0e8a7d"}  # its own colour stays
+    assert looks.with_rotation({"theme": "dark"}, 1) == {"theme": "dark"} or looks.with_rotation({"theme": "dark"}, 1)["theme"] == "dark"
+    once = looks.with_rotation(None, 2)  # the sidecar records the resolved accent, so a re-render replays it
+    assert looks.resolve_look(once, index=0)["accent"] == "#22d3ee"
+    entry = {"index": 2, "look": {}}
+    assert pm.resolved_look(entry)["accent"] == "#ff3d8a"  # plan videos are 1-based: video 2 is the second colour
+    monkeypatch.delenv("LOOK_ACCENT_ROTATE")
+    assert looks.with_rotation(None, 2) is None  # off: the unattended run is untouched
+
+
+def test_rotation_colours_are_validated():
+    from newsletter_video.colors import DEFAULT_ROTATION, ROTATION_MAX, parse_rotation
+
+    assert parse_rotation(" #FF7A1A , 22d3ee,") == ["#ff7a1a", "#22d3ee"]
+    assert parse_rotation("#ff7a1a,blue,#22d3ee") == ["#ff7a1a", "#22d3ee"]  # reading skips a bad entry
+    with pytest.raises(ValueError):
+        parse_rotation("#ff7a1a,blue", strict=True)
+    with pytest.raises(ValueError):
+        parse_rotation(",".join(["#ff7a1a"] * (ROTATION_MAX + 1)), strict=True)
+    assert len(parse_rotation(",".join(["#ff7a1a"] * 12))) == ROTATION_MAX
+    assert len(DEFAULT_ROTATION) == 5 and parse_rotation(",".join(DEFAULT_ROTATION)) == list(DEFAULT_ROTATION)

@@ -18,6 +18,30 @@ GLASS_BG_MAX_LUM = 0.06  # a dark ground: light ink and neon stay readable
 ACCENT_MIN_CONTRAST = 3.0  # large text, bars and strokes against the ground (WCAG large-text bar)
 
 
+ROTATION_MAX = 8
+# The accents the automatic videos of a day alternate through when rotation is on (Dark glass): orange,
+# magenta, cyan, violet, mint. Consecutive videos always differ.
+DEFAULT_ROTATION = ("#ff7a1a", "#ff3d8a", "#22d3ee", "#8b5cff", "#2ee6a6")
+
+
+def parse_rotation(value: str | None, strict: bool = False) -> list[str]:
+    """A comma-separated list of #rrggbb colours, normalised and capped at ROTATION_MAX. Bad entries are
+    skipped when reading; `strict` (the settings validator) raises ValueError naming the first one."""
+    out: list[str] = []
+    for raw in (value or "").split(","):
+        if not raw.strip():
+            continue
+        hex_ = normalise_hex(raw)
+        if hex_ is None:
+            if strict:
+                raise ValueError(f"{raw.strip()!r} is not a colour like #1f49d6")
+            continue
+        out.append(hex_)
+    if strict and len(out) > ROTATION_MAX:
+        raise ValueError(f"at most {ROTATION_MAX} colours")
+    return out[:ROTATION_MAX]
+
+
 def normalise_hex(value: str) -> str | None:
     """'#RRGGBB' lower-cased, from '#rgb', 'rgb', '#rrggbb' or 'rrggbb'; None when not a colour."""
     v = (value or "").strip().lower().lstrip("#")

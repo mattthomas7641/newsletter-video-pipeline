@@ -881,3 +881,14 @@ dialog ul { margin: 0; padding-left: 18px; color: var(--text-2); }
   .cmp-grid, .cmp-one { grid-template-columns: 1fr; }
   .pv-head { flex-wrap: wrap; }
 }
+
+/* ---------- accent rotation ---------- */
+.sp-rot { padding: 14px 16px; background: var(--sunken); border: 1px solid var(--line); border-radius: var(--r-ctl); }
+.sp-rot-head { display: flex; align-items: center; gap: 12px; }
+.sp-rot-head .label { margin: 0; }
+.sp-rot-item { display: inline-flex; }
+.sw .sw-n { font: 700 12px/1 var(--mono); color: #fff; text-shadow: 0 0 3px rgb(0 0 0 / 0.8); }
+.sw:disabled { cursor: not-allowed; opacity: 0.9; }
+.sw:disabled:hover { transform: none; }
+.accent-dot { display: inline-flex; align-items: center; gap: 6px; }
+.accent-dot i { width: 14px; height: 14px; border-radius: 50%; background: var(--c); border: 1px solid var(--line-strong); box-shadow: 0 0 6px color-mix(in srgb, var(--c) 60%, transparent); }

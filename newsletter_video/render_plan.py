@@ -70,7 +70,7 @@ def render(folder: Path, only: list[str] | None = None, is_test: bool = False, f
             raise RuntimeError(f"No such planned video(s): {', '.join(unknown)}")
     wanted = [e for e in wanted if e.get("status") != "rendered"]
     if not is_test:
-        # The plan may be hours old: the 07:00 job (or an earlier render) may
+        # The plan may be hours old: the scheduled job (or an earlier render) may
         # have covered a story since. Those videos are skipped, never duplicated.
         from .run_pipeline import _covered_titles
         from .script_writer import _is_covered, _normalize_title
@@ -110,6 +110,11 @@ def render(folder: Path, only: list[str] | None = None, is_test: bool = False, f
             merged = dict(run_overrides)
             merged.update({k: v for k, v in (script.look or {}).items() if v is not None})
             script.look = merged
+        pos = pm._position(entry)
+        if pos is not None:  # LOOK_ACCENT_ROTATE: this video's place in the plan picks its accent (unless it chose one)
+            from .look import with_rotation
+
+            script.look = with_rotation(script.look, pos)
         if script.look and script.look.get("recipe"):
             plan = getattr(script, "plan", None)
             if plan is not None:

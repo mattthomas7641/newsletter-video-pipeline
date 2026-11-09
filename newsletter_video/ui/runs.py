@@ -4,7 +4,7 @@ Two kinds of run:
 - "test":  one video, never uploaded, written to output/_previews/<id>/ (a
            folder the real pipeline's story-history scan, upload step and
            cleanup all ignore because it isn't a dated folder).
-- "batch": today's real run, exactly as the 7:00 AM job would do it.
+- "batch": today's real run, exactly as the scheduled job would do it.
 
 Only one run at a time. Besides panel-started jobs we also refuse when
 something else is already running the pipeline: a live process (the
@@ -214,7 +214,7 @@ class RunService:
             "uploads": saved["YOUTUBE_UPLOAD"] == "1",
             "privacy": saved["YOUTUBE_PRIVACY"],
         }
-        # The button promises the whole job with no review step, whatever DAILY_MODE the 7:00 run uses.
+        # The button promises the whole job with no review step, whatever DAILY_MODE the scheduled run uses.
         return self.jobs.create("batch", argv, self._env({"DAILY_MODE": "full"}), meta)
 
     # --- reporting ---

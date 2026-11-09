@@ -125,7 +125,7 @@ export async function runBatch() {
   const ok = await confirmDialog({
     title: "Run the full daily job now?",
     body: h("div", { class: "stack" },
-      h("p", { class: "muted", text: "This is the unattended 7:00 AM job: it plans, voices and renders everything in one go, with no review step." }),
+      h("p", { class: "muted", text: "This is the unattended daily job: it plans, voices and renders everything in one go, with no review step." }),
       h("ul", {},
         h("li", { text: `Makes ${plural(n, "video")} at full quality. About ${approxRender(n, 8)}.` }),
         h("li", { text: uploads ? `Uploads them to YouTube as ${s.YOUTUBE_PRIVACY}.` : "Doesn't upload them to YouTube." }),

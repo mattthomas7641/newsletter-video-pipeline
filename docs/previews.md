@@ -81,7 +81,7 @@ the daily job's lock, watchdog, `status.json` and notifications, writes each sid
 moment a video is done, skips any planned story that a rendered video has covered since
 planning, and uploads afterwards exactly as the daily run would (`YOUTUBE_UPLOAD`,
 `YOUTUBE_PRIVACY`, `FALLBACK_UPLOAD`). `plan.json` is never a sidecar, so planning never
-counts as covering a story and never changes what the unattended 7:00 AM job does.
+counts as covering a story and never changes what the unattended daily job does.
 
 ## Look layering
 
@@ -108,6 +108,8 @@ model call.
 
 `bg` and `accent` are the two colours of the look (`#rrggbb`, blank = the look's own): the ground, and the colour of the animations (paper: strokes, highlights, bars; glass: the glow palette is derived from it). `colors.fit_colors` keeps text readable: paper needs a light ground, glass a dark one, and an accent must keep 3:1 contrast against its ground; an adjusted colour is reported (`color_notes`) and the panel says so. A preset change starts from the new preset's own colours. They travel as `--bg` / `--accent`, `LOOK_BG` / `LOOK_ACCENT`, and reach the composition as `story.colors` (and `story.palette` for glass).
 
+`LOOK_ACCENT_ROTATE` (comma-separated colours, at most 8, blank = off) makes a day's videos alternate their accent: `resolve_look(..., index=i)` gives a Dark glass explainer video that no layer gave an accent `palette[i % n]` (`i` = its place in the plan, or in the unattended run's loop via `look.with_rotation`), so consecutive videos differ, a re-render keeps its colour (the sidecar records the resolved accent), and a per-video accent wins. A tile's editor starts from the colour its position gives it (`default_look` per video).
+
 `preset` names a look preset (`newsletter_video/looks/presets.json`, `--preset <id>` on
 the CLIs, `LOOK_PRESET` in `.env`): it resolves into a theme and a `look-<id>` recipe
 wherever the look did not set those by hand. The `cinematic` theme and the rich scene
@@ -120,7 +122,7 @@ types it unlocks are described in `docs/cinematic-look.md`.
 `#/workbench` and `#/styles` routes redirect to the lab.
 
 - **Default style.** `PUT /api/settings` with `VIDEO_STYLE`, `LOOK_PRESET`, `LOOK_BG`, `LOOK_ACCENT`,
-  `CHARACTER`; the 7:00 run reads them from `.env` like any look default. `GET /api/looks` lists the
+  `CHARACTER`; the scheduled run reads them from `.env` like any look default. `GET /api/looks` lists the
   two presets with their default colours and swatches (`presets.json` `colors`).
 - **Trial previews.** *Preview this video* is `POST .../preview {tier: draft, trial: true, overrides}`:
   the CLI's `--trial` previews the given look INSTEAD of the saved one without saving it, and writes

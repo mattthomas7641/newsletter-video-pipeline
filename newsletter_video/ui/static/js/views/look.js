@@ -41,7 +41,7 @@ export function mountLook(root, { embedded = false, narratorOnly = false } = {})
   // ---- header ----
   const head = embedded ? null : h("header", { class: "page-head" },
     h("div", {}, h("h1", { text: "Look and voice" }),
-      h("p", { class: "lede", text: "Choose what your videos look like and who narrates them. Saved choices apply from the next video, including the 7:00 AM run." })),
+      h("p", { class: "lede", text: "Choose what your videos look like and who narrates them. Saved choices apply from the next video, including the scheduled run." })),
     savePill(onCleanup));
 
   // ---- style cards ----

@@ -69,6 +69,17 @@ def _colour(value: str) -> str | None:
     return None if value == "" or HEX.match(value) else "must be blank or a colour like #1f49d6"
 
 
+def _rotation(value: str) -> str | None:
+    """LOOK_ACCENT_ROTATE: blank (rotation off) or up to 8 comma-separated #rrggbb colours."""
+    from newsletter_video.colors import parse_rotation
+
+    try:
+        parse_rotation(value, strict=True)
+    except ValueError as exc:
+        return f"must be blank or colours like #ff7a1a,#22d3ee ({exc})"
+    return None
+
+
 SCHEMA: dict[str, Field] = {f.key: f for f in [
     Field("VIDEO_STYLE", "avatar", _one_of("avatar", "explainer"), ("avatar", "explainer")),
     Field("VIDEO_THEME", "light", _one_of("light", "dark"), ("light", "dark")),
@@ -88,6 +99,8 @@ SCHEMA: dict[str, Field] = {f.key: f for f in [
     # The two colours of that look (colors.py): the ground and the accent. Blank = the look's own.
     Field("LOOK_BG", "", _colour),
     Field("LOOK_ACCENT", "", _colour),
+    # Dark glass: the day's videos alternate through these accents (look.with_rotation); blank = one accent for all.
+    Field("LOOK_ACCENT_ROTATE", "", _rotation),
 ]}
 
 # Keys the panel may only ever report as present/missing.

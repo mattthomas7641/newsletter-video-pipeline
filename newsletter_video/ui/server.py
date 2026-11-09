@@ -101,7 +101,9 @@ def looks_payload() -> dict:
                         "thumbnail": f"/static/{thumb}" if thumb else None})
         if p.default:
             default = p.id
-    return {"presets": presets, "default": default}
+    from newsletter_video.colors import DEFAULT_ROTATION
+
+    return {"presets": presets, "default": default, "rotation_default": list(DEFAULT_ROTATION)}
 
 
 class App:
