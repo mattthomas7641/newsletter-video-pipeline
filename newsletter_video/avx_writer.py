@@ -1269,6 +1269,81 @@ def sequence_clashes(shapes: list[tuple[str, ...] | None]) -> dict[int, str]:
     return out
 
 
+# --- cheap repair: a label two characters too long needs two words, not a rewritten video -----------------------
+
+_CAP_ERROR = re.compile(r"^scene (\d+) \((\w+)\): (.*?) (['\"])(.*)\4 is (\d+) characters \(at most (\d+)\)$")
+_SHORTEN_SCHEMA = {"type": "object", "properties": {"items": {"type": "array", "items": {
+    "type": "object", "properties": {"id": {"type": "integer"}, "text": {"type": "string"}},
+    "required": ["id", "text"], "additionalProperties": False}}}, "required": ["items"], "additionalProperties": False}
+SHORTEN_SYSTEM = (
+    "You shorten on-screen text for a vertical news video. For each item, give a shorter version of `text` that fits "
+    "`max` characters INCLUDING spaces (count them), keeps the meaning, and keeps every number and name. If `say` is "
+    "given, it is the narrator's spoken line and the shortened text must be made only of words copied, in order, from "
+    "`say`. Prefer a shorter word to dropping a word. Answer only with the JSON.")
+
+
+def _replace_text(node: Any, old: str, new: str) -> Any:
+    """`node` (a scene dict) with every string exactly equal to `old` replaced by `new`."""
+    if isinstance(node, dict):
+        return {k: _replace_text(v, old, new) for k, v in node.items()}
+    if isinstance(node, list):
+        return [_replace_text(v, old, new) for v in node]
+    return new if node == old else node
+
+
+def _shorten_over_cap(results: list, candidates: list[Story]) -> int:
+    """A rejected video whose ONLY problems are on-screen texts a few characters over their cap gets just those
+    texts shortened (one small call for all such videos, about 100 tokens) instead of being rewritten whole (about
+    5,000 tokens). `results` holds (video, scenes | None, errors) and is updated in place; returns how many videos
+    were fixed. A video that still fails after the shortening stays rejected and goes to the normal rewrite."""
+    import copy
+
+    jobs = []  # (video index, scene index, old text, cap, spoken line or "")
+    for i, (video, scenes, errs) in enumerate(results):
+        if scenes is not None or not errs or not isinstance(video, dict):
+            continue
+        parsed = [_CAP_ERROR.match(e) for e in errs]
+        if not all(parsed):
+            continue
+        raw_scenes = video.get("scenes") or []
+        for m in parsed:
+            n = int(m.group(1)) - 1
+            if not 0 <= n < len(raw_scenes) or not isinstance(raw_scenes[n], dict):
+                break
+            say = str(raw_scenes[n].get("say", "")) if "line" in m.group(3) else ""
+            jobs.append((i, n, m.group(5), int(m.group(7)), say))
+        else:
+            continue
+        jobs = [j for j in jobs if j[0] != i]  # a video we could not map is left to the full rewrite
+    if not jobs:
+        return 0
+    items = [{"id": k, "text": text, "max": cap, **({"say": say} if say else {})} for k, (_, _, text, cap, say) in enumerate(jobs)]
+    data = _claude_json(SHORTEN_SYSTEM, json.dumps(items), _SHORTEN_SCHEMA, "shortener", "items")
+    if not data:
+        return 0
+    shorter = {int(x["id"]): str(x["text"]).strip() for x in data["items"] if isinstance(x, dict) and "id" in x}
+    fixed = 0
+    for i in sorted({j[0] for j in jobs}):
+        video = copy.deepcopy(results[i][0])
+        changed = 0
+        for k, (vi, n, old, cap, _) in enumerate(jobs):
+            new = shorter.get(k, "")
+            if vi == i and new and len(new) <= cap:
+                video["scenes"][n] = _replace_text(video["scenes"][n], old, new)
+                changed += 1
+        if not changed:
+            continue
+        try:
+            scenes, repairs = check_video(video, candidates)
+        except AvxPlanError:
+            continue
+        results[i] = (video, scenes, repairs + [f"shortened {changed} on-screen text(s) that were over their cap"])
+        fixed += 1
+    if fixed:
+        log.info("Avatar explainer: %d video(s) fixed by shortening on-screen text, no rewrite needed", fixed)
+    return fixed
+
+
 def _validated_videos(user: str, n_videos: int, candidates: list[Story],
                       avoid_shapes: tuple = (), first: dict | None = None) -> list[tuple[dict, list[dict]]] | None:
     """Asks for the videos (or takes `first`, an answer already written), validates every scene list (and that no
@@ -1287,6 +1362,7 @@ def _validated_videos(user: str, n_videos: int, candidates: list[Story],
             results.append((video, None, exc.errors))
     for i, why in _clashes(results, avoid_shapes).items():
         results[i] = (results[i][0], None, [why])
+    _shorten_over_cap(results, candidates)
     rejected = [(i, v, errs) for i, (v, s, errs) in enumerate(results) if s is None]
     if rejected:
         notes = "\n".join(f"- video {i + 1} ({str(v.get('title', '') if isinstance(v, dict) else '')[:60]!r}):\n  "

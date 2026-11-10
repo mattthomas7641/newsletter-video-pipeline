@@ -186,6 +186,9 @@ def plan_only(target_date: date, out_dir: Path, wanted: int, slots: list[dict] |
 
 
 def run(target_date: date | None = None) -> list[Path]:
+    from . import usage
+
+    usage.reset()  # one run, one Claude budget (a long-lived process such as the control panel runs many)
     load_dotenv(PROJECT_ROOT / ".env")
     target_date = target_date or date.today()
     validate_config(PROJECT_ROOT, OUTPUT_DIR, TOKEN)
@@ -326,6 +329,10 @@ def run_summary(out_dir: Path, minutes: float) -> str:
     pending = state["run"].get("pending_uploads")
     if pending:
         parts.append(f"{pending} awaiting upload")
+    from . import usage
+
+    if usage.summary():
+        parts.append(usage.summary())
     no_thumb = sum(1 for v in state["videos"].values()
                    if v.get("status") == "uploaded" and str(v.get("thumbnail") or "").startswith("failed"))
     if no_thumb:
@@ -424,8 +431,10 @@ def supervised(out_dir: Path, work, label: str = "Pipeline") -> int:
         notify(f"{label} failed", f"{type(exc).__name__}: {str(exc)[:400]}\nSo far: {run_summary(out_dir, minutes())}")
         return 1
     else:
+        from . import usage
+
         summary = run_summary(out_dir, minutes())
-        update_run(out_dir, finished=now_iso(), error=None)
+        update_run(out_dir, finished=now_iso(), error=None, **usage.snapshot())  # the day's Claude cost, on record
         failed = any(v.get("status") in ("failed", "upload_failed") for v in load_state(out_dir)["videos"].values())
         notify(f"{label} finished with problems" if failed else f"{label} finished", summary, ok=not failed)
         return 0

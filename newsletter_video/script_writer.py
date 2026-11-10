@@ -646,13 +646,21 @@ def _stream_with_retries(client, anthropic, **kwargs):
     """One streamed Claude call, retried on transient network errors."""
     import time
 
+    from . import usage
+
+    try:
+        usage.check()  # the run's Claude budget: a spent budget fails the call, and the writers carry on without it
+    except usage.BudgetExceeded as exc:
+        raise WriterNetworkError(f"Claude budget reached: {exc}") from exc
     last: Exception | None = None
     for attempt, delay in enumerate((0,) + RETRY_DELAYS_SECONDS, start=1):
         if delay:
             time.sleep(delay)
         try:
             with client.beta.messages.stream(**kwargs) as stream:
-                return stream.get_final_message()
+                message = stream.get_final_message()
+            usage.record(kwargs.get("model"), getattr(message, "usage", None))
+            return message
         except Exception as exc:  # noqa: BLE001 - classified below
             if not _is_transient(exc, anthropic):
                 raise

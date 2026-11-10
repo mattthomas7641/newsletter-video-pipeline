@@ -37,8 +37,10 @@ def plan(target_date: date, out_dir: Path, n_videos: int, kind: str = "day",
     """Fetch, select, write, save. `run_overrides` (a partial look) decides
     which writer path runs (an avatar look writes cards, an explainer look
     writes scene plans) and is recorded as the default of every video."""
+    from . import usage
     from .explainer_builder import video_style
 
+    usage.reset()  # each planning run has its own Claude budget
     resolved = resolve_look(run_overrides)
     with applied(None if is_empty(run_overrides) else resolved):
         log.info("Planning %d video(s) for %s in the %s style", n_videos, target_date, video_style())
