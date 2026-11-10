@@ -1,0 +1,5 @@
+# What the container installs: the pipeline's own requirements plus the Linux/cloud pieces.
+-r requirements.txt
+faster-whisper        # word timing on a plain CPU (the Mac uses mlx-whisper instead)
+google-cloud-storage  # the state bucket (cloud_state.py)
+scipy                 # the avatar cutout (cutout.py)

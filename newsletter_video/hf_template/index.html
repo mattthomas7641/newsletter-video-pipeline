@@ -295,6 +295,16 @@
         width: auto;
         object-fit: contain;
       }
+      /* Other poses of the same character sit exactly on top of the main one (same canvas) and are faded in and out. */
+      #character-wrap { line-height: 0; }
+      .pose-extra {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        width: auto;
+        object-fit: contain;
+        opacity: 0;
+      }
 
     </style>
   </head>
@@ -349,6 +359,24 @@
       document.getElementById("badge").textContent = story.badge;
       document.getElementById("kicker").textContent = story.kicker;
       document.getElementById("outro-box").textContent = story.outro.text;
+      // Avatars come in different shapes; the builder sizes each one so it stays
+      // bottom-left without crowding the cards and captions.
+      if (story.avatar && story.avatar.height) {
+        document.getElementById("avatar").style.height = story.avatar.height + "px";
+      }
+      // Several poses: one <img> per extra pose, stacked on the main one.
+      const poseEls = [document.getElementById("avatar")];
+      if (story.avatar && story.avatar.poses && story.avatar.poses.length > 1) {
+        story.avatar.poses.slice(1).forEach((src) => {
+          const img = document.createElement("img");
+          img.className = "pose-extra";
+          img.alt = "";
+          img.src = "assets/" + src;
+          img.style.height = story.avatar.height + "px";
+          document.getElementById("character-wrap").appendChild(img);
+          poseEls.push(img);
+        });
+      }
       if (!story.background) {
         // No gameplay clip this run: fall back to the plain graph paper.
         document.getElementById("bg").style.opacity = "0";
@@ -467,7 +495,17 @@
 
         // --- Avatar: static cutout, just a very slight idle bob -----------
         const idleRepeats = Math.max(1, Math.floor(end / 0.6) - 1);
-        tl.fromTo("#avatar", { y: 0 }, { y: -5, duration: 0.6, ease: "sine.inOut", yoyo: true, repeat: idleRepeats }, 0);
+        tl.fromTo(poseEls, { y: 0 }, { y: -5, duration: 0.6, ease: "sine.inOut", yoyo: true, repeat: idleRepeats }, 0);
+        // Pose changes: a quick crossfade at each beat (see story.avatar.changes, made by video_builder.pose_changes).
+        if (story.avatar && story.avatar.changes) {
+          let shown = 0;
+          story.avatar.changes.forEach(({ at, pose }) => {
+            if (pose === shown || !poseEls[pose]) return;
+            tl.to(poseEls[shown], { opacity: 0, duration: 0.14, ease: "none" }, at);
+            tl.to(poseEls[pose], { opacity: 1, duration: 0.14, ease: "none" }, at);
+            shown = pose;
+          });
+        }
 
         // --- Hook ----------------------------------------------------------
         tl.fromTo(

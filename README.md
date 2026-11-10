@@ -18,8 +18,9 @@ and a narrator character at the bottom of the frame. An outro card
 asks viewers to comment.
 
 - **Runs itself:** a macOS `launchd` job writes, voices, renders and uploads the day's
-  videos at 7:00 AM, logging every stage. With a locally cloned voice, 10 videos take about
-  85 minutes on a laptop.
+  videos on a schedule (the time is in the launchd plist), logging every stage. With a locally cloned voice, 10 videos take about
+  85 minutes on a laptop. Or, in approval mode (`DAILY_MODE=plan`), it only writes the
+  day's plan and notifies you; you review it in the control panel and press Render.
 - **Two-stage story selection:** with a TypeSafe API key, Jev screens every candidate for
   scope and newsworthiness first, so Claude only sees the shortlist (see
   [Story selection with Jev](#story-selection-with-jev)).
@@ -35,6 +36,22 @@ asks viewers to comment.
 - **Safe uploads:** each upload is recorded the moment it succeeds, so re-runs never post
   twice; stories covered on any earlier day are skipped, even when retitled (fuzzy title
   match against every past day's output).
+
+## What's new
+
+- **Avatar explainer format ("avx"):** a narrator on a plain colour background with one purpose-built motion graphic
+  per beat (kinetic type, a counting number, a timeline, a versus, a chart, a relation, a checklist). The writer is
+  `avx_writer.py`; the look is `avx_builder.py` and `hf_template_avx/`. See [Video styles](#video-styles).
+- **Runs in the cloud:** a Cloud Run job started by Cloud Scheduler makes and posts the day's videos with no laptop
+  involved: [docs/cloud.md](docs/cloud.md). A single video renders in under 3 minutes there.
+- **Wider story scope:** Jev now also asks "would a well-informed follower of AI and tech want to know this today?",
+  which lifted the share of must-cover stories in the writer's top-30 pool from 73% to 100% in a labelled two-week sample (595 stories; the labels came from Claude, so they are a proxy for your own judgment).
+  Short stories are expanded from their linked article, or bundled into a quick-hits video.
+- **Clearer, honest writing:** the writer is told to open on the news in plain words, explain every unfamiliar name,
+  and report a story as it is. Code checks reject question openers, fragments, jargon in the hook and dramatic words
+  the story does not use (`jargon.py`, `avx_writer.py`).
+- **Cost controls:** a per-run Claude budget, a cost line in every run summary, a cheap shortening step for text over
+  its character cap, and measured numbers in [Cost](#cost).
 
 ## Content rights
 
@@ -71,6 +88,60 @@ conda create -p ./venv python=3.11 ffmpeg -c conda-forge
 ./venv/bin/python -m pip install -r requirements.txt
 ```
 
+## Control panel
+
+Everything above can be set up by clicking instead of editing files. Start the panel:
+
+```bash
+./ui.sh                                   # or double-click ui.command in Finder
+./venv/bin/python -m newsletter_video.ui  # the same thing
+```
+
+It opens `http://127.0.0.1:8765` in your browser (another port is used if that one is busy)
+and needs nothing beyond the packages already in `requirements.txt`. The panel is always light. Press Ctrl+C in the terminal to stop it; anything already running keeps going.
+
+Three pages. Screenshots are in `docs/screenshots/lineup/`.
+
+- **Lineup** (the landing page): a standing description of the day's videos that the automatic
+  run reads, so there is no list of planned videos to review. Set *Videos per day* (1-20), split
+  them into **batches** (a count, a format and colours each), save. Example: 3 *Clean paper* in one
+  colour and 4 *Dark glass* in alternating colours, plus 3 avatar videos. A batch is Explainer
+  (*Clean paper* or *Dark glass*, a background colour, and the animation colour as *One colour*,
+  *Alternate* through a palette, or *Random* from it, seeded per day so a re-render keeps its colour)
+  or Avatar (the avatars you have, one standard voice set in Settings). Quick starts (*All dark
+  glass, alternating*, *All clean paper*, *50/50*), *Randomize* (with undo) and *Shuffle colours*
+  get you going; *Preview* on a batch makes a free draft of that format on a sample story. The slot
+  strip shows the day in publish order (*Interleave batches* spreads formats through the day);
+  click a slot to change just that one. *Save lineup* uses it every day until changed; *Only for
+  the next run* is a one-off after which the previous lineup is back. The banner always says what
+  the next run will make. Saved in `lineup.json` (gitignored, next to `.env`; no file means the
+  old behaviour from `VIDEOS_PER_DAY` and the `LOOK_*` settings, which stay as fallbacks);
+  `VIDEOS_PER_DAY` follows the lineup's total. The daily run writes one script batch per format and
+  records each video's format (style, preset, colours, avatar, batch, slot, date) in its sidecar and
+  in `uploads.json`; *Results by format* at the bottom lists the last 14 days of uploads grouped by
+  format, to compare formats over time (views are not fetched yet).
+- **Design lab**: for trying new designs, or seeing how a render looks without drafting a video.
+  Pick a look, *Make a test video* (one throwaway video from today's newsletter, never uploaded),
+  then compare storyboards of the same story in two looks side by side; every look control is next
+  to it and each change re-captures the storyboard (free, about 15 s). Not part of the daily flow. The plan review for `DAILY_MODE=plan` (approval mode), planning by hand and the rendered videos live in its *Plan review and rendered videos* section.
+- **Settings.** The narrators and their voices (*Hear voice*, *Add a character*),
+  videos per day, what the scheduled run does (make everything, or plan and ask you), YouTube
+  upload and privacy, what happens to videos made by the fallback writer, and a *Setup check*
+  showing whether Voicebox, an API key and the YouTube sign-in are present (never their values).
+  Changes are only written when you press *Save*, and apply from the next run, including the
+  scheduled one, because they live in `.env`.
+
+See `docs/previews.md` for the preview tiers, timings and the look layering rules.
+
+**Safety.** The panel listens on `127.0.0.1` only. It will only ever read or write these
+`.env` keys: `CHARACTER`, `VIDEO_STYLE`, `VIDEO_THEME`, `BACKGROUND_STYLE`, `VIDEOS_PER_DAY`,
+`DAILY_MODE`, `YOUTUBE_UPLOAD`, `YOUTUBE_PRIVACY`, `FALLBACK_UPLOAD`, `LOOK_PRESET`, `LOOK_BG`, `LOOK_ACCENT`, `LOOK_ACCENT_ROTATE`. Comments, other lines and the file's
+permissions are left as they were. API keys and tokens are never sent to the browser or
+written to its logs; the panel only says whether one is set. Requests are checked for the
+loopback `Host`, a same-origin `Origin`, and a random per-launch token, so another web page
+can't drive it. The reference-video style library is a command-line feature only (see *Style library* below); the panel no longer uploads or analyses reference videos. Uploaded pictures and recordings are checked by content, size-capped and
+stored under generated names.
+
 ## Configuration (`.env`)
 
 Copy `.env.example` to `.env`. Everything is optional:
@@ -85,14 +156,107 @@ Copy `.env.example` to `.env`. Everything is optional:
 | `KOKORO_VOICE`, `KOKORO_SPEED` | Kokoro voice and pace (`npx hyperframes tts --list` for voices) |
 | `VOICEBOX_PROFILE_ID`, `VOICEBOX_ENGINE`, `VOICEBOX_MODEL_SIZE`, `VOICEBOX_INSTRUCT` | Voicebox settings (see [Custom voice](#custom-voice)) |
 | `VOICE_EFFECT`, `CARTOON_PITCH` | `cartoon` pitches any voice up (1.3 subtle to 1.6 squeaky); `none` (default) keeps it natural |
-| `BACKGROUND_STYLE` | `gameplay` (default) or `none` for the plain graph-paper background |
+| `VIDEO_STYLE` | `explainer` (default), a clean animated explainer with no avatar or footage, or `avatar`, the original look (see [Video styles](#video-styles)) |
+| `SOURCE` | Where stories come from: `tldr` (default, the only source so far; see `newsletter_video/sources/`) |
+| `VIDEO_THEME` | Explainer style only: `light` (default) or `dark` |
+| `BACKGROUND_STYLE` | Avatar style only: `gameplay` (default) or `none` for the plain graph-paper background |
+| `DAILY_MODE` | What the scheduled run does: `full` (default) plans, renders and uploads in one go; `plan` only writes the day's plan and notifies you (see [Approval mode](#approval-mode)) |
 | `YOUTUBE_UPLOAD` | `1` uploads each day's videos after rendering |
 | `YOUTUBE_PRIVACY`, `YOUTUBE_SCHEDULE` | Visibility and timed publishing (once your API project is audited) |
+| `FALLBACK_UPLOAD` | What to do with rule-based fallback scripts when uploads are on: `skip` (default: make none, notify), `private` or `public` |
+| `NOTIFY_WEBHOOK_URL`, `NOTIFY_WEBHOOK_FORMAT`, `NOTIFY_MACOS` | Where run notifications go (see [When things fail](#when-things-fail)) |
+| `RUN_DEADLINE_MINUTES`, `RENDER_TIMEOUT_SECONDS`, `VOICEBOX_GENERATION_TIMEOUT` | Wall-clock limits: whole run (default 240), one render attempt (1200), one Voicebox clip (420) |
+| `FACTCHECK`, `FACTCHECK_AVX`, `FACTCHECK_EXPLAINER`, `FACTCHECK_AVATAR` | The fact check (see [Accuracy](#accuracy-evidence-fact-check-and-refill)): `FACTCHECK=0` switches it off everywhere; the per-format switches override the defaults |
+| `FACTCHECK_FETCH_ARTICLES`, `FACTCHECK_REFILL_ROUNDS`, `FACTCHECK_BATCH`, `FACTCHECK_TIMEOUT_SECONDS`, `FACTCHECK_EFFORT` | Give the checker the linked article too (default off), extra writer rounds to replace dropped videos (2), videos per checker call (5), the checker's time budget per round (480 s), its effort (the writer's) |
+| `STYLE_LIBRARY`, `STYLE_VISION*`, `STYLE_RECREATE_ROUNDS`, `STYLE_PLANNER_*` | The style library folder (`off` to disable) and the model/budget settings for analysing references and planning styles (see [Style library](#style-library-teach-the-look-by-example)) |
 
 Videos land between 40 and 45 seconds: Claude aims for 100–110 words, and if the voiceover
 still runs long or short it's re-voiced slightly faster or slower. Prices and units are
 rewritten into spoken words before voicing ("$0.10" → "10 cents"), and coined words the voice
 gets wrong can be respelled in `PRONUNCIATIONS` in `tts.py`.
+
+## Video styles
+
+`VIDEO_STYLE` in `.env` picks one of two looks. **The default is `explainer`.** Everything
+else (fetching, Jev, story exclusion, the cloned voice, word alignment, upload, metadata) is
+shared.
+
+- **`avatar`**: the original look described above: a narrator cutout, gameplay footage,
+  highlighted cards and heavy captions. Set `VIDEO_STYLE=avatar` to keep it; it is fully
+  supported, just no longer the default.
+- **`explainer`** (default): no avatar, no footage. A clean editorial explainer where every scene is
+  built around a graphic: a hand-drawn pictogram set, big numbers with a trend chart or
+  progress ring, bar / column / line / dots-of-100 charts, comparison discs drawn to scale, a
+  timeline with a travelling marker, diagrams (flow, stack, hub, funnel) and device
+  wireframes (phone, laptop, terminal, chat), all authored vector, with self-hosted fonts,
+  one accent colour, light or dark theme (`VIDEO_THEME`), designed push/wipe transitions and
+  a subtle lower-third caption. Shorts/TikTok/Reels safe zones are respected: nothing
+  important sits in the top 150 px, the bottom 380 px or the right-hand button column.
+
+In explainer mode Claude writes a **scene plan** instead of a card script: an ordered list of
+scenes, each with a scene type, typed on-screen fields under hard length caps and the line
+spoken over it (`EXPLAINER_WRITER_SYSTEM` in `explainer_writer.py`; still one call per day).
+Every plan is validated in code (`scene_plan.py`) before anything is voiced: caps, shape,
+98+ spoken words, at least two graphic scenes, never two text-only scenes in a row. A plan
+that fails gets one repair round with the validator's exact errors; if it still fails it is
+logged and that video is skipped, so a bad plan never crashes the day's run and is never
+rendered broken. Scene timing comes from the real word timestamps: a scene appears when the
+voice reaches its line, rows, nodes and bars land as their words are spoken, a stat counts up
+when its number is said. The selected character's persona still shapes the tone; its avatar
+image is simply not used.
+
+Without an Anthropic key, the rule-based scripts are rendered as a plainer structural plan
+(headlines and statements), with a warning in the log. Each video's `.json` sidecar gains a
+`scene_plan` key so it can be re-rendered exactly; any older sidecar can be re-rendered in
+this style too:
+
+```bash
+./venv/bin/python -m newsletter_video.explainer_builder output/2026-10-13/07_x.json --out /tmp/07.mp4               # structural plan from the saved script
+./venv/bin/python -m newsletter_video.explainer_builder output/2026-10-13/07_x.json --out /tmp/07.mp4 --write-plan  # ask Claude for a scene plan (one call)
+```
+
+Quality gates for the explainer style:
+
+```bash
+./venv/bin/python scripts/motion_audit.py output/2026-10-16/01_x.mp4   # fails on any static stretch > 1.2 s (caption band excluded)
+cd newsletter_video/hf_template_explainer && npx hyperframes check         # lint, layout, motion, WCAG contrast
+./venv/bin/python -m pytest tests/                                         # validator, timing, audit and pipeline tests
+```
+
+`scripts/motion_audit.py` samples a render at 8 fps, masks the lower-third caption band and
+reports every stretch where fewer than 0.06 % of pixels change (by more than 20 levels) for longer than 1.2 s, plus a
+motion-per-second curve; exit code 1 means the video holds a still frame somewhere. While
+iterating on a plan, `--reuse-audio` on the `explainer_builder` CLI caches the voice track and
+word alignment per script, so re-renders skip Voicebox.
+
+The composition is `newsletter_video/hf_template_explainer/index.html`; its design system
+(tokens, type scale, spacing, motion, safe zones, the scene library) is documented in
+`newsletter_video/hf_template_explainer/DESIGN.md`. Validate it after changes with
+`npx hyperframes check` in that folder (lint, layout, motion and WCAG contrast), and run the
+validator tests with `./venv/bin/python -m pytest tests/` (`pytest` is the only extra dependency).
+
+### Style library: teach the look by example
+
+Drop videos you like into `style_library/inbox/` and add them; the system splits
+each into scenes, measures its motion (transitions, entrances, easing, stagger,
+holds, pacing), palette, layout and audio, has Claude describe each scene in the
+explainer's own vocabulary, recreates it with placeholder content using the
+explainer composition, scores the fidelity, and keeps the result as reusable
+**recipes**. From then on the writer makes one extra call per video that picks
+recipes per scene from the library (the planner), and the composition renders
+them through a small set of validated style knobs. Empty library or
+`STYLE_LIBRARY=off`: nothing changes.
+
+```bash
+./venv/bin/python -m newsletter_video.styles add style_library/inbox/clip.mp4 --name punchy-type --notes "big words, hard cuts"
+./venv/bin/python -m newsletter_video.styles search "kinetic type with wipe transitions"
+./venv/bin/python -m newsletter_video.styles plan --story output/2026-10-13/07_x.json --out /tmp/style.json
+./venv/bin/python -m newsletter_video.explainer_builder output/2026-10-13/07_x.json --out /tmp/07.mp4 --style-plan /tmp/style.json
+```
+
+Costs about $0.15 per reference and $0.02 per planned video; `docs/style-library.md`
+has the design, the eval and the limits. Study only material you have the right
+to use; clips never leave your machine and are never committed.
 
 ## Customizing
 
@@ -107,10 +271,30 @@ cards with highlight and timing, captions), so the template works the same in
 Studio and in automated renders.
 
 ### The narrator character
-The narrator is a single cutout image: the first `.png` or `.jpg` in `assets/character/`
-(gitignored, so it never goes into the repo). The composition places it at the bottom of
-the frame with a slight idle bob, and keeps the cards and captions clear of its head. To
-change the narrator, swap the file. With the folder empty, videos render without one.
+A character is an avatar image, optionally a cloned voice, and optionally a writing
+persona, stored in `assets/characters/<name>/` (gitignored, so it never goes into the repo).
+The composition places the avatar at the bottom-left of the frame with a slight idle bob,
+shrinks wide images so they don't crowd the cards, and keeps cards and captions clear of it.
+
+```bash
+# clone a voice from a clean clip and add the avatar (a transparent-background PNG works best)
+python -m newsletter_video.characters add "My Character" --avatar me.png --voice-audio me.wav \
+  --persona "upbeat, loves puns" --use
+python -m newsletter_video.characters list
+python -m newsletter_video.characters say my-character "Does this sound right?"
+python -m newsletter_video.characters use none      # back to the original setup
+```
+
+- **Voice:** `--voice-audio` clones a voice in Voicebox (the app must be installed; it's started
+  for you). Use 5-30 seconds of clean, single-speaker speech, with no background music, laughs or
+  long pauses; those leak into the cloned voice as odd pauses and noise. Pass `--voice-audio` more
+  than once for several clips, or `--profile-id` to reuse a voice you already made in Voicebox.
+  Without either, the character uses your default `TTS_PROVIDER` voice.
+- **Persona:** `--persona` tells the script writer how this narrator talks. It changes tone and
+  wording only; the facts still come from the stories.
+- **Selecting:** `CHARACTER=<name>` in `.env` (what `use` sets). With it blank, the pipeline uses
+  the first image in `assets/character/` and `VOICEBOX_PROFILE_ID`, as before.
+- Only use avatars and voices you have the rights to.
 
 ### Gameplay background
 Set `BACKGROUND_STYLE=none` to skip it entirely. Otherwise, drop any vertical gameplay `.mp4` into `assets/background/` (or download one with
@@ -141,7 +325,9 @@ How it runs unattended:
 - Pace is adjusted afterwards with ffmpeg's `atempo`, so the 40–45 second target works the
   same as with Kokoro.
 - If Voicebox can't be reached, the run stops with a clear error. It does not quietly switch
-  to another voice, so a day's videos never mix two narrators.
+  to another voice, so a day's videos never mix two narrators. If it accepts a clip but never
+  finishes it (a known wedge), it is quit and relaunched once (see
+  [When things fail](#when-things-fail)).
 
 **ElevenLabs (cloud).** Set `TTS_PROVIDER=elevenlabs` with `ELEVENLABS_API_KEY` and
 `VOICE_ID` to use a voice from your own ElevenLabs account.
@@ -153,11 +339,21 @@ Claude sees it. Jev classifies and scores; it never writes text. For each story'
 summary it answers two questions:
 
 - **In scope?** A yes/no probability. Stories below 0.5 are dropped
-  (`JEV_IN_SCOPE_THRESHOLD`).
+  (`JEV_IN_SCOPE_THRESHOLD`), unless they clear 0.5 on a second, narrow question: major
+  investigation, legal, regulatory, national-security, governance or leadership news about big
+  tech, chip and AI companies and their leaders (`_JEV_CORPORATE_INSTRUCTIONS`).
 - **How newsworthy?** Low (minor, routine or sponsored-feeling), Medium (solid but
   unsurprising) or High (surprising, consequential, weird or genuinely useful).
 
-The in-scope stories are ranked by newsworthiness, and the top ones go to Claude: three per
+A third question, **important?** ("would a well-informed person who follows AI and technology want to know this
+today?", `_JEV_IMPORTANT_INSTRUCTIONS`), is also a way into scope at 0.4 (`JEV_IMPORTANT_THRESHOLD`) and its score is
+added to the ranking. Measured on 595 stories from two weeks of all four editions, labelled must-cover / worth-covering
+/ skip by Claude, the first two questions let in 75% of the must-cover stories (Meta's $95B stock offering,
+Anthropic's IPO filing and GPT-6 Cyber were all below 0.5 on the topic question); with this question the writer's
+top-30 pool held all of them. Jev costs $0.042 per million input tokens with free output, so the extra question is
+effectively free.
+
+The in-scope stories are ranked by newsworthiness plus importance, and the top ones go to Claude: three per
 requested video, and never fewer than 15 (`JEV_POOL_MULTIPLIER`, `JEV_MIN_POOL` in
 `script_writer.py`), so Claude still has real choice and room to combine related stories. A
 typical morning: 40 candidates in, 18 in scope, all 18 passed to the writer.
@@ -168,6 +364,43 @@ Failure handling:
   candidate unranked.
 - A later single call fails: that story is kept at the bottom of the ranking rather than
   silently dropped.
+
+### What the editor may drop, and what it may not
+
+The avatar writer's editor pass reads every video like a first-time viewer. A flagged video gets one rewrite. After
+it, **accuracy flags still drop the video** (an unsupported claim, a graphic that shows the wrong thing or has the
+actor and the one acted on the wrong way round, two stories mixed together), while **clarity flags ship it with the
+notes logged** (an unexplained name, a vague line, a repeated point). Dropping on any remaining flag threw away three
+accurate videos in a row on 2026-11-10.
+
+### Accuracy: evidence, fact check and refill
+Every video goes through three accuracy layers (`newsletter_video/factcheck.py`, shared by all three writers):
+
+1. **Evidence.** With each video the writer returns, for every spoken line, the words of the story
+   that support it, copied verbatim (or marks the line as a question, call to action or transition).
+   Code checks each quote really occurs in the story (case, punctuation and "..." tolerated), so
+   evidence cannot be made up, and checks the relations code can check: a number said to be below,
+   above or within a range or another number, a percentage going up or down, "more than" vs
+   "nearly". A failure goes back to the writer once with the exact error, like the other validators.
+2. **An independent fact check.** A separate Claude call that sees only the sources and the
+   finished video (every spoken line, every on-screen string, the title and caption) judges each
+   item supported, partially supported, unsupported, contradicted or not a claim, with the source
+   quote and a reason. It enforces: nothing beyond the source, correct comparisons, numbers, units
+   and time frames, the source's attribution ("reportedly", "plans to"), no added causes, motives or
+   superlatives, the right entities, and for allegations about named people: attribution in the
+   same sentence, the source's caveats kept, no loaded words and no accusatory question. A video
+   with a blocker is repaired once with those reasons and checked again; if it still fails it is
+   not made. One call checks five videos; a day takes two or three calls (~20 s each).
+3. **Refill.** When any check drops a video, the writer is asked again for the shortfall from the
+   stories nobody has used (at most `FACTCHECK_REFILL_ROUNDS` extra rounds). A day can still end
+   short: a failing video is never shipped to hit the count.
+
+If the checker itself is unavailable (no key, API down, timeout, a malformed answer) the run does
+not stop: the validated videos ship marked `unverified` and the log says so loudly. A verdict of
+unsupported or contradicted never fails open. Each sidecar and plan entry keeps a small
+`fact_check` record (verdict counts, the quote behind each spoken line, anything flagged, any
+repair), and the day's dropped videos with their reasons go to `status.json` (`dropped`) and the
+plan (`dropped`).
 
 ## How the pipeline works
 
@@ -214,13 +447,17 @@ until the project passes Google's free YouTube API Services audit — in practic
 `YOUTUBE_PRIVACY=public` here posted videos as public directly, no audit involved, so that
 claim didn't hold for this project. If it does for yours, `--publish` (or YouTube Studio) flips
 already-uploaded videos public. While the consent screen is in "Testing", the sign-in expires
-every 7 days; rerun `--auth`. "~6 uploads/day" on the default quota is a commonly cited estimate,
+every 7 days; rerun `--auth`. Moving the OAuth app to "In production" (it needs a homepage and a privacy-policy link;
+[docs/privacy.md](docs/privacy.md) is one) and re-authorizing once gives a token that does not expire weekly.
+`YOUTUBE_PRIVACY=public` with no `YOUTUBE_SCHEDULE` publishes each video the moment it is uploaded, and the daily run
+uploads each video while the next one renders (`STREAM_UPLOADS=0` goes back to uploading at the end);
+`YOUTUBE_SCHEDULE=asap` publishes five minutes after each upload instead. "~6 uploads/day" on the default quota is a commonly cited estimate,
 not a confirmed or enforced limit — 16 uploads succeeded in one day here with no quota errors;
 check Google Cloud Console → APIs & Services → YouTube Data API v3 → Quotas for the real number.
 
 ## Running it automatically every day
 
-A `launchd` job runs `run_daily.sh` every morning. See
+In the cloud: [docs/cloud.md](docs/cloud.md). On a Mac, a `launchd` job runs `run_daily.sh` every morning. See
 `com.tldrbrainrot.daily.plist` in `~/Library/LaunchAgents/`.
 
 ```bash
@@ -228,4 +465,88 @@ launchctl list | grep tldrbrainrot                                     # is it l
 launchctl start com.tldrbrainrot.daily                                 # run now
 tail -f pipeline.log                                                   # watch a run
 launchctl unload ~/Library/LaunchAgents/com.tldrbrainrot.daily.plist   # stop the schedule
+./venv/bin/python -m newsletter_video.status                           # today's per-video state
 ```
+
+`run_daily.sh` wraps the run in `caffeinate -i` so the Mac doesn't idle-sleep during the
+~100 minutes it takes (a closed lid still sleeps it; the run just resumes on wake).
+
+### Approval mode
+
+By default the scheduled run makes and posts everything on its own. Set `DAILY_MODE=plan`
+(Settings → *What the scheduled run does* → *Plan, then ask me*) and the scheduled job stops
+after the planning step: it fetches the newsletters, picks the stories (skipping any already
+covered), writes the scripts (one writer call, about 3 cents) into `output/<date>/plan.json`,
+and sends the usual notification ("Daily plan finished: 3 video(s) planned ... waiting for
+your review"). Nothing is voiced, rendered or uploaded. The Design lab's plan review then shows *Plan
+ready — review and render* until you have previewed, changed looks and pressed *Render all…*
+or *Render selected…* (or run `python -m newsletter_video.render_plan <date> --final`), which
+renders and uploads exactly as the full run would, under the same lock, watchdog and
+`status.json` bookkeeping, and skips any story covered since planning. A plan the day already
+has (made from the panel before the run) is kept, not replaced. *Run the full daily job now…* in
+the panel always runs the full job, whatever `DAILY_MODE` says. `DAILY_MODE=full` (or unset)
+is exactly the previous behaviour.
+
+## Cost
+
+Measured November 2026 on `claude-sonnet-5-5` ($2 / $10 per million input / output tokens), per finished avatar video:
+about **$0.14** with the original writer prompt and about **$0.22** with the lean prompt that adds the clarity and
+honesty rules; Cloud Run adds an estimated $0.35 a day (4 vCPU / 8 GiB for about 90 minutes, before the free tier). Roughly 65% of the writer's billed output is hidden reasoning, which is
+why a longer prompt costs more (a longer clarity prompt raised output per video by 46%) and why a lower effort
+setting, which cut tokens 22%, also cut first-pass success from 6 of 10 to 3 of 10. What did not work: optional
+fields or per-style variants in the output schema (the API refuses both: "Schema is too complex", "compiled grammar is
+too large"), and Haiku 5.5 as the drafter (thinking off cannot count or follow several rules; with it on it reasons
+without end). What did work: Haiku 5.5 for shortening on-screen text, with a plain-code trim as the fallback.
+
+Guards: `CLAUDE_RUN_BUDGET_USD` (default 4.0, 0 = off) stops a run's Claude calls once it has spent that much, the run
+summary ends with a cost line, `AVX_DRAFT_MODEL` / `AVX_SHORTEN_MODEL` pick the models for drafting and shortening, and
+the Batch API (50% off, results usually within an hour) is the next lever if you need the cost lower.
+
+## When things fail
+
+The run is unattended, so every outcome is reported and every stage has a time limit.
+
+**You always hear how it ended.** A macOS notification is shown at the end of every run:
+"Pipeline finished" with a one-line summary (videos made, uploaded, minutes, anything that
+failed or is still awaiting upload), or "Pipeline failed" / "Pipeline killed (watchdog)" with
+the reason. Set `NOTIFY_WEBHOOK_URL` to also get it on your phone: an
+[ntfy.sh](https://ntfy.sh) topic URL (plain text), or a Discord or Slack incoming-webhook URL
+(JSON; picked from the host, or force with `NOTIFY_WEBHOOK_FORMAT=text|json`).
+`NOTIFY_MACOS=0` turns the desktop notification off. Everything is also in `pipeline.log`, and
+`python -m newsletter_video.status [date]` prints a day's per-video record
+(`output/<date>/status.json`).
+
+**What each failure does:**
+
+| Failure | What happens |
+|---|---|
+| Bad `.env` (unknown `TTS_PROVIDER`, Voicebox without a profile id, uploads on without a sign-in, low disk, no `npx`) | Fails in the first second with one message listing every problem; nothing is rendered |
+| No network at run time (asleep, DNS not up) | Waits up to 5 min, the scraper retries with backoff, then the run fails with a notification; rerun later |
+| TLDR page empty or changed | "No stories scraped": fails before any TTS/render work |
+| Jev (TypeSafe) down, rate-limited or erroring | Claude gets every candidate unranked (first call fails) or that story unranked (later call) |
+| Claude API error, refusal, `max_tokens`, bad JSON, a video that violates the schema or is far too long/short | Bad videos are dropped; if none are left, the rule-based writer takes over. With `YOUTUBE_UPLOAD=1` those fallback scripts are **not published**: by default (`FALLBACK_UPLOAD=skip`) the run stops with a notification and nothing is rendered, so the stories are tried again tomorrow; `private` renders and uploads them private for review; `public` is the old behaviour |
+| Voicebox not running / crashed between runs | Relaunched (`open -a Voicebox`), waits up to 90 s for `/health` |
+| Voicebox wedged (generation stuck at "generating", heartbeats forever) | Each clip has a wall-clock limit (`VOICEBOX_GENERATION_TIMEOUT`, 420 s). On expiry the app is quit via osascript, relaunched, and the clip retried once; then that video fails |
+| Voicebox not installed / won't start | Fatal for the day immediately (no 90 s wait per video) |
+| TTS returns silence, an empty file or a clip far too short for its text | That video fails (never rendered or uploaded) |
+| mlx-whisper missing or erroring | Word timing falls back to a proportional estimate (as before) |
+| ffmpeg error, HyperFrames/`npx` failure, Chrome crash, out of memory | Two render attempts, each capped at `RENDER_TIMEOUT_SECONDS` (20 min; the whole process tree is killed on timeout); then that video fails and the rest of the day continues. Renders go to `.partial/` and are moved into place only when complete |
+| One video fails for any reason | Recorded in `status.json` with the error; the other videos are still made and uploaded; the summary says which failed |
+| Disk full | Caught at startup (needs 3 GB free); mid-run it surfaces as a failed video or a failed run |
+| Process crash / `kill` / watchdog at video 7 | Videos 1–6 already have their `.json` sidecars (written the moment each render finishes), so they upload and their stories count as covered. Rerun the same date: it resumes, making only the missing videos, numbered after the highest number already used |
+| Run exceeds `RUN_DEADLINE_MINUTES` (default 240) | A watchdog notifies, kills every child process and exits; the next morning is not blocked |
+| Two runs overlap (yesterday's still going, or a manual run during the scheduled one) | The second refuses to start (`.pipeline.lock`, `flock`) and notifies which pid holds it. The lock is released by the kernel when the holder exits, so there is never a stale lock to clean up: if the holder is stuck, kill it |
+| YouTube sign-in expired or revoked (incl. a 401 mid-run) | "YouTube sign-in needs attention" notification; videos stay on disk and upload on the next run after `--auth` |
+| Quota or `uploadLimitExceeded` | The batch stops; the videos stay pending and are picked up by a later run however old they are (no look-back window) |
+| Upload interrupted mid-file | Resumable 8 MB chunks with exponential-backoff retries on 5xx/429/socket errors and a 120 s HTTP timeout of their own (the 5 s network-probe timeout no longer leaks into uploads) |
+| The process dies between YouTube accepting a video and `uploads.json` being written | The attempt is marked in `uploads.json` *before* the insert. On the next run that video is looked up among the channel's recent uploads (needs the read-only scope from `--auth`) and recorded, not re-posted; without that scope it is left alone with an error asking you to check |
+| `launchctl stop` / SIGTERM | Reported as a failed run with a notification; state on disk stays consistent |
+
+**Resuming.** Rerun the same date (`./venv/bin/python -m newsletter_video.run_pipeline
+YYYY-MM-DD`): already-made videos are kept and only the shortfall to `VIDEOS_PER_DAY` is made;
+pending uploads from any day are retried. `python -m newsletter_video.youtube_upload YYYY-MM-DD`
+retries just the uploads.
+
+**Tests.** `./venv/bin/python -m pytest tests` runs the fault-injection suite offline (a fake
+Voicebox server that wedges, stubbed Claude/YouTube clients, stubbed renders): no paid API,
+no uploads, no real renders.

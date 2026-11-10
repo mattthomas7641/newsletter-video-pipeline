@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import glob
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -117,8 +116,8 @@ def _kokoro_in_process(text: str, out_path: Path, voice: str, speed: float) -> N
     soundfile.write(str(out_path), samples, rate)
 
 
-def _kokoro_backend(text: str, out_path: Path, speed: float | None = None) -> Path:
-    voice = os.environ.get("KOKORO_VOICE", DEFAULT_KOKORO_VOICE)
+def _kokoro_backend(text: str, out_path: Path, speed: float | None = None, voice: str | None = None) -> Path:
+    voice = voice or os.environ.get("KOKORO_VOICE", DEFAULT_KOKORO_VOICE)
     speed = float(speed or os.environ.get("KOKORO_SPEED", DEFAULT_KOKORO_SPEED))
     if KOKORO_MODEL.exists() and KOKORO_VOICES.exists():
         _kokoro_in_process(text, out_path, voice, speed)
@@ -140,8 +139,23 @@ DEFAULT_VOICEBOX_ENGINE = "qwen"
 DEFAULT_VOICEBOX_MODEL_SIZE = "0.6B"
 DEFAULT_VOICEBOX_INSTRUCT = ""  # natural delivery by default — "more emphasis" instructions
 # pushed Qwen3-TTS into exaggerated delivery that distorted sibilants into a lisp.
-VOICEBOX_TIMEOUT_SECONDS = 120
+VOICEBOX_TIMEOUT_SECONDS = 120  # per socket read on the status stream
 VOICEBOX_STARTUP_TIMEOUT_SECONDS = 90
+# Wall-clock cap on one generation. Observed failure: Voicebox wedges with
+# the generation stuck at "generating" forever while its /tasks/active is
+# empty and /health still answers — the SSE stream keeps sending
+# heartbeats, so a per-read timeout alone never fires. A whole 110-word
+# clip normally takes well under two minutes.
+DEFAULT_VOICEBOX_GENERATION_TIMEOUT_SECONDS = 420
+MIN_AUDIO_SECONDS = 1.0  # anything shorter is a broken clip, not narration
+
+
+class VoiceboxWedged(RuntimeError):
+    """Voicebox accepted the job but never finished it; quit + relaunch fixes it."""
+
+
+def _voicebox_generation_timeout() -> float:
+    return float(os.environ.get("VOICEBOX_GENERATION_TIMEOUT", DEFAULT_VOICEBOX_GENERATION_TIMEOUT_SECONDS))
 
 
 def _voicebox_is_up() -> bool:
@@ -163,23 +177,65 @@ def _ensure_voicebox_running() -> None:
     import subprocess
     import time
 
+    from .supervisor import FatalPipelineError
+
     if _voicebox_is_up():
         return
-    subprocess.run(["open", "-a", "Voicebox"], check=True)
+    try:
+        subprocess.run(["open", "-a", "Voicebox"], check=True, timeout=60,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
+        raise FatalPipelineError("Voicebox app could not be launched (is it installed?) — "
+                                 "install it or change TTS_PROVIDER") from exc
     deadline = time.monotonic() + VOICEBOX_STARTUP_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
         if _voicebox_is_up():
             return
         time.sleep(3)
-    raise RuntimeError(
+    raise FatalPipelineError(
         f"Voicebox didn't come up within {VOICEBOX_STARTUP_TIMEOUT_SECONDS}s of launching it."
     )
 
 
+VOICEBOX_SERVER_PATH = "/Applications/Voicebox.app/Contents/MacOS/voicebox-server"
+
+
+def _kill_voicebox_server() -> None:
+    """Quitting the Voicebox app does NOT stop its voicebox-server process:
+    the server keeps running (for weeks, in practice) with whatever stuck
+    generations it has queued, so a plain quit-and-reopen "restart" silently
+    restarts nothing. Stop the server itself."""
+    import subprocess
+    import time
+
+    for sig in ("-TERM", "-KILL"):
+        subprocess.run(["pkill", sig, "-f", VOICEBOX_SERVER_PATH], check=False, timeout=15)
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline and _voicebox_is_up():
+            time.sleep(1)
+        if not _voicebox_is_up():
+            return
+
+
+def _restart_voicebox() -> None:
+    """Quit the app and stop its server (its /health keeps answering even
+    when generation is wedged, so a health check can't tell), then relaunch
+    and wait for it."""
+    import subprocess
+
+    subprocess.run(["osascript", "-e", 'tell application "Voicebox" to quit'], check=False, timeout=30,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    _kill_voicebox_server()
+    _ensure_voicebox_running()
+
+
 def _voicebox_wait_for_generation(gen_id: str, already_done: str | None) -> None:
     """/generate/{id}/status is a long-lived SSE stream, not a snapshot to
-    repoll — read it as one connection and consume lines as they arrive."""
+    repoll — read it as one connection and consume lines as they arrive.
+    Bounded by a wall-clock deadline as well as the per-read timeout:
+    heartbeats alone must not keep this alive forever."""
     import json
+    import time
     import urllib.request
 
     if already_done == "completed":
@@ -187,31 +243,59 @@ def _voicebox_wait_for_generation(gen_id: str, already_done: str | None) -> None
     if already_done == "failed":
         raise RuntimeError("Voicebox generation failed")
 
+    deadline = time.monotonic() + _voicebox_generation_timeout()
     url = f"{VOICEBOX_BASE_URL}/generate/{gen_id}/status"
-    with urllib.request.urlopen(url, timeout=VOICEBOX_TIMEOUT_SECONDS) as resp:
-        for raw_line in resp:
-            line = raw_line.decode().strip()
-            if not line.startswith("data:"):
-                continue
-            payload = json.loads(line[len("data:") :].strip())
-            status = payload.get("status")
-            if status == "failed":
-                raise RuntimeError(f"Voicebox generation failed: {payload.get('error')}")
-            if status == "completed":
-                return
+    try:
+        with urllib.request.urlopen(url, timeout=VOICEBOX_TIMEOUT_SECONDS) as resp:
+            for raw_line in resp:
+                if time.monotonic() > deadline:
+                    break
+                line = raw_line.decode().strip()
+                if not line.startswith("data:"):
+                    continue
+                payload = json.loads(line[len("data:") :].strip())
+                status = payload.get("status")
+                if status == "failed":
+                    raise RuntimeError(f"Voicebox generation failed: {payload.get('error')}")
+                if status == "completed":
+                    return
+    except TimeoutError as exc:  # no bytes at all for VOICEBOX_TIMEOUT_SECONDS
+        raise VoiceboxWedged(f"Voicebox status stream went silent for {VOICEBOX_TIMEOUT_SECONDS}s") from exc
+    if time.monotonic() > deadline:
+        raise VoiceboxWedged(
+            f"Voicebox generation {gen_id} still not finished after {_voicebox_generation_timeout():.0f}s"
+        )
     raise RuntimeError("Voicebox status stream ended without a terminal status")
 
 
 def _voicebox_backend(text: str, out_path: Path, speed: float | None = None) -> Path:
+    """One generation; if Voicebox wedges mid-way, it's quit, relaunched
+    and the clip is tried once more before giving up on this video."""
+    try:
+        return _voicebox_generate(text, out_path, speed)
+    except VoiceboxWedged as exc:
+        import logging
+
+        logging.getLogger("newsletter_video").warning("%s — restarting Voicebox and retrying once", exc)
+        _restart_voicebox()
+        return _voicebox_generate(text, out_path, speed)
+
+
+def _voicebox_generate(text: str, out_path: Path, speed: float | None = None) -> Path:
     import json
     import urllib.error
     import urllib.request
 
+    from .characters import active
+
     _ensure_voicebox_running()
-    profile_id = os.environ["VOICEBOX_PROFILE_ID"]
-    engine = os.environ.get("VOICEBOX_ENGINE", DEFAULT_VOICEBOX_ENGINE)
-    model_size = os.environ.get("VOICEBOX_MODEL_SIZE", DEFAULT_VOICEBOX_MODEL_SIZE)
-    instruct = os.environ.get("VOICEBOX_INSTRUCT", DEFAULT_VOICEBOX_INSTRUCT)
+    character = active()  # the selected character's voice settings win over the .env defaults
+    profile_id = (character.voicebox_profile_id if character else None) or os.environ["VOICEBOX_PROFILE_ID"]
+    engine = (character.engine if character else None) or os.environ.get("VOICEBOX_ENGINE", DEFAULT_VOICEBOX_ENGINE)
+    model_size = ((character.model_size if character else None)
+                  or os.environ.get("VOICEBOX_MODEL_SIZE", DEFAULT_VOICEBOX_MODEL_SIZE))
+    instruct = ((character.instruct if character else None)
+                or os.environ.get("VOICEBOX_INSTRUCT", DEFAULT_VOICEBOX_INSTRUCT))
 
     request_body = {"profile_id": profile_id, "text": text, "engine": engine, "model_size": model_size}
     if instruct:
@@ -231,8 +315,12 @@ def _voicebox_backend(text: str, out_path: Path, speed: float | None = None) -> 
     gen_id = gen["id"]
     _voicebox_wait_for_generation(gen_id, gen.get("status"))
 
-    with urllib.request.urlopen(f"{VOICEBOX_BASE_URL}/audio/{gen_id}", timeout=30) as resp:
+    with urllib.request.urlopen(f"{VOICEBOX_BASE_URL}/audio/{gen_id}", timeout=VOICEBOX_TIMEOUT_SECONDS) as resp:
         out_path.write_bytes(resp.read())
+    try:
+        check_audio(out_path, text)
+    except RuntimeError as exc:  # a broken clip is treated like a wedge: restart, retry once
+        raise VoiceboxWedged(str(exc)) from exc
 
     if speed and speed != 1.0:
         _apply_speed(out_path, speed)
@@ -297,46 +385,9 @@ def _cartoon_effect(path: Path) -> None:
     tmp.replace(path)
 
 
-_SCALES = {"k": "thousand", "m": "million", "b": "billion", "t": "trillion"}
-_MONEY_RE = re.compile(
-    r"\$(\d[\d,]*)(?:\.(\d+))?"
-    r"(?:\s?([KMBT])\b|\s(thousand|million|billion|trillion)\b)?",
-    re.IGNORECASE,
-)
-
-
-def _say_money(match: re.Match) -> str:
-    whole, decimals = match.group(1).replace(",", ""), match.group(2) or ""
-    scale = match.group(4) or _SCALES.get((match.group(3) or "").lower())
-    if scale:  # "$1.8 billion", "$2.5B" -> "1.8 billion dollars"
-        number = whole + (f".{decimals}" if decimals else "")
-        return f"{number} {scale.lower()} dollars"
-    cents = int((decimals + "00")[:2]) if decimals else 0
-    if int(whole) == 0 and decimals:  # "$0.05" -> "5 cents", "$0.005" -> "0.5 cents"
-        if len(decimals) > 2:
-            return f"{float('0.' + decimals) * 100:g} cents"
-        return "1 cent" if cents == 1 else f"{cents} cents"
-    dollars = "1 dollar" if int(whole) == 1 else f"{int(whole):,} dollars"
-    return f"{dollars} and {cents} cents" if cents else dollars
-
-
-# Coined/brand words the voice gets wrong, respelled the way they're meant
-# to be said. Matched case-insensitively as whole words.
-PRONUNCIATIONS = {
-    "Mathocalypse": "Math-apocalypse",
-}
-
-
-def speakable(text: str) -> str:
-    """Rewrites symbols TTS voices read literally ("zero dot zero five") into
-    the words a person would say, and respells known coined words."""
-    for word, spoken in PRONUNCIATIONS.items():
-        text = re.sub(rf"\b{re.escape(word)}\b", spoken, text, flags=re.IGNORECASE)
-    text = _MONEY_RE.sub(_say_money, text)
-    text = re.sub(r"\b(\d+(?:\.\d+)?)x\b", r"\1 times", text)
-    text = re.sub(r"~\s?(?=\d)", "about ", text)
-    text = text.replace(" & ", " and ").replace(" vs. ", " versus ").replace(" vs ", " versus ")
-    return text
+# The audio-only pronunciation layer (respellings, money, years, acronyms...) lives in pronounce.py;
+# re-exported here because callers import it from tts.
+from .pronounce import PRONUNCIATIONS, speakable, spoken_words  # noqa: E402,F401
 
 
 def base_speed() -> float:
@@ -348,7 +399,16 @@ def synthesize(text: str, out_path: Path, speed: float | None = None) -> Path:
     `speed` overrides KOKORO_SPEED (Kokoro only)."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     text = speakable(text)
-    provider = os.environ.get("TTS_PROVIDER", "kokoro")
+    from .characters import active
+
+    character = active()
+    kokoro_voice = None
+    if character and character.tts == "kokoro":
+        provider, kokoro_voice = "kokoro", character.kokoro_voice  # a character with a built-in voice always uses it
+    elif character and character.voicebox_profile_id:
+        provider = "voicebox"  # a character with its own cloned voice always uses it
+    else:
+        provider = os.environ.get("TTS_PROVIDER", "kokoro")
     if provider == "voicebox":
         _voicebox_backend(text, out_path, speed)
     elif provider == "elevenlabs":
@@ -356,9 +416,10 @@ def synthesize(text: str, out_path: Path, speed: float | None = None) -> Path:
     elif provider == "say":
         _say_backend(text, out_path)
     else:
-        _kokoro_backend(text, out_path, speed)
+        _kokoro_backend(text, out_path, speed, kokoro_voice)
     if os.environ.get("VOICE_EFFECT", DEFAULT_VOICE_EFFECT) == "cartoon":
         _cartoon_effect(out_path)
+    check_audio(out_path, text)
     return out_path
 
 
@@ -367,6 +428,29 @@ def audio_duration_seconds(path: Path) -> float:
 
     with AudioFileClip(str(path)) as clip:
         return clip.duration
+
+
+# Slowest plausible narration; a clip shorter than words / this is truncated.
+MAX_WORDS_PER_SECOND = 6.0
+
+
+def check_audio(path: Path, text: str) -> None:
+    """Rejects a TTS clip that is empty, silent or far too short for its
+    text — a wedged or crashing backend has returned such files, and a
+    silent 40-second video would otherwise be rendered and uploaded."""
+    import soundfile
+
+    try:
+        info = soundfile.info(str(path))
+        samples, _ = soundfile.read(str(path), dtype="float32", always_2d=True)
+    except Exception as exc:
+        raise RuntimeError(f"TTS wrote an unreadable audio file ({exc})") from exc
+    duration = info.frames / info.samplerate if info.samplerate else 0.0
+    words = len(text.split())
+    if duration < MIN_AUDIO_SECONDS or duration < words / MAX_WORDS_PER_SECOND:
+        raise RuntimeError(f"TTS clip is {duration:.1f}s for {words} words — truncated")
+    if not len(samples) or float(np.abs(samples).max()) < 0.01:
+        raise RuntimeError("TTS clip is silent")
 
 
 if __name__ == "__main__":
