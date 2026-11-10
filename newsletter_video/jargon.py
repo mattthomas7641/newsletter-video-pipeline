@@ -146,3 +146,11 @@ def opening_problems(hook_say: str, hook_lines: str = "", roundup: bool = False)
         errors.append(f"the hook uses {', '.join(odd)}, which an ordinary viewer does not know; spell it out "
                       "in plain words or leave it out")
     return errors
+
+
+# The terms that actually come up in the day's stories, for the writer's prompt (the full GLOSSARY still backs the
+# opening check): a shorter list keeps the prompt, and the writer's thinking about it, small.
+LEAN_TERMS = ("agents", "tokens", "parameters", "inference", "GPUs", "compute", "benchmark", "open weights",
+              "frontier model", "context window", "fine-tuning", "distillation", "hyperscaler", "gigawatt",
+              "prospectus", "stock offering", "export controls", "jailbreak", "harness", "RAG", "MoE",
+              "reasoning model", "SDK", "pull request", "ARR", "MRR", "router", "SaaS", "RSI", "AGI")

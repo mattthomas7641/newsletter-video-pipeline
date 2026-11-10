@@ -50,7 +50,7 @@ def test_a_quick_hits_hook_may_name_several_companies():
 def test_every_glossary_definition_is_short_and_the_prompt_carries_the_glossary():
     assert all(len(plain.split()) <= 9 for plain in jargon.GLOSSARY.values())
     system = w._system_prompt()
-    assert "Be understood on the first hearing" in system and "AI that takes actions on its own" in system
+    assert "Make it clear, honest and watchable" in system and "AI that takes actions on its own" in system
 
 
 def test_an_unclear_hook_is_sent_back_by_the_validator():
@@ -93,5 +93,6 @@ def test_the_validator_rejects_invented_drama_in_the_title_or_lines():
 
 def test_the_prompt_and_editor_state_the_only_when_the_story_has_it_rule():
     system = w._system_prompt()
-    assert "ONLY when the story itself has it" in system and "never turn a neutral story into a conflict" in system.lower().replace("never turn a \\\n", "never turn a ")
+    assert "Report the story as it is" in system and "a neutral story is told plainly" in system
+    assert "Never add a villain, a fight, a threat or hype" in system
     assert "contain" in w.CRITIC_SYSTEM and "neutral story dressed up" in w.CRITIC_SYSTEM
