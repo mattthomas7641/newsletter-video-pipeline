@@ -171,7 +171,9 @@ def test_a_failed_shortening_falls_back_to_the_full_rewrite(monkeypatch):
         calls.append(what)
         return {"items": [{"id": 0, "text": "still far too long for the label to fit here"}]}  # over the cap again
 
-    answers = [{"videos": [_over_cap_video()]}, {"videos": [copy.deepcopy(VIDEO)]}]
+    one_long_word = _over_cap_video()
+    one_long_word["scenes"][1]["label"] = "Supercalifragilisticexpialidocious"  # one 34-character word: code cannot trim it either
+    answers = [{"videos": [one_long_word]}, {"videos": [copy.deepcopy(VIDEO)]}]
     monkeypatch.setattr(w, "_claude_json", fake_claude)
     monkeypatch.setattr(w, "_call_writer", lambda user: answers.pop(0))
     accepted = w._validated_videos("write", 1, [STORY])
@@ -213,3 +215,13 @@ def test_a_text_still_over_after_the_first_round_is_shortened_again_with_its_new
     accepted = w._validated_videos("write", 1, [STORY])
     assert seen == [("growth from the same quarter last year, in total", 48), ("growth from last year!!", 23)]
     assert len(accepted) == 1 and accepted[0][1][1]["data"]["label"] == "growth from a year ago"
+
+
+def test_code_trims_a_text_the_model_could_not_shorten():
+    assert w.trim_to("GPT-6 Cyber", 10) == "GPT-6"
+    assert w.trim_to("growth from a year ago, in total", 28) == "growth from year ago, total"
+    assert w.trim_to("or single-sentence apps?", 16) == "single-sentence"  # not just "or"
+    assert w.trim_to("flaws in one run.", 16) == "flaws in one run"
+    assert w.trim_to("Supercalifragilisticexpialidocious", 20) == ""  # one word that does not fit: leave it to a rewrite
+    assert w.trim_to("fits", 10) == "fits"
+    assert all(len(w.trim_to(t, 12)) <= 12 for t in ["a very long label indeed", "Nvidia owns data centers", "x"])
