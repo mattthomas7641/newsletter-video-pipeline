@@ -39,7 +39,8 @@ for entry in "${SECRETS[@]}"; do
   if ! "$GCLOUD" secrets describe "$name" --project="$PROJECT" >/dev/null 2>&1; then
     "$GCLOUD" secrets create "$name" --project="$PROJECT" --replication-policy=automatic --quiet >/dev/null 2>&1
   fi
-  value_of "$spec" | "$GCLOUD" secrets versions add "$name" --project="$PROJECT" --data-file=- --quiet >/dev/null 2>&1
+  # printf '%s' (not echo): a trailing newline in the stored value breaks API keys and URLs.
+  printf '%s' "$(value_of "$spec")" | "$GCLOUD" secrets versions add "$name" --project="$PROJECT" --data-file=- --quiet >/dev/null 2>&1
   "$GCLOUD" secrets add-iam-policy-binding "$name" --project="$PROJECT" \
     --member="serviceAccount:${JOB_SA}" --role="roles/secretmanager.secretAccessor" --quiet >/dev/null 2>&1
   echo "OK    $name"
