@@ -272,8 +272,23 @@ def run(target_date: date | None = None) -> list[Path]:
         # The sidecar is written the moment each video is done (not after the
         # whole batch), so a crash at video 7 leaves videos 1-6 uploadable
         # and their stories marked as covered.
-        paths = build_shorts(scripts, out_dir, OUTPUT_DIR / "_audio" / target_date.isoformat(), target_date,
-                             on_rendered=lambda s, p: write_metadata(s, p, privacy=privacy))
+        streamer = None
+        if uploading and os.environ.get("STREAM_UPLOADS", "1") != "0":
+            from .stream_upload import StreamingUploader
+
+            streamer = StreamingUploader(target_date)  # each video goes up while the next one renders
+
+        def rendered(script, path):
+            write_metadata(script, path, privacy=privacy)
+            if streamer:
+                streamer.submit()
+
+        try:
+            paths = build_shorts(scripts, out_dir, OUTPUT_DIR / "_audio" / target_date.isoformat(), target_date,
+                                 on_rendered=rendered)
+        finally:
+            if streamer:
+                streamer.close()
         log.info("Done: %s", [p.name for p in paths])
 
     if uploading:
@@ -311,6 +326,10 @@ def run_summary(out_dir: Path, minutes: float) -> str:
     pending = state["run"].get("pending_uploads")
     if pending:
         parts.append(f"{pending} awaiting upload")
+    no_thumb = sum(1 for v in state["videos"].values()
+                   if v.get("status") == "uploaded" and str(v.get("thumbnail") or "").startswith("failed"))
+    if no_thumb:
+        parts.append(f"{no_thumb} without a custom thumbnail")
     return "; ".join(parts)
 
 

@@ -330,3 +330,13 @@ def test_without_a_lineup_file_the_daily_run_is_exactly_as_before(stubbed_pipeli
     folder = isolated_env / DAY.isoformat()
     assert len(list(folder.glob("0*.json"))) == 3
     assert all("lineup" not in json.loads(p.read_text()) for p in folder.glob("0*.json"))
+
+
+def test_summary_flags_uploads_whose_thumbnail_failed(tmp_path):
+    from newsletter_video.runstate import record_video
+
+    record_video(tmp_path, "01_a", "uploaded", thumbnail="ok")
+    record_video(tmp_path, "02_b", "uploaded", thumbnail="failed:HTTP 403")
+    assert "1 without a custom thumbnail" in run_pipeline.run_summary(tmp_path, 5)
+    record_video(tmp_path, "02_b", "uploaded", thumbnail="ok")
+    assert "thumbnail" not in run_pipeline.run_summary(tmp_path, 5)

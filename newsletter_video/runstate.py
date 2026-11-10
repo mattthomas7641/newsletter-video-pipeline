@@ -11,10 +11,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 from datetime import datetime
 from pathlib import Path
 
 STATUS_FILE = "status.json"
+_STATE_LOCK = threading.RLock()  # the render loop and the streaming uploader both update status.json
 # Files in a day folder that are not a video's sidecar metadata.
 NON_SIDECAR_JSON = {"uploads.json", STATUS_FILE, "plan.json"}  # plan.json: a planned, not yet rendered, day
 _INDEX_RE = re.compile(r"^(\d{2,})_")
@@ -62,9 +64,10 @@ def load_state(out_dir: Path) -> dict:
 
 def update_run(out_dir: Path, **fields) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
-    state = load_state(out_dir)
-    state["run"].update(fields)
-    write_json_atomic(out_dir / STATUS_FILE, state)
+    with _STATE_LOCK:
+        state = load_state(out_dir)
+        state["run"].update(fields)
+        write_json_atomic(out_dir / STATUS_FILE, state)
     return state
 
 
@@ -72,12 +75,13 @@ def record_video(out_dir: Path, name: str, status: str, **info) -> dict:
     """`name` is the video's file stem (e.g. "03_some-title"); `status` is
     one of rendered / failed / uploaded / upload_failed."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    state = load_state(out_dir)
-    record = state["videos"].setdefault(name, {})
-    record.update(info)
-    record["status"] = status
-    record["updated"] = now_iso()
-    write_json_atomic(out_dir / STATUS_FILE, state)
+    with _STATE_LOCK:
+        state = load_state(out_dir)
+        record = state["videos"].setdefault(name, {})
+        record.update(info)
+        record["status"] = status
+        record["updated"] = now_iso()
+        write_json_atomic(out_dir / STATUS_FILE, state)
     return state
 
 

@@ -196,10 +196,25 @@ def _credentials(interactive: bool):
 
 # --- upload ------------------------------------------------------------------
 
+ASAP = "asap"
+ASAP_DELAY_MINUTES = 5  # publishAt must be in the future; a few minutes after the upload starts is as soon as it gets
+
+
+def _resolve_publish_time(at: str | None) -> str | None:
+    """"asap" becomes now + a few minutes, computed when this video is sent (a long upload day must not leave
+    later videos with a time that has already passed). Anything else is returned as it is."""
+    if at == ASAP:
+        return (datetime.now().astimezone() + timedelta(minutes=ASAP_DELAY_MINUTES)).isoformat()
+    return at
+
+
 def _publish_times(day: date, count: int) -> list[str | None]:
     """YOUTUBE_SCHEDULE="12:00,16:00,20:00" spreads the day's videos across
-    those local times (needs privacy "private"; YouTube flips them public)."""
+    those local times (needs privacy "private"; YouTube flips them public).
+    YOUTUBE_SCHEDULE=asap publishes each video a few minutes after it is uploaded."""
     slots = [t.strip() for t in os.environ.get("YOUTUBE_SCHEDULE", "").split(",") if t.strip()]
+    if [s.lower() for s in slots] in (["asap"], ["now"]):
+        return [ASAP] * count  # resolved to "a few minutes from now" at the moment each video is sent
     times: list[str | None] = []
     for i in range(count):
         if i >= len(slots):
@@ -308,6 +323,7 @@ def upload_day(day: date, dry_run: bool = False) -> list[str]:
             log.warning("YouTube: no metadata for %s, skipping", video.name)
             continue
         privacy = meta.get("privacy") or default_privacy
+        at = _resolve_publish_time(at)
         if video.name in record:  # an earlier attempt's outcome is unknown: look before posting again
             if recent is False:
                 recent = _recent_upload_ids(youtube)
