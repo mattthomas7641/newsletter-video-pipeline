@@ -37,6 +37,22 @@ asks viewers to comment.
   twice; stories covered on any earlier day are skipped, even when retitled (fuzzy title
   match against every past day's output).
 
+## What's new
+
+- **Avatar explainer format ("avx"):** a narrator on a plain colour background with one purpose-built motion graphic
+  per beat (kinetic type, a counting number, a timeline, a versus, a chart, a relation, a checklist). The writer is
+  `avx_writer.py`; the look is `avx_builder.py` and `hf_template_avx/`. See [Video styles](#video-styles).
+- **Runs in the cloud:** a Cloud Run job started by Cloud Scheduler makes and posts the day's videos with no laptop
+  involved: [docs/cloud.md](docs/cloud.md). A single video renders in under 3 minutes there.
+- **Wider story scope:** Jev now also asks "would a well-informed follower of AI and tech want to know this today?",
+  which lifted the share of must-cover stories in the writer's top-30 pool from 73% to 100% in a labelled two-week sample (595 stories; the labels came from Claude, so they are a proxy for your own judgment).
+  Short stories are expanded from their linked article, or bundled into a quick-hits video.
+- **Clearer, honest writing:** the writer is told to open on the news in plain words, explain every unfamiliar name,
+  and report a story as it is. Code checks reject question openers, fragments, jargon in the hook and dramatic words
+  the story does not use (`jargon.py`, `avx_writer.py`).
+- **Cost controls:** a per-run Claude budget, a cost line in every run summary, a cheap shortening step for text over
+  its character cap, and measured numbers in [Cost](#cost).
+
 ## Content rights
 
 You supply three things, and you're responsible for having the right to use each of them
@@ -329,7 +345,15 @@ summary it answers two questions:
 - **How newsworthy?** Low (minor, routine or sponsored-feeling), Medium (solid but
   unsurprising) or High (surprising, consequential, weird or genuinely useful).
 
-The in-scope stories are ranked by newsworthiness, and the top ones go to Claude: three per
+A third question, **important?** ("would a well-informed person who follows AI and technology want to know this
+today?", `_JEV_IMPORTANT_INSTRUCTIONS`), is also a way into scope at 0.4 (`JEV_IMPORTANT_THRESHOLD`) and its score is
+added to the ranking. Measured on 595 stories from two weeks of all four editions, labelled must-cover / worth-covering
+/ skip by Claude, the first two questions let in 75% of the must-cover stories (Meta's $95B stock offering,
+Anthropic's IPO filing and GPT-6 Cyber were all below 0.5 on the topic question); with this question the writer's
+top-30 pool held all of them. Jev costs $0.042 per million input tokens with free output, so the extra question is
+effectively free.
+
+The in-scope stories are ranked by newsworthiness plus importance, and the top ones go to Claude: three per
 requested video, and never fewer than 15 (`JEV_POOL_MULTIPLIER`, `JEV_MIN_POOL` in
 `script_writer.py`), so Claude still has real choice and room to combine related stories. A
 typical morning: 40 candidates in, 18 in scope, all 18 passed to the writer.
@@ -340,6 +364,14 @@ Failure handling:
   candidate unranked.
 - A later single call fails: that story is kept at the bottom of the ranking rather than
   silently dropped.
+
+### What the editor may drop, and what it may not
+
+The avatar writer's editor pass reads every video like a first-time viewer. A flagged video gets one rewrite. After
+it, **accuracy flags still drop the video** (an unsupported claim, a graphic that shows the wrong thing or has the
+actor and the one acted on the wrong way round, two stories mixed together), while **clarity flags ship it with the
+notes logged** (an unexplained name, a vague line, a repeated point). Dropping on any remaining flag threw away three
+accurate videos in a row on 2026-11-10.
 
 ### Accuracy: evidence, fact check and refill
 Every video goes through three accuracy layers (`newsletter_video/factcheck.py`, shared by all three writers):
@@ -415,13 +447,17 @@ until the project passes Google's free YouTube API Services audit — in practic
 `YOUTUBE_PRIVACY=public` here posted videos as public directly, no audit involved, so that
 claim didn't hold for this project. If it does for yours, `--publish` (or YouTube Studio) flips
 already-uploaded videos public. While the consent screen is in "Testing", the sign-in expires
-every 7 days; rerun `--auth`. "~6 uploads/day" on the default quota is a commonly cited estimate,
+every 7 days; rerun `--auth`. Moving the OAuth app to "In production" (it needs a homepage and a privacy-policy link;
+[docs/privacy.md](docs/privacy.md) is one) and re-authorizing once gives a token that does not expire weekly.
+`YOUTUBE_PRIVACY=public` with no `YOUTUBE_SCHEDULE` publishes each video the moment it is uploaded, and the daily run
+uploads each video while the next one renders (`STREAM_UPLOADS=0` goes back to uploading at the end);
+`YOUTUBE_SCHEDULE=asap` publishes five minutes after each upload instead. "~6 uploads/day" on the default quota is a commonly cited estimate,
 not a confirmed or enforced limit — 16 uploads succeeded in one day here with no quota errors;
 check Google Cloud Console → APIs & Services → YouTube Data API v3 → Quotas for the real number.
 
 ## Running it automatically every day
 
-A `launchd` job runs `run_daily.sh` every morning. See
+In the cloud: [docs/cloud.md](docs/cloud.md). On a Mac, a `launchd` job runs `run_daily.sh` every morning. See
 `com.tldrbrainrot.daily.plist` in `~/Library/LaunchAgents/`.
 
 ```bash
@@ -450,6 +486,21 @@ renders and uploads exactly as the full run would, under the same lock, watchdog
 has (made from the panel before the run) is kept, not replaced. *Run the full daily job now…* in
 the panel always runs the full job, whatever `DAILY_MODE` says. `DAILY_MODE=full` (or unset)
 is exactly the previous behaviour.
+
+## Cost
+
+Measured November 2026 on `claude-sonnet-5-5` ($2 / $10 per million input / output tokens), per finished avatar video:
+about **$0.14** with the original writer prompt and about **$0.22** with the lean prompt that adds the clarity and
+honesty rules; Cloud Run adds an estimated $0.35 a day (4 vCPU / 8 GiB for about 90 minutes, before the free tier). Roughly 65% of the writer's billed output is hidden reasoning, which is
+why a longer prompt costs more (a longer clarity prompt raised output per video by 46%) and why a lower effort
+setting, which cut tokens 22%, also cut first-pass success from 6 of 10 to 3 of 10. What did not work: optional
+fields or per-style variants in the output schema (the API refuses both: "Schema is too complex", "compiled grammar is
+too large"), and Haiku 5.5 as the drafter (thinking off cannot count or follow several rules; with it on it reasons
+without end). What did work: Haiku 5.5 for shortening on-screen text, with a plain-code trim as the fallback.
+
+Guards: `CLAUDE_RUN_BUDGET_USD` (default 4.0, 0 = off) stops a run's Claude calls once it has spent that much, the run
+summary ends with a cost line, `AVX_DRAFT_MODEL` / `AVX_SHORTEN_MODEL` pick the models for drafting and shortening, and
+the Batch API (50% off, results usually within an hour) is the next lever if you need the cost lower.
 
 ## When things fail
 
