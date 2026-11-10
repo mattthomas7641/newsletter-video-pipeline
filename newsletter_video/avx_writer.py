@@ -845,8 +845,8 @@ the story. Read each line aloud in your head: if a friend would say "wait, what?
 (who did what, or what is surprising), e.g. "OpenAI raised eleven billion dollars and still missed its \
 target." Never paraphrase or compress the story's title or opening line into a riddle. A short second \
 sentence may add the stakes. Its on-screen `lines` are those same words.
-- Each scene advances exactly ONE idea, and the scenes build in order: the claim (hook) -> the evidence \
-or how it works -> why it matters or what changes -> the catch, the twist or the takeaway -> the closing \
+- Each scene advances exactly ONE idea, and the scenes build in order: the claim (hook) -> why it \
+matters to the viewer -> the evidence or how it works -> the catch, the twist or the takeaway -> the closing \
 question. No scene repeats an earlier one in other words, and no scene is filler: never a recap scene \
 that lists again what was already said ("so three things: the round, the price, the doubts").
 - A stat or chart scene shows a number that directly proves the point its own line is making (the \
@@ -890,10 +890,12 @@ line tells them. One unexplained term or name in the opening and they stop follo
 happened. At most two proper nouns. Never a question ("Why wouldn't the labs just do it?"), never a fragment \
 ("Twelve brands. No hires. One owner."), never an abstract phrase ("the AI frontier just shifted", "the \
 landscape", "the race"), never jargon.
-- A name they will not know (a product, startup, lab, team or tool) gets a short descriptor the first time it \
-is said: "Microsoft's AI Frontiers lab", "OpenRouter, a service that picks AI models", "Anthropic, the maker \
-of Claude". Give a person a role before the name: "Nvidia CEO Jensen Huang". Never write "the labs", "the \
-company", "founders" or "your users" without saying who.
+- EVERY name except those household ones gets a short descriptor the first time it is said. That includes \
+Anthropic ("Anthropic, the company behind the Claude chatbot"), Sequoia ("Sequoia, a big Silicon Valley \
+investment firm"), Tencent ("Chinese tech giant Tencent"), Notion ("the note-taking app Notion"), OpenRouter \
+("OpenRouter, a service that picks AI models"), Linux, Stripe, GitHub, Cursor, xAI, Mistral and every startup, \
+lab, team, product or tool. Give a person a role before the name: "Nvidia CEO Jensen Huang". Never write "the \
+labs", "the company", "founders" or "your users" without saying who.
 - Jargon: use at most ONE term in the whole video that this viewer might not know, and define it in the same \
 sentence in 3-8 words ("inference, the cost of running the AI"). Replace every other such term with plain \
 words. Never put jargon in the hook. Plain wording for common terms: @GLOSSARY@
@@ -902,8 +904,11 @@ when the story itself gives the comparison.
 - One idea per sentence, subject-verb-object, 8-16 words, never more than 22, no clause before the subject, no \
 passive. Say it the way a person would say it to a friend: "you", plain verbs; never "leverage", "ecosystem", \
 "landscape", "stakeholders" or "solutions".
-- Within the first two scenes say what it means for the viewer. Clear is not dumbed down: keep the real names \
-and numbers, and explain only the one idea the story depends on.
+- Scene 2 OPENS with the stake: its first sentence says why this matters to the viewer or what changes for \
+them ("That matters if you pay for...", "For anyone using X, this means...", "It could make Y cheaper"), \
+resting on the story. Then the evidence. When a story has no direct effect on viewers, say what it signals \
+about where the industry is going. Clear is not dumbed down: keep the real names and numbers, and explain only \
+the one idea the story depends on.
 
 Keeping people watching (the first seconds decide everything)
 - Frame one is the news: the hook names the company and the most concrete fact (a number, a change, a first) \
@@ -1034,6 +1039,17 @@ SCENE_SCHEMA = {"type": "object", "properties": {
                 "suffix", "label", "source", "series", "x_labels", "text", "text_cue", "text2", "text2_cue", "cue"],
     "additionalProperties": False}
 
+import copy as _copy
+
+SCENE_SCHEMA_FULL = _copy.deepcopy(SCENE_SCHEMA)  # every field required and sent empty when unused (kept for comparison)
+# The writer used to type out every field of every scene, empty when the style does not use it (about a quarter of
+# its output). Only these four are required now; the converter (scene_from_writer) reads every other field with a
+# default, so a field a style does not use is simply left out.
+# TRIED AND REJECTED 2026-11-10, to stop the writer typing every unused field of every scene (about a quarter of its
+# output): (a) making every field but style/pose/eyebrow/say optional is refused by the API ("Schema is too complex");
+# (b) one object variant per scene style (anyOf) is refused too ("The compiled grammar is too large"). The schema has to
+# stay flat with every field required; the saving would need a different output format (text, parsed in code).
+
 _AVX_SCHEMA = {
     "type": "object",
     "properties": {
@@ -1099,6 +1115,18 @@ def _system_prompt() -> str:
     return prompt
 
 
+DRAFT_MODEL_DEFAULT = ""  # "" = the writer model (Sonnet) for everything; AVX_DRAFT_MODEL=claude-haiku-5-5 drafts on Haiku
+HAIKU_MAX_TOKENS = 32000  # a Haiku call that reasons without end stops here instead of at 64,000
+
+
+def draft_model() -> str:
+    """The model for the day's drafts, repairs and shortening (AVX_DRAFT_MODEL), or "" for the writer model. The editor
+    and the fact check always use the writer model. Measured 2026-11-10: Haiku 5.5 with its thinking off wrote two
+    videos in 14 s and 2.8k output tokens (about $0.003); Sonnet 5.5 billed 11k output tokens, about 65% of them hidden
+    reasoning (about $0.11)."""
+    return os.environ.get("AVX_DRAFT_MODEL", DRAFT_MODEL_DEFAULT).strip()
+
+
 def _claude_json(system: str, user: str, schema: dict, what: str, key: str) -> dict | None:
     """One structured-output call (same model, effort and retries as the other writers); None when Claude is
     unavailable or the answer is unusable. `key` is the list the answer must hold."""
@@ -1110,14 +1138,23 @@ def _claude_json(system: str, user: str, schema: dict, what: str, key: str) -> d
         return None
     try:
         output_config = {"format": {"type": "json_schema", "schema": schema}}
-        effort = os.environ.get("WRITER_EFFORT", DEFAULT_WRITER_EFFORT)
-        if effort:
-            output_config["effort"] = effort
+        model = draft_model() if what in ("writer", "shortener") and draft_model() else WRITER_MODEL
+        extra: dict = {}
+        max_tokens = 64000
+        if model.startswith("claude-haiku"):
+            # Haiku reasons without end at any effort setting that leaves thinking on; with it off it answers directly.
+            extra["thinking"] = {"type": "disabled"}
+            max_tokens = HAIKU_MAX_TOKENS
+        else:
+            effort = os.environ.get("WRITER_EFFORT", DEFAULT_WRITER_EFFORT)
+            if effort:
+                output_config["effort"] = effort
         client = anthropic.Anthropic(timeout=ANTHROPIC_TIMEOUT_SECONDS, max_retries=2)
         response = _stream_with_retries(
             client, anthropic,
-            model=WRITER_MODEL,
-            max_tokens=64000,
+            model=model,
+            max_tokens=max_tokens,
+            **extra,
             # The prompt is the same for the first call and the repair call: cache it.
             system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": user}],
@@ -1279,7 +1316,8 @@ SHORTEN_SYSTEM = (
     "You shorten on-screen text for a vertical news video. For each item, give a shorter version of `text` that fits "
     "`max` characters INCLUDING spaces (count them), keeps the meaning, and keeps every number and name. If `say` is "
     "given, it is the narrator's spoken line and the shortened text must be made only of words copied, in order, from "
-    "`say`. Prefer a shorter word to dropping a word. Answer only with the JSON.")
+    "`say`. `length` is how many characters the text has now: the answer must be SHORTER than that and at most `max`. "
+    "Prefer a shorter word to dropping a word. Answer only with the JSON.")
 
 
 def _replace_text(node: Any, old: str, new: str) -> Any:
@@ -1291,54 +1329,63 @@ def _replace_text(node: Any, old: str, new: str) -> Any:
     return new if node == old else node
 
 
-def _shorten_over_cap(results: list, candidates: list[Story]) -> int:
-    """A rejected video whose ONLY problems are on-screen texts a few characters over their cap gets just those
-    texts shortened (one small call for all such videos, about 100 tokens) instead of being rewritten whole (about
-    5,000 tokens). `results` holds (video, scenes | None, errors) and is updated in place; returns how many videos
-    were fixed. A video that still fails after the shortening stays rejected and goes to the normal rewrite."""
+def _shorten_over_cap(results: list, candidates: list[Story], rounds: int = 3) -> int:
+    """A rejected video whose ONLY problems are on-screen texts over their cap gets just those texts shortened
+    (one small call for all such videos per round, about 100 tokens) instead of being rewritten whole (about 5,000
+    tokens, or far more with hidden reasoning). Each round tells the model how long each text is now and the limit it
+    must reach, and a text that is still over goes round again (up to `rounds`). `results` holds (video, scenes |
+    None, errors) and is updated in place; returns how many videos were fixed. A video that still fails stays
+    rejected, with its shortened texts and whatever errors remain, and goes to the normal rewrite."""
     import copy
 
-    jobs = []  # (video index, scene index, old text, cap, spoken line or "")
-    for i, (video, scenes, errs) in enumerate(results):
-        if scenes is not None or not errs or not isinstance(video, dict):
-            continue
-        parsed = [_CAP_ERROR.match(e) for e in errs]
-        if not all(parsed):
-            continue
-        raw_scenes = video.get("scenes") or []
-        for m in parsed:
-            n = int(m.group(1)) - 1
-            if not 0 <= n < len(raw_scenes) or not isinstance(raw_scenes[n], dict):
-                break
-            say = str(raw_scenes[n].get("say", "")) if "line" in m.group(3) else ""
-            jobs.append((i, n, m.group(5), int(m.group(7)), say))
-        else:
-            continue
-        jobs = [j for j in jobs if j[0] != i]  # a video we could not map is left to the full rewrite
-    if not jobs:
-        return 0
-    items = [{"id": k, "text": text, "max": cap, **({"say": say} if say else {})} for k, (_, _, text, cap, say) in enumerate(jobs)]
-    data = _claude_json(SHORTEN_SYSTEM, json.dumps(items), _SHORTEN_SCHEMA, "shortener", "items")
-    if not data:
-        return 0
-    shorter = {int(x["id"]): str(x["text"]).strip() for x in data["items"] if isinstance(x, dict) and "id" in x}
     fixed = 0
-    for i in sorted({j[0] for j in jobs}):
-        video = copy.deepcopy(results[i][0])
-        changed = 0
-        for k, (vi, n, old, cap, _) in enumerate(jobs):
-            new = shorter.get(k, "")
-            if vi == i and new and len(new) <= cap:
-                video["scenes"][n] = _replace_text(video["scenes"][n], old, new)
-                changed += 1
-        if not changed:
-            continue
-        try:
-            scenes, repairs = check_video(video, candidates)
-        except AvxPlanError:
-            continue
-        results[i] = (video, scenes, repairs + [f"shortened {changed} on-screen text(s) that were over their cap"])
-        fixed += 1
+    for _ in range(rounds):
+        jobs = []  # (video index, scene index, current text, cap, spoken line or "")
+        for i, (video, scenes, errs) in enumerate(results):
+            if scenes is not None or not errs or not isinstance(video, dict):
+                continue
+            parsed = [_CAP_ERROR.match(e) for e in errs]
+            if not all(parsed):
+                continue
+            raw_scenes = video.get("scenes") or []
+            mine = []
+            for m in parsed:
+                n = int(m.group(1)) - 1
+                if not 0 <= n < len(raw_scenes) or not isinstance(raw_scenes[n], dict):
+                    mine = []
+                    break
+                say = str(raw_scenes[n].get("say", "")) if "line" in m.group(3) else ""
+                mine.append((i, n, m.group(5), int(m.group(7)), say))
+            jobs += mine
+        if not jobs:
+            break
+        items = [{"id": k, "text": text, "length": len(text), "max": cap, **({"say": say} if say else {})}
+                 for k, (_, _, text, cap, say) in enumerate(jobs)]
+        data = _claude_json(SHORTEN_SYSTEM, json.dumps(items), _SHORTEN_SCHEMA, "shortener", "items")
+        if not data:
+            break
+        shorter = {int(x["id"]): str(x["text"]).strip() for x in data["items"] if isinstance(x, dict) and "id" in x}
+        progressed = False
+        for i in sorted({j[0] for j in jobs}):
+            video = copy.deepcopy(results[i][0])
+            changed = 0
+            for k, (vi, n, old, cap, _) in enumerate(jobs):
+                new = shorter.get(k, "")
+                if vi == i and new and len(new) < len(old):  # only progress counts
+                    video["scenes"][n] = _replace_text(video["scenes"][n], old, new)
+                    changed += 1
+            if not changed:
+                continue
+            progressed = True
+            try:
+                scenes, repairs = check_video(video, candidates)
+            except AvxPlanError as exc:
+                results[i] = (video, None, exc.errors)  # still over (or other problems now): the next round looks again
+                continue
+            results[i] = (video, scenes, repairs + [f"shortened {changed} on-screen text(s) that were over their cap"])
+            fixed += 1
+        if not progressed:
+            break
     if fixed:
         log.info("Avatar explainer: %d video(s) fixed by shortening on-screen text, no rewrite needed", fixed)
     return fixed
@@ -1372,22 +1419,32 @@ def _validated_videos(user: str, n_videos: int, candidates: list[Story],
         # Only the rejected videos are rewritten: returning a whole day of scene lists again would run past the
         # output limit (one avx video is ~5k output tokens).
         keep = [middle_sequence(sc) for _, sc, _ in results if sc] + [tuple(x) for x in avoid_shapes]
-        repair = (user + "\n\nThe automatic checks rejected these videos you wrote:\n" + notes
-                  + f"\n\nRewrite ONLY these {len(rejected)} videos so they pass, in the order listed. Do not reuse "
-                  "these middle scene sequences, which other videos already use: "
-                  + ("; ".join(" -> ".join(x) for x in keep) or "none")
-                  + ".\n\nThe rejected videos as you wrote them:\n" + json.dumps([v for _, v, _ in rejected]))
-        data2 = _call_writer(repair)
-        if data2 is not None:
-            videos2 = list(data2.get("videos") or [])
-            for n, (i, _, _) in enumerate(rejected):
-                if n >= len(videos2):
-                    continue
-                try:
-                    scenes, repairs = check_video(videos2[n], candidates)
-                    results[i] = (videos2[n], scenes, repairs)
-                except AvxPlanError as exc:
-                    results[i] = (videos2[n], None, exc.errors)
+        shapes = "; ".join(" -> ".join(x) for x in keep) or "none"
+
+        def rewrite(item):
+            i, v, errs = item
+            note = (f"- video ({str(v.get('title', '') if isinstance(v, dict) else '')[:60]!r}):\n  " + "\n  ".join(errs))
+            ask = (user + "\n\nThe automatic checks rejected this video you wrote:\n" + note
+                   + "\n\nRewrite ONLY this one video so it passes (the list holds exactly one video). Do not reuse "
+                   "these middle scene sequences, which other videos already use: " + shapes
+                   + ".\n\nThe rejected video as you wrote it:\n" + json.dumps(v))
+            return i, _call_writer(ask)
+
+        # One call per rejected video, in parallel: the same tokens as one big call, but the wait is the slowest
+        # single video's instead of all of them one after another.
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=min(4, len(rejected))) as pool:
+            answers = list(pool.map(rewrite, rejected))
+        for i, data2 in answers:
+            videos2 = list((data2 or {}).get("videos") or [])
+            if not videos2:
+                continue
+            try:
+                scenes, repairs = check_video(videos2[0], candidates)
+                results[i] = (videos2[0], scenes, repairs)
+            except AvxPlanError as exc:
+                results[i] = (videos2[0], None, exc.errors)
         for i, why in _clashes(results, avoid_shapes).items():
             results[i] = (results[i][0], None, [why])
     accepted = []

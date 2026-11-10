@@ -152,7 +152,7 @@ def test_text_over_its_cap_is_shortened_without_rewriting_the_video(monkeypatch)
         import json
 
         items = json.loads(user)
-        assert items == [{"id": 0, "text": "growth from a year ago, in total", "max": 28}]
+        assert items == [{"id": 0, "text": "growth from a year ago, in total", "length": 32, "max": 28}]
         return {"items": [{"id": 0, "text": "growth from a year ago"}]}
 
     monkeypatch.setattr(w, "_claude_json", fake_claude)
@@ -189,3 +189,27 @@ def test_a_video_with_other_problems_is_never_sent_to_the_shortener(monkeypatch)
     results = [(v, None, ["scene 2 (stat): label 'growth from a year ago, in total' is 33 characters (at most 28)",
                           "the hook opens with a question ('Why did Nvidia make so much money?'); open with the news"])]
     assert w._shorten_over_cap(results, [STORY]) == 0 and called == []
+
+
+def test_a_text_still_over_after_the_first_round_is_shortened_again_with_its_new_length(monkeypatch):
+    import json
+
+    from tests.avx_fixtures import STORY
+
+    seen = []
+    replies = iter(["growth from last year!!", "growth from a year ago"])  # 23 characters, then 22: the cap is 28
+
+    def fake_claude(system, user, schema, what, key):
+        items = json.loads(user)
+        seen.append((items[0]["text"], items[0]["length"]))
+        return {"items": [{"id": 0, "text": next(replies)}]}
+
+    video = _over_cap_video()
+    video["scenes"][1]["label"] = "growth from the same quarter last year, in total"  # 48 characters
+    monkeypatch.setattr(w, "_claude_json", fake_claude)
+    monkeypatch.setattr(w, "_call_writer", lambda user: {"videos": [video]})
+    # the cap is tightened to 22: the first reply (23 characters) is still over, the second (22) fits
+    monkeypatch.setitem(w.CAPS, "stat_label", 22)
+    accepted = w._validated_videos("write", 1, [STORY])
+    assert seen == [("growth from the same quarter last year, in total", 48), ("growth from last year!!", 23)]
+    assert len(accepted) == 1 and accepted[0][1][1]["data"]["label"] == "growth from a year ago"
