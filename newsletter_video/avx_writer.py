@@ -871,7 +871,9 @@ the moment that element should appear. A list item, a timeline step or a versus 
 that names it. Write each `say` so the elements are named early enough to be seen: never cue the last \
 word of the line.
 - On-screen text is short and punchy and respects every character cap above; text over a cap is rejected \
-and the video is dropped.
+and the video is dropped. The check is exact: ONE character over drops the whole video. Count the characters \
+(spaces included) of every label, tag, item, line and card before you answer, and aim for two under the cap. \
+When a phrase will not fit, use a shorter word, never a longer one.
 - `title`: a post title under 70 characters, usually 4-10 words that read like speech: the specific news first \
 (company, number, what changed) in plain words, promising exactly what the video delivers; no all caps, no \
 clickbait, no emoji, no jargon. \
