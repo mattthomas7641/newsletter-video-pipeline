@@ -1254,6 +1254,9 @@ def critique(videos: list[tuple[str, list[dict], str]]) -> dict[int, list[str]] 
     return flagged
 
 
+_POLISH_ONLY = re.compile(r"^\s*scene \d+ \((opaque|unclear|repetitive|weak_hook)\)")
+
+
 def _critic_pass(user: str, accepted: list[tuple[dict, list[dict]]], candidates: list[Story]) -> list[tuple[dict, list[dict]]]:
     """The editor reads every accepted video; a flagged one gets ONE rewrite with the editor's reasons, is
     validated and reviewed again, and is dropped if it is still flagged (never shipped)."""
@@ -1314,6 +1317,15 @@ def _critic_pass(user: str, accepted: list[tuple[dict, list[dict]]], candidates:
     if second is None:  # the editor could not run again: a rewrite nobody re-read is not shipped
         second = {k: ["the editor could not review the rewrite"] for k in range(len(order))}
     still = {order[k]: reasons for k, reasons in second.items()}
+    # Accuracy problems (an unsupported claim, a graphic that shows the wrong thing, two stories mixed) still drop a
+    # video. Polish problems (an unexplained name, a vague line, a repeated point) do not: after the one rewrite the
+    # video ships and the notes are logged. 2026-11-10: dropping on any remaining flag threw away three accurate
+    # videos in a row ($0.55 for none).
+    for i in list(still):
+        if i in fixed and all(_POLISH_ONLY.match(r) for r in still[i]):
+            log.warning("Avatar explainer: %r ships with clarity notes the rewrite did not fully clear:\n  %s",
+                        str(fixed[i][0].get("title", "")), "\n  ".join(still[i]))
+            del still[i]
     out = []
     for i, pair in enumerate(accepted):
         title = str(pair[0].get("title", ""))
