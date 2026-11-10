@@ -15,6 +15,7 @@ import threading
 
 # model -> (USD per million input tokens, USD per million output tokens). Cache writes cost 1.25x input, reads 0.05x.
 PRICES = {
+    "claude-haiku-5-5": (0.10, 0.50),  # for prompts up to 100K tokens
     "claude-sonnet-5-5": (2.0, 10.0),
     "claude-opus-5-5": (4.0, 20.0),
     "claude-fable-5-1": (10.0, 50.0),
