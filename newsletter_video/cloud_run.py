@@ -28,6 +28,29 @@ SECRET_FILES = {
 }
 
 
+# Secrets that arrive as environment variables. A stray newline (easy to add when a value is piped into Secret
+# Manager) makes an HTTP header invalid, which the Anthropic client reports as a bare "connection error".
+CLEAN_ENV = ("ANTHROPIC_API_KEY", "TYPESAFE_API_KEY", "NOTIFY_WEBHOOK_URL")
+
+
+def clean_env(env=None) -> list[str]:
+    """Strips whitespace and one pair of surrounding quotes from the secret env vars, in place. Returns the
+    names that changed."""
+    env = os.environ if env is None else env
+    changed = []
+    for name in CLEAN_ENV:
+        raw = env.get(name)
+        if raw is None:
+            continue
+        value = raw.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1].strip()
+        if value != raw:
+            env[name] = value
+            changed.append(name)
+    return changed
+
+
 def materialize_secrets(env=None, secrets_dir: Path = SECRETS_DIR) -> list[str]:
     """Writes each secret held in an environment variable to its file (0600). Returns the file names written."""
     env = os.environ if env is None else env
@@ -47,6 +70,9 @@ def materialize_secrets(env=None, secrets_dir: Path = SECRETS_DIR) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    fixed = clean_env()
+    if fixed:
+        log.warning("Cleaned stray whitespace from: %s (fix the stored secret too)", ", ".join(fixed))
     log.info("Secret files written: %s", ", ".join(materialize_secrets()) or "none (using the files already there)")
 
     from . import cloud_state, run_pipeline

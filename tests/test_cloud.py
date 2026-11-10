@@ -200,3 +200,14 @@ def test_macos_popup_only_on_a_mac(monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")
     notify.notify("t", "m")
     assert calls == [("t", "m")]
+
+
+def test_clean_env_strips_newlines_and_quotes_from_secret_variables():
+    env = {"ANTHROPIC_API_KEY": "sk-abc\n", "TYPESAFE_API_KEY": ' "key123" ', "NOTIFY_WEBHOOK_URL": "https://ntfy.sh/t\r\n",
+           "OTHER": "keep \n"}
+    changed = cloud_run.clean_env(env)
+    assert set(changed) == {"ANTHROPIC_API_KEY", "TYPESAFE_API_KEY", "NOTIFY_WEBHOOK_URL"}
+    assert env == {"ANTHROPIC_API_KEY": "sk-abc", "TYPESAFE_API_KEY": "key123",
+                   "NOTIFY_WEBHOOK_URL": "https://ntfy.sh/t", "OTHER": "keep \n"}
+    assert cloud_run.clean_env(env) == []  # already clean: nothing to do
+    assert cloud_run.clean_env({}) == []
