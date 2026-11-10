@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import urllib.request
 
 log = logging.getLogger("newsletter_video")
@@ -61,7 +62,7 @@ def notify(title: str, message: str, ok: bool = False) -> None:
     """Shows `title`/`message` wherever the owner has asked to see it. Logs
     at the matching level too, so pipeline.log has the same line."""
     (log.info if ok else log.error)("NOTIFY %s: %s", title, message)
-    if os.environ.get("NOTIFY_MACOS", "1") != "0":
+    if os.environ.get("NOTIFY_MACOS", "1") != "0" and sys.platform == "darwin":
         try:
             _macos_notification(title, message)
         except Exception as exc:  # no GUI session, osascript missing...
