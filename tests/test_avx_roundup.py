@@ -1,0 +1,134 @@
+"""Thin stories: expanded from their linked article, or bundled into one quick-hits video, so short but
+important news is not lost for being short (avx_writer.enrich_thin_stories / _roundup_scripts)."""
+from __future__ import annotations
+
+import copy
+
+from newsletter_video import avx_writer as w
+from newsletter_video.scraper import Story
+from tests.avx_fixtures import VIDEO
+
+
+def thin(title, n_words=20, url="https://example.com/a"):
+    return Story("ai", "Business", title, " ".join(["word"] * n_words), url)
+
+
+def rich(title):
+    return Story("ai", "Business", title, " ".join(["word"] * 60), "https://example.com/r")
+
+
+# --- expanding a thin story from its article ----------------------------------------------------------------
+
+def test_a_thin_story_gets_the_start_of_its_article_and_becomes_rich(monkeypatch):
+    monkeypatch.delenv("AVX_ENRICH_THIN", raising=False)
+    stories = [thin("Meta offers $95B in stock", 14), rich("A long story")]
+    article = "Meta plans a $95 billion stock offering to fund AI infrastructure. " * 20
+    out = w.enrich_thin_stories(stories, fetch=lambda url: article)
+    assert out[1] is stories[1]  # a rich story is untouched
+    assert out[0] is not stories[0] and stories[0].summary.count("From the linked article") == 0  # a copy
+    assert "From the linked article: Meta plans a $95 billion" in out[0].summary
+    assert w._words(out[0].summary) >= w.MIN_SUMMARY_WORDS and not w.is_thin(out[0])
+    assert len(out[0].summary) <= len(stories[0].summary) + len("\n\nFrom the linked article: ") + w.ENRICH_EXCERPT_CHARS + 2
+
+
+def test_an_unreadable_article_leaves_the_story_as_it_was(monkeypatch):
+    monkeypatch.delenv("AVX_ENRICH_THIN", raising=False)
+    stories = [thin("Behind a paywall", 15), thin("No link", 15, url="")]
+    out = w.enrich_thin_stories(stories, fetch=lambda url: "")
+    assert out[0] is stories[0] and out[1] is stories[1]
+
+
+def test_enrichment_can_be_turned_off(monkeypatch):
+    monkeypatch.setenv("AVX_ENRICH_THIN", "0")
+    stories = [thin("A thin one", 15)]
+    assert w.enrich_thin_stories(stories, fetch=lambda url: "x " * 200) == stories
+
+
+# --- the quick-hits video ---------------------------------------------------------------------------------------
+
+def _wire(monkeypatch, video_ids, capture=None):
+    """Stand in for the model: the writer answers with one video built on `video_ids`; the checks pass it through."""
+    def validated(user, n, pool, avoid=()):
+        if capture is not None:
+            capture.update(user=user, n=n, pool=list(pool))
+        v = copy.deepcopy(VIDEO)
+        v["story_ids"] = video_ids
+        return [(v, [{"style": "kinetic", "say": "x"}])]
+
+    monkeypatch.setattr(w, "_validated_videos", validated)
+    monkeypatch.setattr(w, "_critic_pass", lambda user, acc, pool: acc)
+    monkeypatch.setattr(w, "_fact_check_pass", lambda user, acc, pool, avoid=(): [(v, sc, {"verdict": "ok"}) for v, sc in acc])
+    monkeypatch.setattr(w, "script_from_scenes", lambda scenes, title, badge, stories, caption, tags:
+                        type("S", (), {"title": title, "badge": badge, "stories": stories, "fact_check": None,
+                                       "avx_scenes": scenes})())
+
+
+def test_thin_stories_are_bundled_into_one_quick_hits_video_that_takes_one_slot(monkeypatch):
+    monkeypatch.delenv("AVX_ROUNDUP", raising=False)
+    seen = {}
+    _wire(monkeypatch, [0, 1, 2], seen)
+    pool = [rich("Big one"), thin("Meta $95B", 16), thin("Broadcom debt", 15), thin("Marvell deal", 31),
+            thin("Too small to say anything", 5)]
+    scripts, used = w._roundup_scripts(pool, 10)
+    assert len(scripts) == 1 and len(used) == 3
+    assert {id(s) for s in pool[1:4]} == used  # exactly the three thin stories it covered
+    assert seen["n"] == 1 and len(seen["pool"]) == 3  # only thin stories that have something to say (>= 12 words)
+    assert "QUICK HITS" in seen["user"] and "[0]" in seen["user"] and "Big one" not in seen["user"]
+
+
+def test_no_quick_hits_video_without_enough_thin_stories_or_room_in_the_day(monkeypatch):
+    monkeypatch.delenv("AVX_ROUNDUP", raising=False)
+    _wire(monkeypatch, [0, 1])
+    two_thin = [rich("Big"), thin("One", 20), thin("Two", 20)]
+    assert w._roundup_scripts(two_thin, 10) == ([], set())
+    three_thin = [thin(f"T{i}", 20) for i in range(3)]
+    assert w._roundup_scripts(three_thin, 3) == ([], set())  # a 3-video day has no room
+    monkeypatch.setenv("AVX_ROUNDUP", "0")
+    assert w._roundup_scripts(three_thin, 10) == ([], set())
+
+
+def test_a_quick_hits_video_that_covers_a_single_story_is_dropped(monkeypatch):
+    monkeypatch.delenv("AVX_ROUNDUP", raising=False)
+    _wire(monkeypatch, [0])
+    scripts, used = w._roundup_scripts([thin(f"T{i}", 20) for i in range(4)], 10)
+    assert scripts == [] and used == set()
+
+
+def test_a_failure_in_the_quick_hits_step_never_breaks_the_day(monkeypatch):
+    monkeypatch.delenv("AVX_ROUNDUP", raising=False)
+
+    def boom(*a, **k):
+        raise RuntimeError("model down")
+
+    monkeypatch.setattr(w, "_validated_videos", boom)
+    assert w._roundup_scripts([thin(f"T{i}", 20) for i in range(4)], 10) == ([], set())
+
+
+def test_the_prompt_carries_the_engagement_and_quick_hits_rules():
+    system = w._system_prompt()
+    for phrase in ("Keeping people watching", "Frame one is the news", "Open a loop, then close it",
+                   "End so the video loops", "Quick-hits video", "NEEDS to know", "Vary the day"):
+        assert phrase in system, phrase
+    assert "quick-hits video" in w.CRITIC_SYSTEM
+
+
+def test_the_day_loses_one_single_story_video_to_the_quick_hits_video_and_never_repeats_its_stories(monkeypatch):
+    monkeypatch.delenv("AVX_ENRICH_THIN", raising=False)
+    monkeypatch.setenv("AVX_ENRICH_THIN", "0")
+    stories = [rich(f"Big {i}") for i in range(12)] + [thin("Meta $95B", 16), thin("Broadcom debt", 15), thin("Marvell", 31)]
+    roundup_script = type("S", (), {"avx_scenes": [{"style": "kinetic"}, {"style": "stat"}, {"style": "outro"}]})()
+    used = {id(stories[12]), id(stories[13]), id(stories[14])}
+    monkeypatch.setattr(w, "_roundup_scripts", lambda cands, n, avoid=(): ([roundup_script], used))
+    seen = {}
+
+    def validated(user, n, pool, avoid=(), first=None):
+        seen.update(n=n, pool=list(pool), avoid=avoid)
+        return []
+
+    monkeypatch.setattr(w, "_validated_videos", validated)
+    monkeypatch.setattr(w, "_first_drafts", lambda cands, n, avoid: {"videos": []})
+    out = w.llm_avx_scripts(stories, 10)
+    assert out == [roundup_script]  # no single videos in this stub, and the roundup is appended last
+    assert seen["n"] == 9  # the roundup takes one of the ten
+    assert all(not is_used for is_used in (id(c) in used for c in seen["pool"]))  # its stories are not told again
+    assert ("kinetic" not in seen["avoid"][-1]) and seen["avoid"][-1] == ("stat",)  # and its shape is avoided

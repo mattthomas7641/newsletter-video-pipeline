@@ -766,8 +766,27 @@ a tech product or company.
 product updates.
 - Each video tells ONE story (or 2 tightly linked ones). Never cover the same story in two videos; \
 newsletters often repeat a story under different titles, treat those as one.
-- Only pick a story whose summary gives enough substance for 5-8 distinct beats (a concrete claim plus \
-evidence, a consequence and a catch). Skip thin ones rather than padding them.
+- Prefer what a well-informed person following AI and tech NEEDS to know today (a major model or product \
+launch, a big funding, IPO, acquisition or compute deal, a legal, regulatory, security or national-security \
+event, a leadership shake-up at a major company, a real AI capability milestone) over smaller or merely \
+interesting items.
+- A single-story video needs a story whose summary gives enough substance for 5-8 distinct beats (a concrete \
+claim plus evidence, a consequence and a catch). Never stretch or pad a thin story; short stories belong in \
+the quick-hits video (below).
+
+Quick-hits video (only when the request asks for one)
+- Some important stories are short: a few facts, not enough for their own video. When the request asks for a \
+QUICK HITS video, write ONE video that covers 3 or 4 of the short stories it lists, so that none of that news \
+is missed. Pick the ones a well-informed follower of AI and tech most needs to know, and prefer stories that \
+share a theme (several AI-lab moves, several big-money deals).
+- Shape: scene 1 (kinetic) is a hook of ONE complete sentence that states real news and the count ("Meta, \
+Nvidia and SpaceX all made billion-dollar AI moves today."), never "here are three stories"; then ONE middle \
+scene per story, its style chosen by what that story gives (stat for its number, relation for who did what to \
+whom, list for 2-3 key facts, versus for a contrast), each `say` one or two sentences that name the company, \
+say what happened and why it matters; then the outro, whose question asks which of these stories will matter \
+most. 5-7 scenes in all. Keep every fact with the story it came from: never attach one story's number or \
+claim to another story's subject. `story_ids` lists every story used. The usual accuracy, length (85-115 \
+words) and cap rules apply.
 
 The scenes (`style` exactly; one spoken line each, one graphic each)
 - kinetic: ALWAYS the first scene, the hook. `lines`: 2-4 lines of at most {CAPS['kinetic_line']} characters \
@@ -808,8 +827,8 @@ in the accent serif), 2-3 `items` (at most {CAPS['list_item']} characters, each 
 items in order so each ticks in as it is spoken.
 - outro: ALWAYS the last scene. `lines`: 1-3 lines (at most {CAPS['outro_line']} characters) with the \
 closing question exactly as `say` asks it (no captions here: the type is the spoken words), one `em`; `text` = the call-to-action card (at most {CAPS['cta']} characters, e.g. "Tell \
-me below") with `text_cue`. Its `say` is the spoken sign-off: a reason to comment or follow, tied to \
-the topic.
+me below") with `text_cue`. Its `say` is the closing question (see "Keeping people watching"), tied to \
+the topic, never a generic sign-off.
 Every scene also has an `eyebrow` (a 1-3 word chapter label above the graphic, at most \
 {CAPS['eyebrow']} characters, e.g. "The stakes", "How we got here") and a `pose` for the narrator, by \
 name: @POSES@. Open on neutral, point at numbers and charts, think at a twist or a timeline, present at a \
@@ -853,9 +872,91 @@ that names it. Write each `say` so the elements are named early enough to be see
 word of the line.
 - On-screen text is short and punchy and respects every character cap above; text over a cap is rejected \
 and the video is dropped.
-- `title`: a scroll-stopping post title under 70 characters. `badge`: a 1-2 word topic label, under 14 \
-characters. `post_caption`: 1-3 short sentences: what happened and why it matters, plus a question that \
-invites comments. `hashtags`: 3-5 relevant hashtags without the # sign; no "shorts".
+- `title`: a post title under 70 characters, usually 4-10 words that read like speech: the specific news first \
+(company, number, what changed) in plain words, promising exactly what the video delivers; no all caps, no \
+clickbait, no emoji, no jargon. \
+`badge`: a 1-2 word topic label, under 14 characters. `post_caption`: 1-3 short sentences: what happened \
+(naming the source publication when the story gives one, e.g. "per The Verge") and why it matters, then one \
+specific question that invites a short reply. `hashtags`: 3-5 relevant hashtags without the # sign, the \
+companies and topics first (e.g. OpenAI, AI); no "shorts".
+
+Be understood on the first hearing (the viewer cannot pause, re-read or look anything up)
+- Picture a smart 25-year-old who uses ChatGPT and apps every day but does not work in tech. They know \
+OpenAI, Google, Apple, Microsoft, Meta, Amazon, Nvidia, Tesla and ChatGPT. They know nothing else unless the \
+line tells them. One unexplained term or name in the opening and they stop following the whole video.
+- Scene 1's first sentence is ONE complete statement of 8-18 words: a name they know, a concrete verb, what \
+happened. At most two proper nouns. Never a question ("Why wouldn't the labs just do it?"), never a fragment \
+("Twelve brands. No hires. One owner."), never an abstract phrase ("the AI frontier just shifted", "the \
+landscape", "the race"), never jargon.
+- A name they will not know (a product, startup, lab, team or tool) gets a short descriptor the first time it \
+is said: "Microsoft's AI Frontiers lab", "OpenRouter, a service that picks AI models", "Anthropic, the maker \
+of Claude". Give a person a role before the name: "Nvidia CEO Jensen Huang". Never write "the labs", "the \
+company", "founders" or "your users" without saying who.
+- Jargon: use at most ONE term in the whole video that this viewer might not know, and define it in the same \
+sentence in 3-8 words ("inference, the cost of running the AI"). Replace every other such term with plain \
+words. Never put jargon in the hook. Plain wording for common terms: @GLOSSARY@
+- Numbers get a unit and what they measure ("eleven billion dollars raised"). Make a huge number human only \
+when the story itself gives the comparison.
+- One idea per sentence, subject-verb-object, 8-16 words, never more than 22, no clause before the subject, no \
+passive. Say it the way a person would say it to a friend: "you", plain verbs; never "leverage", "ecosystem", \
+"landscape", "stakeholders" or "solutions".
+- Within the first two scenes say what it means for the viewer. Clear is not dumbed down: keep the real names \
+and numbers, and explain only the one idea the story depends on.
+
+Keeping people watching (the first seconds decide everything)
+- Frame one is the news: the hook names the company and the most concrete fact (a number, a change, a first) \
+in plain words, e.g. "OpenAI cut its API prices by up to eighty percent." No greeting, no channel name, no \
+"today we...", no background before the news.
+- Within the first two scenes tell the viewer why they should care: who is affected or what changes for them \
+(a developer, a ChatGPT user, an investor, anyone with a phone), only when the story supports it.
+- Open a loop, then close it. If the story has a catch, a twist or a surprising detail, hint at it in the \
+hook's second sentence or in scene 2 ("but there is a catch") WITHOUT giving it away, and pay it off in the \
+catch scene about three quarters of the way through. Never promise a payoff the story does not hold; never \
+say "wait for it".
+- Keep it moving: one idea per scene, each `say` about 10-18 words, a new graphic every beat, text on screen \
+short.
+- Say what it means: one scene (usually the one before the question) gives the video's own takeaway in plain \
+words ("The lesson:", "So ask yourself..."), resting on quoted story lines and adding no new fact and no \
+prediction stated as fact.
+- Attribute: when the story names who reported or claims something (a publication, a company, an agency), \
+say so in the line ("according to The Verge", "the company says") and keep reported, claimed and planned \
+framing.
+- End so the video loops: the last line is ONE specific question a viewer can answer in a word or two (yes or \
+no, this or that, which one, a prediction), and it echoes the hook's subject so the video flows back into its \
+first line. No "like and subscribe", no long sign-off, no generic "what do you think?".
+- Vary the day: across the day's videos change the first element of the hook (company name first, a number \
+first, a contrast, the consequence), the kind of closing question (yes or no, pick one, prediction, personal \
+experience) and the scene count; never reuse a hook sentence pattern or a closing question's wording.
+- Never: doom or shock framing ("AI will take your job"), "this changes everything", "you won't believe", \
+personal financial advice, or a promise the video does not keep.
+
+What the biggest tech Shorts have in common (ONLY when the story itself has it)
+- THE RULE BEHIND ALL OF THESE: report the story as it is. Conflict, rivalry, stakes, urgency, a surprise or a \
+twist go in a video only when the story's own text states them. A neutral story (a launch, a feature, a \
+report, a funding round with no dispute) is told plainly: what happened and why it matters. Never add a \
+villain, a fight, a "battle", a threat, a crisis or hype to make a story more clickable; never turn a \
+neutral story into a conflict. Dramatic words (battle, war, clash, slams, destroys, showdown, shocking, \
+explosive, panic, chaos, bombshell...) are allowed only if the story uses them, and they are checked.
+- If the story really has a named actor in a conflict, a reversal or a first, lead with it: "Anthropic says no \
+more...", "Apple is pushing its software chief to...". A story that really has a rival, an opponent, a ban or \
+a broken promise leads with that. Otherwise lead with the plainest true statement of the news.
+- Pick ONE hero number and build the video around it: state it in the hook or scene 2, and make it vivid only \
+with a comparison the story itself gives. Never stack statistics.
+- When the story has a visible thing with a price or a superlative (a $399 robot, the fastest chip, 2 \
+terabytes of memory), lead with the thing, not the company announcement.
+- When the story gives an earlier claim or quote that the news contradicts or echoes, set then against now \
+("In 2010 Steve Jobs said... Today Apple...").
+- For two-sided stories use the shape "X has a problem: A, but B" ("billions of dollars of chips, not enough \
+electricity to run them").
+- For tools and products, say what a viewer can do with it today, when the story says so.
+- Optionally pose a short guess-it question and answer it in the very next line, but only when the answer is \
+in the story.
+- A story that is genuinely surprising, costly, threatening or unexpectedly cheap or powerful can lead with \
+that, in the story's own plain terms. A story that is not is not made to sound like it is.
+- The outro's call-to-action card alternates across the day between asking for a reply and asking the viewer to \
+send the video to a specific kind of person ("Send to a dev friend", "Send to your boss").
+- Rotate the story type across the day (conflict, object, utility, explainer, then-versus-now); never the same \
+type twice in a row.
 
 Accuracy (checked automatically: a video that breaks these is rejected)
 - Use only facts present in the provided stories. Never invent facts, numbers, dates, names, quotes or \
@@ -875,6 +976,22 @@ tokens", "1.8 billion dollars"); symbols like "$" belong only on screen.
 """
 
 AVX_WRITER_SYSTEM = AVX_WRITER_SYSTEM.replace("@SCOPE@", factcheck.SCOPE_NOTE)
+
+
+def _glossary_text() -> str:
+    """The plain-words glossary as one prompt line: 'term = plain meaning; ...' (singular/plural pairs merged)."""
+    from .jargon import GLOSSARY
+
+    seen, parts = set(), []
+    for term, plain in GLOSSARY.items():
+        if plain in seen:
+            continue
+        seen.add(plain)
+        parts.append(f"{term} = {plain}")
+    return "; ".join(parts) + "."
+
+
+AVX_WRITER_SYSTEM = AVX_WRITER_SYSTEM.replace("@GLOSSARY@", _glossary_text())
 
 _STR = {"type": "string"}
 _SIDE_SCHEMA = {"type": "object", "properties": {
@@ -1042,6 +1159,38 @@ def _video_stories(video: Any, candidates: list[Story]) -> list[Story]:
     return [candidates[i] for i in dict.fromkeys(ids)]
 
 
+# Dramatic framing words. A video may use one only if the stories it covers use that word (a story about a price
+# war may say "war"). Everything else is the writer adding drama the story does not have.
+DRAMA_WORDS = ("battle", "war", "clash", "clashes", "slams", "slammed", "slam", "destroys", "destroyed", "crushes",
+               "crushed", "showdown", "bombshell", "shocking", "shocks", "explosive", "panic", "chaos", "meltdown",
+               "blasts", "blasted", "rips", "nightmare", "disaster", "crisis", "collapse", "implodes", "scandal",
+               "fires back", "takes aim", "under fire", "feud", "turf war", "fight", "fights", "fighting", "threat",
+               "threatens", "terrifying", "alarming", "insane", "game-changer", "revolutionary", "devastating",
+               "stunning", "stuns", "unbelievable", "mind-blowing")
+
+
+def drama_problems(texts: list[str], source: str) -> list[str]:
+    """Dramatic words in the video's own wording that the story's text does not contain, as messages for the writer
+    (empty when there are none). Matched as whole words, case-insensitively; each reported once."""
+    own = " ".join(texts)
+    src = source.lower()
+    out = []
+    for word in DRAMA_WORDS:
+        pattern = rf"(?<![\w-]){re.escape(word)}(?![\w-])"
+        if re.search(pattern, own, re.I) and not re.search(pattern, src):
+            out.append(f"the video uses the dramatic word {word!r}, which the story does not; report the story "
+                       "as it is, in plain words, without adding conflict, threat or hype")
+    return out
+
+
+def _line_texts(scene: dict) -> list[str]:
+    """The on-screen lines of a kinetic scene as plain strings (whatever shape the validator left them in)."""
+    out = []
+    for item in scene.get("lines") or []:
+        out.append(str(item.get("text", item.get("t", ""))) if isinstance(item, dict) else str(item))
+    return out
+
+
 def check_video(video: Any, candidates: list[Story]) -> tuple[list[dict], list[str]]:
     """One video of Claude's answer, converted and validated against its own stories (strict)."""
     if not isinstance(video, dict):
@@ -1055,10 +1204,23 @@ def check_video(video: Any, candidates: list[Story]) -> tuple[list[dict], list[s
     raw = video.get("scenes")
     if not isinstance(raw, list) or not raw:
         raise AvxPlanError(errors + ["scenes must be a non-empty list"])
+    from . import jargon
+
+    first = raw[0] if isinstance(raw[0], dict) else {}
+    errors += jargon.opening_problems(str(first.get("say", "")), " ".join(_line_texts(first)),
+                                      roundup=len(_video_stories(video, candidates)) >= 3)
     try:
         scenes, repairs = validate_scenes([scene_from_writer(s) if isinstance(s, dict) else s for s in raw], source, strict=True)
     except AvxPlanError as exc:
         raise AvxPlanError(errors + exc.errors) from None
+    # An opening a cold viewer cannot follow (a question, a fragment, jargon, an abstract phrase) goes back to the
+    # writer with the exact reason. A quick-hits video (3+ stories) names several companies, which is fine.
+    if source:  # drama the story does not have: its own wording only (titles, caption, spoken and on-screen text)
+        own = [str(video.get("title", "")), str(video.get("post_caption", ""))]
+        for sc in scenes:
+            own.append(str(sc.get("say", "")))
+            own += [t for _, t in _texts_on_screen(sc)]
+        errors += drama_problems(own, source)
     if source:  # grounded generation: every spoken line's quotes must really be in the stories
         ev_errors, ev_warnings, _ = factcheck.check_evidence(video.get("evidence"), [sc["say"] for sc in scenes], source)
         if factcheck.evidence_strict("avx"):
@@ -1171,7 +1333,7 @@ def _clashes(results: list, avoid_shapes: tuple) -> dict[int, str]:
 
 # --- the editor: one cheap Claude pass that reads every video like a viewer would ---------------------
 
-CRITIC_KINDS = ("unclear", "unsupported", "weak_hook", "graphic_mismatch", "repetitive", "incoherent")
+CRITIC_KINDS = ("unclear", "opaque", "unsupported", "weak_hook", "graphic_mismatch", "repetitive", "incoherent")
 CRITIC_SYSTEM = """\
 You are the strict final editor of a tech-news Shorts channel. Each video is an avatar explainer: a \
 narrator speaks one line per scene while a graphic plays. Viewers have NOT read the article, hear each line \
@@ -1181,8 +1343,14 @@ For every video you get the source story (the only facts allowed) and its scenes
 spoken line, and what the graphic shows. Flag a video ("fix") when ANY of these is true, naming the scene:
 - unclear: a spoken line that is garbled, a fragment, a half-sentence, a paraphrased headline that does \
 not read as a normal sentence, or that a first-time viewer would not understand on its own.
+- opaque: the opening (scenes 1 and 2) would lose a smart viewer who uses ChatGPT every day but does not work \
+in tech. Flag it when it uses a product, team, startup or lab such a viewer would not know without saying what \
+it is; a jargon term (agent, parameters, tokens, GPU, inference, benchmark, frontier, router, pull request...) \
+not explained in plain words in the same sentence; an abstract or rhetorical opening; or no clear who-did-what. \
+Quote the words and say how to put them in plain words. It is a blocker in scene 1 or 2.
 - unsupported: a claim, number, name or outcome the story does not support (overstated, invented, or \
-twisted in meaning).
+twisted in meaning), including conflict, rivalry, urgency or shock framing that the story does not itself \
+contain (a neutral story dressed up as a fight, a threat or a scandal).
 - weak_hook: the first line does not plainly state the actual news or claim (who did what, or what is \
 surprising) in one clear sentence.
 - graphic_mismatch: the graphic does not show what its line says, or a number/chart that does not \
@@ -1191,6 +1359,9 @@ support the point its own line makes (a background number dressed up as the key 
 from a thin story.
 - incoherent: the scenes do not build one story in order (claim, evidence, why it matters, takeaway, \
 question).
+A quick-hits video (3-4 separate short stories, one scene each, a hook naming the count) is intentional: judge \
+each scene against its own story and do not flag the video as incoherent for covering several stories; do flag \
+any scene that attaches one story's fact to another story's subject.
 Be concrete in `detail`: quote the problem and say what a fix would be. Mark each problem's `severity`: \
 "blocker" when it would confuse or mislead a first-time viewer (a garbled or fragment line, a hook that \
 hides the news, a wrong or unsupported claim, a graphic that contradicts or does not support its line, a \
@@ -1404,6 +1575,93 @@ def select_stories(candidates: list[Story], n_videos: int) -> list[Story]:
     return out or list(candidates)
 
 
+# --- thin stories: expanded from the linked article, or bundled into a quick-hits video -------------------
+
+THIN_KEEP_WORDS = 12  # a story thinner than this has nothing to say even in a quick-hits video
+ENRICH_EXCERPT_CHARS = 650  # the article's opening added to a thin summary (the writer sees AVX_SUMMARY_CHARS)
+ROUNDUP_MIN_STORIES = 3  # a quick-hits video needs at least this many thin stories on offer...
+ROUNDUP_MIN_VIDEOS = 4  # ...and a day with room for it (it takes one of the day's videos)
+ROUNDUP_POOL = 8  # thin stories offered to the writer, which picks 3-4 of them
+
+
+def _flag(name: str, default: bool = True) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    return default if not raw else raw not in ("0", "off", "false", "no")
+
+
+def is_thin(story: Story) -> bool:
+    return _words(story.summary) < MIN_SUMMARY_WORDS
+
+
+def enrich_thin_stories(stories: list[Story], fetch=None) -> list[Story]:
+    """Thin summaries (under MIN_SUMMARY_WORDS) get the opening of their linked article appended, so an important
+    story told in two lines in the newsletter can still carry a video of its own. The text becomes part of the
+    story, so the writer's evidence quotes and the fact check are matched against it too. A story whose article
+    cannot be read (paywall, JS page, a post on X) is returned unchanged. AVX_ENRICH_THIN=0 turns this off."""
+    from concurrent.futures import ThreadPoolExecutor
+    from dataclasses import replace
+
+    if not _flag("AVX_ENRICH_THIN"):
+        return stories
+    todo = [s for s in stories if is_thin(s) and getattr(s, "url", "")]
+    if not todo:
+        return stories
+    fetch = fetch or factcheck.fetch_article
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        texts = list(pool.map(lambda st: fetch(st.url), todo))
+    richer: dict[int, Story] = {}
+    for story, text in zip(todo, texts):
+        if text:
+            excerpt = _trim(" ".join(text.split()), ENRICH_EXCERPT_CHARS)
+            richer[id(story)] = replace(story, summary=f"{story.summary}\n\nFrom the linked article: {excerpt}")
+    log.info("Avatar explainer: %d of %d thin stories expanded from their linked article", len(richer), len(todo))
+    return [richer.get(id(s), s) for s in stories]
+
+
+def _roundup_user(stories: list[Story]) -> str:
+    lines = "\n\n".join(f"[{i}] ({s.edition} / {s.section}) {s.title}{_site(s)}\n{_trim(s.summary, AVX_SUMMARY_CHARS)}"
+                         for i, s in enumerate(stories))
+    return ("Write exactly 1 video: a QUICK HITS video (see the quick-hits rules) that covers 3 or 4 of the short "
+            "stories below, so that none of that news is missed. Pick the ones a well-informed follower of AI and "
+            "tech most needs to know, preferring a shared theme. Reference stories by their [id] in story_ids."
+            f"\n\n{lines}")
+
+
+def _roundup_scripts(candidates: list[Story], n_videos: int, avoid_shapes: tuple = ()) -> tuple[list[Script], set[int]]:
+    """([the quick-hits Script] or [], the ids (id()) of the stories it used). One writer call plus the usual editor
+    and fact check, on the thin stories the day's single-story videos cannot use. Never raises: a roundup that
+    cannot be written or does not pass simply is not made, and the day carries on without it."""
+    if not _flag("AVX_ROUNDUP") or n_videos < ROUNDUP_MIN_VIDEOS:
+        return [], set()
+    pool = [s for s in candidates if is_thin(s) and _words(s.summary) >= THIN_KEEP_WORDS][:ROUNDUP_POOL]
+    if len(pool) < ROUNDUP_MIN_STORIES:
+        log.info("Avatar explainer: only %d thin stories today; no quick-hits video", len(pool))
+        return [], set()
+    try:
+        user = _roundup_user(pool)
+        accepted = _validated_videos(user, 1, pool, avoid_shapes)
+        if accepted and os.environ.get("AVX_EDITOR", "1").strip().lower() not in ("0", "off", "false", "no"):
+            accepted = _critic_pass(user, accepted, pool)
+        checked = _fact_check_pass(user, accepted, pool, avoid_shapes) if accepted else []
+        scripts, used = [], set()
+        for video, scenes, rec in checked[:1]:
+            covered = _video_stories(video, pool)
+            if len(covered) < 2:
+                log.warning("Avatar explainer: the quick-hits video covers only %d story; dropped", len(covered))
+                continue
+            script = script_from_scenes(scenes, str(video.get("title", "")).strip() or "Quick hits",
+                                        str(video.get("badge") or "QUICK HITS"), covered,
+                                        str(video.get("post_caption", "")), list(video.get("hashtags") or []))
+            script.fact_check = rec
+            scripts.append(script)
+            used |= {id(st) for st in covered}
+        log.info("Avatar explainer: quick-hits video %s", f"covers {len(used)} short stories" if scripts else "not made")
+        return scripts, used
+    except Exception:  # noqa: BLE001 - the quick-hits video is a bonus; it never breaks the day
+        log.exception("Avatar explainer: quick-hits video failed; continuing without it")
+        return [], set()
+
+
 AVX_VIDEOS_PER_CALL = 4  # one avx video is ~5k output tokens: ten in one call ran into the 64k output limit
 
 
@@ -1445,6 +1703,12 @@ def llm_avx_scripts(candidates: list[Story], n_videos: int, avoid_shapes: tuple 
     validator (with one repair), then the editor (with one rewrite). Videos that fail either are skipped with
     a logged reason (an empty list means every one was rejected: no video rather than a broken one); None
     means Claude could not be used at all."""
+    candidates = enrich_thin_stories(candidates)
+    roundup, used = _roundup_scripts(candidates, n_videos, avoid_shapes)
+    if roundup:  # the quick-hits video takes one of the day's videos; its stories are not told again
+        candidates = [c for c in candidates if id(c) not in used]
+        n_videos -= len(roundup)
+        avoid_shapes = tuple(avoid_shapes) + tuple(middle_sequence(sc.avx_scenes) for sc in roundup if sc.avx_scenes)
     candidates = select_stories(candidates, n_videos)
     stories = "\n\n".join(
         f"[{i}] ({s.edition} / {s.section}) {s.title}{_site(s)}\n{_trim(s.summary, AVX_SUMMARY_CHARS)}"
@@ -1475,7 +1739,7 @@ def llm_avx_scripts(candidates: list[Story], n_videos: int, avoid_shapes: tuple 
     if len(scripts) < n_videos:
         log.warning("Avatar explainer: %d of %d videos dropped (invalid scene lists or editor flags)",
                     n_videos - len(scripts), n_videos)
-    return scripts
+    return scripts + roundup
 
 
 __all__ = ["AvxPlanError", "critique", "select_stories", "sequence_clashes", "validate_scenes", "scene_from_writer", "script_from_scenes", "structural_scenes",
