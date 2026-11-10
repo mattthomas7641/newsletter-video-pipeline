@@ -30,3 +30,5 @@ newsletter_video/hf_template*/snapshots
 newsletter_video/hf_template*/.thumbnails
 newsletter_video/hf_template*/.hyperframes
 **/.DS_Store
+.claude
+.pytest_cache
