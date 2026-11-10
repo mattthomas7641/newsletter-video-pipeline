@@ -217,6 +217,12 @@ def run(target_date: date | None = None) -> list[Path]:
             NETWORK_WAIT_TIMEOUT_SECONDS,
         )
 
+    if wanted and target_date == date.today():  # EDITION_WAIT_MINUTES (off by default): start when the editions drop
+        from .edition_wait import wait_from_env
+        from .scraper import DEFAULT_EDITIONS
+
+        wait_from_env(target_date, list(getattr(source, "slugs", None) or DEFAULT_EDITIONS))
+
     paths: list[Path] = []
     if already:
         log.info("%d video(s) already made for %s; making %d more", already, target_date, wanted)
