@@ -1,0 +1,36 @@
+# Same rules as .dockerignore: keep secrets, the .env and local output out of what is uploaded to Cloud Build,
+# but DO ship the narrator folder (assets/characters/puck), which git ignores.
+.git
+.gitignore
+.env
+.env.*
+venv
+__pycache__
+*.pyc
+*.log
+.pipeline.lock
+output
+secrets
+docs
+tests
+style_library
+third_party
+ui.sh
+ui.command
+launchd.*
+pipeline.log
+lineup.json
+# the Mac-only and big local assets: the cloud image only needs the one narrator and the fonts
+assets/background
+assets/voice
+assets/character
+assets/characters/*
+!assets/characters/puck
+newsletter_video/ui
+newsletter_video/hf_template*/renders
+newsletter_video/hf_template*/snapshots
+newsletter_video/hf_template*/.thumbnails
+newsletter_video/hf_template*/.hyperframes
+**/.DS_Store
+.claude
+.pytest_cache
