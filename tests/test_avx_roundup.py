@@ -132,3 +132,60 @@ def test_the_day_loses_one_single_story_video_to_the_quick_hits_video_and_never_
     assert seen["n"] == 9  # the roundup takes one of the ten
     assert all(not is_used for is_used in (id(c) in used for c in seen["pool"]))  # its stories are not told again
     assert ("kinetic" not in seen["avoid"][-1]) and seen["avoid"][-1] == ("stat",)  # and its shape is avoided
+
+
+# --- the cheap repair for text a few characters over its cap -------------------------------------------------------
+
+def _over_cap_video():
+    v = copy.deepcopy(VIDEO)
+    v["scenes"][1]["label"] = "growth from a year ago, in total"  # 33 characters; the cap is 28
+    return v
+
+
+def test_text_over_its_cap_is_shortened_without_rewriting_the_video(monkeypatch):
+    from tests.avx_fixtures import STORY
+
+    calls = []
+
+    def fake_claude(system, user, schema, what, key):
+        calls.append(what)
+        import json
+
+        items = json.loads(user)
+        assert items == [{"id": 0, "text": "growth from a year ago, in total", "max": 28}]
+        return {"items": [{"id": 0, "text": "growth from a year ago"}]}
+
+    monkeypatch.setattr(w, "_claude_json", fake_claude)
+    monkeypatch.setattr(w, "_call_writer", lambda user: {"videos": [_over_cap_video()]})
+    accepted = w._validated_videos("write", 1, [STORY])
+    assert calls == ["shortener"]  # one tiny call, and no second writer call to rewrite the video
+    assert len(accepted) == 1 and accepted[0][1][1]["data"]["label"] == "growth from a year ago"
+
+
+def test_a_failed_shortening_falls_back_to_the_full_rewrite(monkeypatch):
+    from tests.avx_fixtures import STORY
+
+    calls = []
+
+    def fake_claude(system, user, schema, what, key):
+        calls.append(what)
+        return {"items": [{"id": 0, "text": "still far too long for the label to fit here"}]}  # over the cap again
+
+    answers = [{"videos": [_over_cap_video()]}, {"videos": [copy.deepcopy(VIDEO)]}]
+    monkeypatch.setattr(w, "_claude_json", fake_claude)
+    monkeypatch.setattr(w, "_call_writer", lambda user: answers.pop(0))
+    accepted = w._validated_videos("write", 1, [STORY])
+    assert calls == ["shortener"] and not answers  # the rewrite happened: both writer answers were used
+    assert len(accepted) == 1
+
+
+def test_a_video_with_other_problems_is_never_sent_to_the_shortener(monkeypatch):
+    from tests.avx_fixtures import STORY
+
+    v = _over_cap_video()
+    v["scenes"][0]["say"] = "Why did Nvidia make so much money? Fifty seven billion dollars is the answer."  # also an opening problem
+    called = []
+    monkeypatch.setattr(w, "_claude_json", lambda *a, **k: called.append(1) or {"items": []})
+    results = [(v, None, ["scene 2 (stat): label 'growth from a year ago, in total' is 33 characters (at most 28)",
+                          "the hook opens with a question ('Why did Nvidia make so much money?'); open with the news"])]
+    assert w._shorten_over_cap(results, [STORY]) == 0 and called == []
