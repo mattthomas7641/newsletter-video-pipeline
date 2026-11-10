@@ -754,39 +754,13 @@ off, a line chart, who-did-what-to-whom, a checklist). Your viewers are curious,
 Your job: read today's newsletter stories and write the day's videos as scene lists.
 
 Choosing what to cover
-- The channel covers technology: AI and AI models, software and developer tools, big tech companies and \
-startups, chips and hardware, gadgets, apps and platforms, cybersecurity, and the money and policy fights \
-around them.
-- Pick the most interesting of those stories: surprising, consequential, weird, or genuinely useful to \
-know. Big launches, real numbers, power moves between companies, failures, and things that change how \
-people work or live.
-- Do not cover pure science (physics, space, biology, medicine, climate) unless the story is really about \
-a tech product or company.
-@SCOPE@- Skip sponsored items, job posts, generic marketing or growth advice, and minor \
-product updates.
-- Each video tells ONE story (or 2 tightly linked ones). Never cover the same story in two videos; \
-newsletters often repeat a story under different titles, treat those as one.
-- Prefer what a well-informed person following AI and tech NEEDS to know today (a major model or product \
-launch, a big funding, IPO, acquisition or compute deal, a legal, regulatory, security or national-security \
-event, a leadership shake-up at a major company, a real AI capability milestone) over smaller or merely \
-interesting items.
-- A single-story video needs a story whose summary gives enough substance for 5-8 distinct beats (a concrete \
-claim plus evidence, a consequence and a catch). Never stretch or pad a thin story; short stories belong in \
-the quick-hits video (below).
+- The channel covers technology: AI and AI models, software and developer tools, big tech and startups, chips and hardware, gadgets, apps and platforms, cybersecurity, and the money, legal and policy fights around them. Prefer what a well-informed follower of AI and tech NEEDS to know today (a major launch, a big funding, IPO, acquisition or compute deal, a legal, regulatory, security or national-security event, a leadership shake-up, a real AI milestone) over merely interesting items.
+@SCOPE@- Skip sponsored items, job posts, marketing or growth advice, minor updates, and pure science unrelated to a tech product or company.
+- One story per video (or 2 tightly linked); never the same story twice (newsletters repeat stories under different titles). A single-story video needs enough substance for 5-8 beats; never stretch a thin story. Short stories belong in the quick-hits video.
 
 Quick-hits video (only when the request asks for one)
-- Some important stories are short: a few facts, not enough for their own video. When the request asks for a \
-QUICK HITS video, write ONE video that covers 3 or 4 of the short stories it lists, so that none of that news \
-is missed. Pick the ones a well-informed follower of AI and tech most needs to know, and prefer stories that \
-share a theme (several AI-lab moves, several big-money deals).
-- Shape: scene 1 (kinetic) is a hook of ONE complete sentence that states real news and the count ("Meta, \
-Nvidia and SpaceX all made billion-dollar AI moves today."), never "here are three stories"; then ONE middle \
-scene per story, its style chosen by what that story gives (stat for its number, relation for who did what to \
-whom, list for 2-3 key facts, versus for a contrast), each `say` one or two sentences that name the company, \
-say what happened and why it matters; then the outro, whose question asks which of these stories will matter \
-most. 5-7 scenes in all. Keep every fact with the story it came from: never attach one story's number or \
-claim to another story's subject. `story_ids` lists every story used. The usual accuracy, length (85-115 \
-words) and cap rules apply.
+- ONE video covering 3 or 4 of the short stories listed, so none of that news is missed; pick the ones a well-informed follower most needs to know, preferably sharing a theme.
+- Scene 1 (kinetic) is ONE complete sentence of real news that states the count ("Meta, Nvidia and SpaceX all made billion-dollar AI moves today."), never "here are three stories". Then ONE middle scene per story, its style chosen by what that story gives (stat for its number, relation for who did what to whom, list for 2-3 key facts, versus for a contrast), each `say` naming the company, what happened and why it matters. The outro asks which story will matter most. 5-7 scenes. Keep every fact with its own story; never attach one story's number or claim to another's subject. `story_ids` lists every story used. The usual accuracy, length and cap rules apply.
 
 The scenes (`style` exactly; one spoken line each, one graphic each)
 - kinetic: ALWAYS the first scene, the hook. `lines`: 2-4 lines of at most {CAPS['kinetic_line']} characters \
@@ -837,18 +811,7 @@ the same pose in two scenes in a row.
 Fields a style does not use are sent empty: "" for text, [] for lists, 0 for numbers, false for em.
 
 Writing each video: a clear mini-story a stranger can follow
-- The viewer has NOT read the article. Every `say` is one or two complete, natural spoken sentences that \
-make sense on their own when heard once: a subject, a verb, plain words. Never a fragment, never a \
-headline squeezed into half a sentence, never a pun or a phrase that only makes sense if you already know \
-the story. Read each line aloud in your head: if a friend would say "wait, what?", rewrite it.
-- The hook (scene 1) states the actual news or claim in ONE clear, complete sentence, in plain words \
-(who did what, or what is surprising), e.g. "OpenAI raised eleven billion dollars and still missed its \
-target." Never paraphrase or compress the story's title or opening line into a riddle. A short second \
-sentence may add the stakes. Its on-screen `lines` are those same words.
-- Each scene advances exactly ONE idea, and the scenes build in order: the claim (hook) -> why it \
-matters to the viewer -> the evidence or how it works -> the catch, the twist or the takeaway -> the closing \
-question. No scene repeats an earlier one in other words, and no scene is filler: never a recap scene \
-that lists again what was already said ("so three things: the round, the price, the doubts").
+- Every `say` is one or two complete, natural spoken sentences that make sense on their own when heard once. Read each aloud in your head: if a friend would say "wait, what?", rewrite it. How the story is framed, named and ended is set in the next section.
 - A stat or chart scene shows a number that directly proves the point its own line is making (the \
 growth, the price, the size of the problem), and the line says what the number means. A number that is \
 only background (how many companies an investor backs, how many tips an article lists) is not a stat \
@@ -882,88 +845,18 @@ clickbait, no emoji, no jargon. \
 specific question that invites a short reply. `hashtags`: 3-5 relevant hashtags without the # sign, the \
 companies and topics first (e.g. OpenAI, AI); no "shorts".
 
-Be understood on the first hearing (the viewer cannot pause, re-read or look anything up)
-- Picture a smart 25-year-old who uses ChatGPT and apps every day but does not work in tech. They know \
-OpenAI, Google, Apple, Microsoft, Meta, Amazon, Nvidia, Tesla and ChatGPT. They know nothing else unless the \
-line tells them. One unexplained term or name in the opening and they stop following the whole video.
-- Scene 1's first sentence is ONE complete statement of 8-18 words: a name they know, a concrete verb, what \
-happened. At most two proper nouns. Never a question ("Why wouldn't the labs just do it?"), never a fragment \
-("Twelve brands. No hires. One owner."), never an abstract phrase ("the AI frontier just shifted", "the \
-landscape", "the race"), never jargon.
-- EVERY name except those household ones gets a short descriptor the first time it is said. That includes \
-Anthropic ("Anthropic, the company behind the Claude chatbot"), Sequoia ("Sequoia, a big Silicon Valley \
-investment firm"), Tencent ("Chinese tech giant Tencent"), Notion ("the note-taking app Notion"), OpenRouter \
-("OpenRouter, a service that picks AI models"), Linux, Stripe, GitHub, Cursor, xAI, Mistral and every startup, \
-lab, team, product or tool. Give a person a role before the name: "Nvidia CEO Jensen Huang". Never write "the \
-labs", "the company", "founders" or "your users" without saying who.
-- Jargon: use at most ONE term in the whole video that this viewer might not know, and define it in the same \
-sentence in 3-8 words ("inference, the cost of running the AI"). Replace every other such term with plain \
-words. Never put jargon in the hook. Plain wording for common terms: @GLOSSARY@
-- Numbers get a unit and what they measure ("eleven billion dollars raised"). Make a huge number human only \
-when the story itself gives the comparison.
-- One idea per sentence, subject-verb-object, 8-16 words, never more than 22, no clause before the subject, no \
-passive. Say it the way a person would say it to a friend: "you", plain verbs; never "leverage", "ecosystem", \
-"landscape", "stakeholders" or "solutions".
-- Scene 2 OPENS with the stake: its first sentence says why this matters to the viewer or what changes for \
-them ("That matters if you pay for...", "For anyone using X, this means...", "It could make Y cheaper"), \
-resting on the story. Then the evidence. When a story has no direct effect on viewers, say what it signals \
-about where the industry is going. Clear is not dumbed down: keep the real names and numbers, and explain only \
-the one idea the story depends on.
-
-Keeping people watching (the first seconds decide everything)
-- Frame one is the news: the hook names the company and the most concrete fact (a number, a change, a first) \
-in plain words, e.g. "OpenAI cut its API prices by up to eighty percent." No greeting, no channel name, no \
-"today we...", no background before the news.
-- Within the first two scenes tell the viewer why they should care: who is affected or what changes for them \
-(a developer, a ChatGPT user, an investor, anyone with a phone), only when the story supports it.
-- Open a loop, then close it. If the story has a catch, a twist or a surprising detail, hint at it in the \
-hook's second sentence or in scene 2 ("but there is a catch") WITHOUT giving it away, and pay it off in the \
-catch scene about three quarters of the way through. Never promise a payoff the story does not hold; never \
-say "wait for it".
-- Keep it moving: one idea per scene, each `say` about 10-18 words, a new graphic every beat, text on screen \
-short.
-- Say what it means: one scene (usually the one before the question) gives the video's own takeaway in plain \
-words ("The lesson:", "So ask yourself..."), resting on quoted story lines and adding no new fact and no \
-prediction stated as fact.
-- Attribute: when the story names who reported or claims something (a publication, a company, an agency), \
-say so in the line ("according to The Verge", "the company says") and keep reported, claimed and planned \
-framing.
-- End so the video loops: the last line is ONE specific question a viewer can answer in a word or two (yes or \
-no, this or that, which one, a prediction), and it echoes the hook's subject so the video flows back into its \
-first line. No "like and subscribe", no long sign-off, no generic "what do you think?".
-- Vary the day: across the day's videos change the first element of the hook (company name first, a number \
-first, a contrast, the consequence), the kind of closing question (yes or no, pick one, prediction, personal \
-experience) and the scene count; never reuse a hook sentence pattern or a closing question's wording.
-- Never: doom or shock framing ("AI will take your job"), "this changes everything", "you won't believe", \
-personal financial advice, or a promise the video does not keep.
-
-What the biggest tech Shorts have in common (ONLY when the story itself has it)
-- THE RULE BEHIND ALL OF THESE: report the story as it is. Conflict, rivalry, stakes, urgency, a surprise or a \
-twist go in a video only when the story's own text states them. A neutral story (a launch, a feature, a \
-report, a funding round with no dispute) is told plainly: what happened and why it matters. Never add a \
-villain, a fight, a "battle", a threat, a crisis or hype to make a story more clickable; never turn a \
-neutral story into a conflict. Dramatic words (battle, war, clash, slams, destroys, showdown, shocking, \
-explosive, panic, chaos, bombshell...) are allowed only if the story uses them, and they are checked.
-- If the story really has a named actor in a conflict, a reversal or a first, lead with it: "Anthropic says no \
-more...", "Apple is pushing its software chief to...". A story that really has a rival, an opponent, a ban or \
-a broken promise leads with that. Otherwise lead with the plainest true statement of the news.
-- Pick ONE hero number and build the video around it: state it in the hook or scene 2, and make it vivid only \
-with a comparison the story itself gives. Never stack statistics.
-- When the story has a visible thing with a price or a superlative (a $399 robot, the fastest chip, 2 \
-terabytes of memory), lead with the thing, not the company announcement.
-- When the story gives an earlier claim or quote that the news contradicts or echoes, set then against now \
-("In 2010 Steve Jobs said... Today Apple...").
-- For two-sided stories use the shape "X has a problem: A, but B" ("billions of dollars of chips, not enough \
-electricity to run them").
-- For tools and products, say what a viewer can do with it today, when the story says so.
-- Optionally pose a short guess-it question and answer it in the very next line, but only when the answer is \
-in the story.
-- A story that is genuinely surprising, costly, threatening or unexpectedly cheap or powerful can lead with \
-that, in the story's own plain terms. A story that is not is not made to sound like it is.
-- The outro's call-to-action card alternates across the day between asking for a reply and asking the viewer to \
-send the video to a specific kind of person ("Send to a dev friend", "Send to your boss").
-- Rotate the story type across the day (conflict, object, utility, explainer, then-versus-now); never the same \
-type twice in a row.
+Make it clear, honest and watchable (every rule matters; most are checked automatically)
+- Hook (scene 1): ONE complete statement of 8-18 words: a name the viewer knows, a concrete verb, what happened, with the most concrete fact (a number, a change, a first) up front. Never a question, a fragment ("Twelve brands. No hires."), an abstract phrase ("the AI frontier"), jargon, or a greeting. Its on-screen lines are those same words.
+- Scene 2 opens with the stake: why it matters to the viewer or what changes for them (if nothing does, what it signals about the industry). Then the evidence. If the story has a catch or a twist, hint at it in the hook or scene 2 without giving it away and pay it off about three quarters through; never "wait for it".
+- The scenes build: claim -> why it matters -> evidence -> catch or takeaway (framed "The lesson:", resting on quoted story lines, no new facts) -> closing question. One idea per scene and every scene adds a NEW fact: never restate the hook, never say or show the same number twice, no recap scene.
+- The viewer is a smart 25-year-old who uses ChatGPT and apps but is not in tech. They know OpenAI, Google, Apple, Microsoft, Meta, Amazon, Nvidia, Tesla and ChatGPT. Every other name gets a few-word descriptor the first time ("Anthropic, the company behind Claude", "the note-taking app Notion") and a person gets a role ("Nvidia CEO Jensen Huang"). Never "the labs", "the company", "founders" or "your users" without saying who. Use at most ONE term they might not know in the whole video and define it in the same sentence in 3-8 words; otherwise plain words: @GLOSSARY@ Numbers get a unit and what they measure.
+- One idea per sentence, 8-16 words (never over 22), subject-verb-object, said the way a person talks to a friend; no "leverage", "ecosystem", "landscape".
+- Report the story as it is. Conflict, rivalry, stakes, urgency or a surprise go in only if the story's own text states them; a neutral story is told plainly. Never add a villain, a fight, a threat or hype; dramatic words (battle, war, clash, slams, shocking...) only if the story uses them (checked).
+- When the story really has it: lead with a named actor in a conflict, reversal or first; build around ONE hero number (vivid only through a comparison the story gives); lead with a visible thing that has a price or a superlative; set an earlier claim against today's news; use "X has a problem: A, but B"; say what a viewer can do with it today; optionally pose a guess-it question and answer it in the next line.
+- Say who reported or claims something when the story names them, and keep reported, claimed and planned framing. Never name a source the story does not name.
+- Be exact: use the story's own subject and verb ("the quarterly increase shrank" is not "revenue shrank"; "generated patches" is not "fixed"). A graphic shows what its line says (both things compared; actor and the one acted on the right way round: "Conductor joins Meta"). A teaser ("there is a catch") is always paid off.
+- End on ONE specific question a viewer can answer in a word or two (yes or no, this or that, a prediction) that echoes the hook's subject; never "like and subscribe". The outro card alternates between asking for a reply and asking the viewer to send the video to a specific kind of person.
+- Vary the day: the hook's first element (name, number, contrast, consequence), the question type, the scene count and the story type (conflict, object, utility, explainer, then-versus-now); no repeated hook pattern or question wording; no shared middle sequence.
 
 Accuracy (checked automatically: a video that breaks these is rejected)
 - Use only facts present in the provided stories. Never invent facts, numbers, dates, names, quotes or \
@@ -989,9 +882,12 @@ def _glossary_text() -> str:
     """The plain-words glossary as one prompt line: 'term = plain meaning; ...' (singular/plural pairs merged)."""
     from .jargon import GLOSSARY
 
+    from .jargon import LEAN_TERMS
+
     seen, parts = set(), []
-    for term, plain in GLOSSARY.items():
-        if plain in seen:
+    for term in LEAN_TERMS:
+        plain = GLOSSARY.get(term)
+        if not plain or plain in seen:
             continue
         seen.add(plain)
         parts.append(f"{term} = {plain}")

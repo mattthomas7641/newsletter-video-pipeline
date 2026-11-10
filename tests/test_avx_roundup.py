@@ -106,8 +106,9 @@ def test_a_failure_in_the_quick_hits_step_never_breaks_the_day(monkeypatch):
 
 def test_the_prompt_carries_the_engagement_and_quick_hits_rules():
     system = w._system_prompt()
-    for phrase in ("Keeping people watching", "Frame one is the news", "Open a loop, then close it",
-                   "End so the video loops", "Quick-hits video", "NEEDS to know", "Vary the day"):
+    for phrase in ("Make it clear, honest and watchable", "Hook (scene 1)", "pay it off", "echoes the hook's subject",
+                   "Quick-hits video", "NEEDS to know", "Vary the day", "Scene 2 opens with the stake",
+                   "named actor in a conflict", "ONE hero number", "send the video to a specific kind of person"):
         assert phrase in system, phrase
     assert "quick-hits video" in w.CRITIC_SYSTEM
 

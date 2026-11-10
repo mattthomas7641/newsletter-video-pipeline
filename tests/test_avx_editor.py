@@ -217,6 +217,6 @@ def test_the_writer_sees_the_whole_summary():
 
 def test_the_prompt_asks_for_plain_complete_sentences_and_one_idea_per_scene():
     p = w.AVX_WRITER_SYSTEM
-    assert "ONE clear, complete sentence" in p and "Never paraphrase" in p
-    assert "exactly ONE idea" in p and "directly proves the point" in p
-    assert "must not share one middle sequence" in p
+    assert "ONE complete statement of 8-18 words" in p and "never restate the hook" in p.replace("Never restate", "never restate")
+    assert "One idea per scene" in p and "directly proves the point" in p
+    assert "no shared middle sequence" in p and "complete, natural spoken sentences" in p
