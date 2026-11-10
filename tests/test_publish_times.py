@@ -41,3 +41,17 @@ def test_videos_beyond_the_slots_get_no_schedule(monkeypatch):
 def test_blank_schedule_means_none(monkeypatch):
     monkeypatch.setenv("YOUTUBE_SCHEDULE", "")
     assert youtube_upload._publish_times(date.today(), 3) == [None, None, None]
+
+
+def test_asap_publishes_a_few_minutes_after_each_video_is_sent(monkeypatch):
+    from datetime import datetime, timedelta
+
+    from newsletter_video import youtube_upload as yu
+
+    monkeypatch.setenv("YOUTUBE_SCHEDULE", "asap")
+    assert yu._publish_times(date.today(), 3) == ["asap", "asap", "asap"]
+    before = datetime.now().astimezone()
+    at = datetime.fromisoformat(yu._resolve_publish_time("asap"))
+    assert before + timedelta(minutes=4) < at < before + timedelta(minutes=6)
+    assert yu._resolve_publish_time("2026-11-10T10:00:00-05:00") == "2026-11-10T10:00:00-05:00"
+    assert yu._resolve_publish_time(None) is None
