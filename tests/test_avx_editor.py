@@ -220,3 +220,33 @@ def test_the_prompt_asks_for_plain_complete_sentences_and_one_idea_per_scene():
     assert "ONE complete statement of 8-18 words" in p and "never restate the hook" in p.replace("Never restate", "never restate")
     assert "One idea per scene" in p and "directly proves the point" in p
     assert "no shared middle sequence" in p and "complete, natural spoken sentences" in p
+
+
+# --- what a still-flagged rewrite does: polish ships, accuracy drops ---------------------------------------------------
+
+def _critic_pass_with(monkeypatch, first, second):
+    """Runs the editor pass on one valid video: the editor answers `first`, the writer rewrites it (the same valid
+    video), the editor answers `second` for the rewrite."""
+    answers = iter([first, second])
+    monkeypatch.setattr(w, "critique", lambda videos: next(answers))
+    monkeypatch.setattr(w, "_call_writer", lambda user: {"videos": [copy.deepcopy(VIDEO)]})
+    scenes = w.check_video(copy.deepcopy(VIDEO), [STORY])[0]
+    return w._critic_pass("write", [(copy.deepcopy(VIDEO), scenes)], [STORY])
+
+
+def test_clarity_notes_that_survive_the_rewrite_ship_the_video(monkeypatch):
+    out = _critic_pass_with(monkeypatch, {0: ["scene 1 (opaque): Muse is never explained"]},
+                            {0: ["scene 1 (opaque): still not explained", "scene 4 (unclear): vague takeaway",
+                                 "scene 2 (repetitive): repeats the hook"]})
+    assert len(out) == 1  # accurate but a little clunky: shipped, with the notes logged
+
+
+def test_an_accuracy_flag_that_survives_the_rewrite_still_drops_the_video(monkeypatch):
+    for kind in ("unsupported", "graphic_mismatch", "incoherent"):
+        out = _critic_pass_with(monkeypatch, {0: [f"scene 2 ({kind}): wrong"]},
+                                {0: ["scene 1 (opaque): still not explained", f"scene 2 ({kind}): still wrong"]})
+        assert out == [], kind
+
+
+def test_a_rewrite_the_editor_clears_ships_as_before(monkeypatch):
+    assert len(_critic_pass_with(monkeypatch, {0: ["scene 1 (opaque): x"]}, {})) == 1
