@@ -19,7 +19,9 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
+from . import factcheck
 from .scene_plan import ICON_MEANINGS, SCENE_SCHEMA, ScenePlan, ScenePlanError, plan_from_script, validate_plan
 from .scraper import Story
 from .script_writer import (
@@ -27,7 +29,7 @@ from .script_writer import (
     WriterNetworkError,
     _stream_with_retries,
     DEFAULT_WRITER_EFFORT,
-    LLM_SUMMARY_CHARS,
+    WRITER_SUMMARY_CHARS,
     WRITER_MODEL,
     Beat,
     Script,
@@ -109,7 +111,7 @@ useful to know. Big launches, real numbers, power moves between companies, failu
 things that change how people work or live.
 - Do not cover pure science (physics, space, biology, medicine, climate) unless the story is \
 really about a tech product or company.
-- Skip sponsored items, job posts, generic marketing or growth advice, and minor product \
+@SCOPE@- Skip sponsored items, job posts, generic marketing or growth advice, and minor product \
 updates unless something about them is genuinely remarkable.
 - One video may cover a single big story, or combine 2-3 stories that share a real thread. \
 Combine only when the connection makes the video better; never pad with unrelated stories.
@@ -193,7 +195,7 @@ sound in `say`, keeping the original spelling on screen.
 
 EXPLAINER_WRITER_SYSTEM = EXPLAINER_WRITER_SYSTEM.replace(
     "{ICON_LIST}", "\n".join(f"- {name}: {meaning}" for name, meaning in ICON_MEANINGS.items()) + "\n"
-)
+).replace("@SCOPE@", factcheck.SCOPE_NOTE)
 
 CINEMATIC_NOTE = """
 Look: cinematic
@@ -240,8 +242,9 @@ _EXPLAINER_SCHEMA = {
                     "scenes": {"type": "array", "items": SCENE_SCHEMA},
                     "post_caption": {"type": "string"},
                     "hashtags": {"type": "array", "items": {"type": "string"}},
+                    "evidence": factcheck.EVIDENCE_SCHEMA,
                 },
-                "required": ["title", "badge", "story_ids", "scenes", "post_caption", "hashtags"],
+                "required": ["title", "badge", "story_ids", "scenes", "post_caption", "hashtags", "evidence"],
                 "additionalProperties": False,
             },
         },
@@ -256,7 +259,7 @@ def _system_prompt() -> str:
     the avatar image is irrelevant in this style), plus the cinematic
     scene notes when the resolved look (theme or pinned recipe) asks for
     the cinematic look."""
-    prompt = EXPLAINER_WRITER_SYSTEM
+    prompt = EXPLAINER_WRITER_SYSTEM + factcheck.GROUNDING_RULES
     try:
         from .characters import active
 
@@ -330,19 +333,44 @@ def _call_writer(user: str) -> dict | None:
     return data
 
 
-def _validated_videos(user: str, n_videos: int) -> list[tuple[dict, ScenePlan]] | None:
+def _stories_of(video: Any, candidates: list[Story] | None) -> list[Story]:
+    ids = [i for i in (video.get("story_ids") or [] if isinstance(video, dict) else []) if isinstance(i, int)]
+    return [candidates[i] for i in dict.fromkeys(ids) if candidates and 0 <= i < len(candidates)]
+
+
+def _check_video(video: Any, candidates: list[Story] | None) -> ScenePlan:
+    """One video's plan validated (strict), plus its evidence against its stories when they are known."""
+    if not isinstance(video, dict):
+        raise ScenePlanError(["a video must be an object"])
+    plan = validate_plan(video.get("scenes"), strict=True)
+    stories = _stories_of(video, candidates)
+    if candidates is not None:
+        if not stories:
+            if factcheck.evidence_strict("explainer"):  # a video with no source cannot be checked
+                raise ScenePlanError(["story_ids must name at least one of the stories by its [id]"])
+            return plan
+        source = "\n".join(factcheck.story_text(s) for s in stories)
+        errors, warnings, _ = factcheck.check_evidence(video.get("evidence"), [sc.say for sc in plan.scenes], source)
+        if errors and factcheck.evidence_strict("explainer"):
+            raise ScenePlanError(errors)
+        plan.repairs += [f"evidence (not enforced): {e}" for e in errors] + [f"evidence: {w}" for w in warnings]
+    return plan
+
+
+def _validated_videos(user: str, n_videos: int, candidates: list[Story] | None = None,
+                      first: dict | None = None) -> list[tuple[dict, ScenePlan]] | None:
     """Asks for the videos, validates every plan (strict), and gives Claude
     one chance to fix the rejected ones with the validator's exact errors
     before they are dropped. Returns the accepted (video, plan) pairs in
     order; None when Claude could not be used at all."""
-    data = _call_writer(user)
+    data = first if first is not None else _call_writer(user)
     if data is None:
         return None
     videos = data.get("videos", [])[:n_videos]
     results: list[tuple[dict, ScenePlan | None, list[str]]] = []
     for video in videos:
         try:
-            results.append((video, validate_plan(video.get("scenes"), strict=True), []))
+            results.append((video, _check_video(video, candidates), []))
         except ScenePlanError as exc:
             results.append((video, None, exc.errors))
     rejected = [(i, v, errs) for i, (v, p, errs) in enumerate(results) if p is None]
@@ -351,31 +379,68 @@ def _validated_videos(user: str, n_videos: int) -> list[tuple[dict, ScenePlan]] 
             f"- video {i + 1} ({str(v.get('title', ''))[:60]!r}):\n  " + "\n  ".join(errs) for i, v, errs in rejected
         )
         log.info("Explainer: %d of %d plans rejected, asking Claude to fix them once", len(rejected), len(results))
+        # Only the rejected videos are rewritten: a whole day of plans again (~5k output tokens a video) would run
+        # into the output limit.
         repair = (
-            user + "\n\nYour previous answer is below. The automatic checks rejected these videos:\n"
-            + notes + "\n\nReturn all videos again: keep the accepted ones exactly as they were and "
-            "rewrite the rejected ones so they pass.\n\nPrevious answer:\n" + json.dumps(data)
+            user + "\n\nThe automatic checks rejected these videos you wrote:\n" + notes
+            + f"\n\nRewrite ONLY these {len(rejected)} videos so they pass, in the order listed, each with the same "
+            "story_ids.\n\nThe rejected videos as you wrote them:\n" + json.dumps([v for _, v, _ in rejected])
         )
         data2 = _call_writer(repair)
         if data2 is not None:
-            videos2 = data2.get("videos", [])[:n_videos]
-            for i, _, _ in rejected:
-                if i >= len(videos2):
+            videos2 = factcheck.align_rewrites([v for _, v, _ in rejected], list(data2.get("videos") or []))
+            for n, (i, _, _) in enumerate(rejected):
+                if videos2[n] is None:
                     continue
                 try:
-                    results[i] = (videos2[i], validate_plan(videos2[i].get("scenes"), strict=True), [])
+                    results[i] = (videos2[n], _check_video(videos2[n], candidates), [])
                 except ScenePlanError as exc:
-                    results[i] = (videos2[i], None, exc.errors)
+                    results[i] = (videos2[n], None, exc.errors)
     accepted = []
     for video, plan, errs in results:
-        title = str(video.get("title", "")).strip() or "Untitled"
+        title = str(video.get("title", "") if isinstance(video, dict) else "").strip() or "Untitled"
         if plan is None:
-            log.error("Explainer: skipping %r, its scene plan failed validation:\n  %s", title, "\n  ".join(errs))
+            factcheck.note_drop("explainer", "validator", title, _stories_of(video, candidates), errs)
             continue
         for note in plan.repairs:
             log.info("Explainer: %r plan repair: %s", title, note)
         accepted.append((video, plan))
     return accepted
+
+
+def _candidate(video: dict, plan: ScenePlan, candidates: list[Story]) -> factcheck.Candidate:
+    stories = _stories_of(video, candidates)
+    source = "\n".join(factcheck.story_text(s) for s in stories)
+    _, warnings, mapping = factcheck.check_evidence(video.get("evidence"), [sc.say for sc in plan.scenes], source)
+    title = str(video.get("title", "")).strip() or "Untitled"
+    return factcheck.Candidate(title=title, stories=stories,
+                               items=factcheck.items_explainer(plan.to_list(), title, str(video.get("post_caption", ""))),
+                               key=(video, plan), evidence=mapping, evidence_warnings=warnings)
+
+
+def _fact_check_pass(user: str, accepted: list[tuple[dict, ScenePlan]],
+                     candidates: list[Story]) -> list[tuple[dict, ScenePlan, dict]]:
+    """factcheck.gate over the validated plans: one repair of a blocked video, verified again, else dropped."""
+
+    def rewrite(pairs):
+        prompt = (user + "\n\n" + factcheck.repair_prompt(
+            f"Return exactly {len(pairs)} videos, in the order listed, each with the same story_ids.", pairs)
+            + "\n\nThe videos as you wrote them:\n" + json.dumps([c.key[0] for c, _ in pairs]))
+        data = _call_writer(prompt)
+
+        def check(v):
+            try:
+                return _candidate(v, _check_video(v, candidates), candidates), []
+            except ScenePlanError as exc:
+                return None, exc.errors
+
+        return factcheck.checked_rewrites([c.key[0] for c, _ in pairs], list((data or {}).get("videos") or []), check,
+                                          lambda tail: list((_call_writer(prompt + tail) or {}).get("videos") or []))
+
+    if not accepted:
+        return []
+    result = factcheck.gate("explainer", [_candidate(v, p, candidates) for v, p in accepted], rewrite)
+    return [(c.key[0], c.key[1], rec) for c, rec in result.accepted]
 
 
 def _apply_style_library(plan: ScenePlan, title: str) -> None:
@@ -401,6 +466,35 @@ def _apply_style_library(plan: ScenePlan, title: str) -> None:
         log.warning("Style library skipped for %r (%s: %s)", title, type(exc).__name__, exc)
 
 
+EXPLAINER_VIDEOS_PER_CALL = 5  # ten plans with evidence took 55.9k of the 64k output tokens in one call (2026-11-09)
+
+
+def _first_drafts(candidates: list[Story], n_videos: int) -> dict | None:
+    """The day's first drafts in parallel calls of at most EXPLAINER_VIDEOS_PER_CALL videos, each from its own
+    round-robin share of the stories (ids stay global). None only when every call failed."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    k = -(-n_videos // EXPLAINER_VIDEOS_PER_CALL)
+    counts = [n_videos // k + (1 if g < n_videos % k else 0) for g in range(k)]
+    shares = [[i for i in range(len(candidates)) if i % k == g] for g in range(k)]
+
+    def write(g: int) -> dict | None:
+        stories = "\n\n".join(f"[{i}] ({candidates[i].edition} / {candidates[i].section}) {candidates[i].title}"
+                               f"{_site(candidates[i])}\n{_trim(candidates[i].summary, WRITER_SUMMARY_CHARS)}"
+                               for i in shares[g])
+        return _call_writer(f"Write exactly {counts[g]} videos from the stories below, each as a scene plan. Order "
+                            f"them with the strongest video first. Reference stories by their [id].\n\n{stories}")
+
+    with ThreadPoolExecutor(max_workers=min(3, k)) as pool:
+        answers = list(pool.map(write, range(k)))
+    if all(a is None for a in answers):
+        return None
+    videos = [v for a, n in zip(answers, counts) for v in list((a or {}).get("videos") or [])[:n]]
+    log.info("Explainer: %d first drafts from %d parallel writer calls (%d failed)", len(videos), k,
+             sum(a is None for a in answers))
+    return {"videos": videos}
+
+
 def llm_explainer_scripts(candidates: list[Story], n_videos: int) -> list[ExplainerScript] | None:
     """The explainer counterpart of script_writer._llm_scripts: one call
     for the day's videos. Videos whose plan fails validation are skipped
@@ -408,23 +502,27 @@ def llm_explainer_scripts(candidates: list[Story], n_videos: int) -> list[Explai
     video that day rather than a broken one); None means Claude could not
     be used at all."""
     stories = "\n\n".join(
-        f"[{i}] ({s.edition} / {s.section}) {s.title}\n{_trim(s.summary, LLM_SUMMARY_CHARS)}"
+        f"[{i}] ({s.edition} / {s.section}) {s.title}{_site(s)}\n{_trim(s.summary, WRITER_SUMMARY_CHARS)}"
         for i, s in enumerate(candidates)
     )
     user = (
         f"Write exactly {n_videos} videos from today's stories below, each as a scene plan. "
         f"Order them with the strongest video first. Reference stories by their [id].\n\n{stories}"
     )
-    accepted = _validated_videos(user, n_videos)
+    first = _first_drafts(candidates, n_videos) if n_videos > EXPLAINER_VIDEOS_PER_CALL else None
+    if n_videos > EXPLAINER_VIDEOS_PER_CALL and first is None:
+        return None
+    accepted = _validated_videos(user, n_videos, candidates, first=first)
     if accepted is None:
         return None
     scripts = []
-    for video, plan in accepted:
-        ids = [i for i in video.get("story_ids", []) if isinstance(i, int) and 0 <= i < len(candidates)]
+    for video, plan, rec in _fact_check_pass(user, accepted, candidates):
         _apply_style_library(plan, str(video.get("title", "")))
-        scripts.append(script_from_plan(plan, str(video.get("title", "")).strip() or "Untitled",
-                                        str(video.get("badge", "NEWS")), [candidates[i] for i in ids],
-                                        str(video.get("post_caption", "")), list(video.get("hashtags", []))))
+        script = script_from_plan(plan, str(video.get("title", "")).strip() or "Untitled",
+                                  str(video.get("badge", "NEWS")), _stories_of(video, candidates),
+                                  str(video.get("post_caption", "")), list(video.get("hashtags", [])))
+        script.fact_check = rec
+        scripts.append(script)
     if len(scripts) < n_videos:
         log.warning("Explainer: %d of %d videos dropped for invalid scene plans", n_videos - len(scripts), n_videos)
     return scripts
@@ -477,3 +575,11 @@ def replan_sidecar(meta: dict) -> ScenePlan:
     if not accepted:
         raise ScenePlanError(["Claude's plan failed validation twice; see the log for the errors"])
     return accepted[0][1]
+
+
+def _site(story) -> str:
+    """" [link: nytimes.com]": who published the linked article, so an allegation can be attributed to it."""
+    from .factcheck import publisher
+
+    site = publisher(getattr(story, "url", ""))
+    return f" [link: {site}]" if site else ""

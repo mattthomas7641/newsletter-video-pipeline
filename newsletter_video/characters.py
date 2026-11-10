@@ -6,6 +6,15 @@ assets/characters/<slug>/ with a character.json manifest.
     python -m newsletter_video.characters list
     python -m newsletter_video.characters say spongebob "Testing one two three"
     python -m newsletter_video.characters use spongebob     # or: use none
+    python -m newsletter_video.characters poses puck neutral.png point.png think.png shrug.png \
+        --roles neutral,point,think,shrug
+    python -m newsletter_video.characters add-pose puck present.png --role present
+
+A character's pictures are its main avatar plus extra poses, all on one canvas so they line up when the
+video swaps them. Each has a ROLE (character.json "pose_roles", aligned with [avatar] + poses): neutral,
+point, think, present, shrug, or any other word. The videos pick poses by role: point at charts and
+numbers, think at a twist or a question, neutral to open, and the shrug ONLY in the last scene (the closing
+question). A new pose added with add-pose simply joins the rotation.
 
 CHARACTER=<slug> in .env selects the narrator. With it unset, the pipeline
 behaves as before (assets/character/ image + VOICEBOX_PROFILE_ID).
@@ -44,6 +53,10 @@ class Character:
     tts: str | None = None  # "kokoro" = a built-in Kokoro voice (kokoro_voice), no Voicebox clone needed
     kokoro_voice: str | None = None
     poses: tuple[Path, ...] = ()  # more cutouts of the same character; the video swaps between them (avatar is the first)
+    pose_roles: tuple[str, ...] = ()  # one role per picture: [avatar] + poses ("neutral", "point", "shrug"...)
+
+    def pictures(self) -> list[Path]:
+        return ([self.avatar] if self.avatar else []) + list(self.poses)
 
 
 def slugify(name: str) -> str:
@@ -70,6 +83,7 @@ def load(slug: str) -> Character:
         if not pose.exists():
             raise RuntimeError(f"Character {slug!r} lists the pose {name!r} but the file is missing.")
         poses.append(pose)
+    roles = pose_roles_for(data, 1 + len(poses) if avatar is not None else len(poses))
     return Character(
         slug=slug,
         name=data.get("name", slug),
@@ -83,7 +97,94 @@ def load(slug: str) -> Character:
         tts=data.get("tts") or None,
         kokoro_voice=data.get("kokoro_voice") or None,
         poses=tuple(poses),
+        pose_roles=tuple(roles),
     )
+
+
+# --- pose roles ------------------------------------------------------------------
+
+SHRUG = "shrug"
+KNOWN_ROLES = ("neutral", "point", "think", "present", "shrug")
+_ROLE_RE = re.compile(r"^[a-z][a-z0-9-]{0,23}$")
+
+
+def default_roles(n: int) -> list[str]:
+    """Roles for a character whose manifest names none: the main picture is neutral, the others are
+    anonymous extras (never the shrug, so no picture is wrongly kept for the last scene)."""
+    return (["neutral"] + [f"pose{k}" for k in range(2, n + 1)])[:n]
+
+
+def pose_roles_for(manifest: dict, n: int) -> list[str]:
+    roles = manifest.get("pose_roles")
+    if isinstance(roles, list) and len(roles) == n and all(isinstance(r, str) and _ROLE_RE.match(r) for r in roles):
+        return list(roles)
+    return default_roles(n)
+
+
+# What a scene's graphic or moment calls for, most fitting first (the shrug is never in these lists: it is
+# reserved for the last scene).
+STYLE_ROLES = {
+    "hook": ("neutral", "present", "point"),
+    "kinetic": ("neutral", "present", "point"),
+    "stat": ("point", "present", "think"),
+    "chart": ("point", "present", "think"),
+    "timeline": ("think", "point", "present"),
+    "versus": ("present", "point", "think"),
+    "relation": ("present", "point", "neutral"),
+    "list": ("present", "point", "neutral"),
+    "quote": ("think", "present", "neutral"),
+    "myth": ("think", "point", "present"),
+    "question": ("think", "present", "neutral"),
+    "beat": ("point", "present", "think", "neutral"),
+}
+
+
+def plan_poses(roles: list[str], n_scenes: int, wanted: list | None = None, kinds: list[str] | None = None,
+               seed: str = "") -> list[int]:
+    """One picture index per scene. Rules: the shrug (role "shrug") only in the LAST scene, and there
+    whenever the character has one; never the same picture twice in a row; otherwise the scene's own
+    choice (`wanted`: a role name, or a legacy picture index) when it is allowed, else the best fit for the
+    scene's kind (`kinds`: the scene style, "hook", "question"...) among the poses not just used, with a
+    seeded tie-break so a re-render looks the same. Any other pose (a new one) joins the rotation."""
+    import random
+
+    if n_scenes <= 0 or not roles:
+        return []
+    wanted = list(wanted or []) + [None] * n_scenes
+    kinds = list(kinds or []) + ["beat"] * n_scenes
+    shrug = roles.index(SHRUG) if SHRUG in roles else None
+    normal = [k for k, r in enumerate(roles) if k != shrug] or [0]
+    rng = random.Random(f"poses:{seed}")
+    out: list[int] = []
+    for i in range(n_scenes):
+        last = i == n_scenes - 1 and n_scenes > 1
+        prev = out[-1] if out else None
+        if last and shrug is not None:
+            out.append(shrug)
+            continue
+        w = wanted[i]
+        pick = None
+        if isinstance(w, str) and w.strip().lower() in roles:
+            pick = roles.index(w.strip().lower())
+        elif isinstance(w, int) and not isinstance(w, bool) and 0 <= w < len(roles):
+            pick = w
+        if pick is not None and (pick == shrug or pick == prev):
+            pick = None  # a shrug before the end, or a repeat: choose another
+        if pick is None:
+            options = [k for k in normal if k != prev] or normal
+            prefs = STYLE_ROLES.get(str(kinds[i]), STYLE_ROLES["beat"])
+            ranked = [k for r in prefs for k in options if roles[k] == r]
+            if i == 0 and 0 in options and not isinstance(w, (str, int)):
+                ranked = [0] + ranked  # open on the main picture
+            others = [k for k in options if k not in ranked]
+            rng.shuffle(others)
+            fresh = [k for k in others if roles[k] not in KNOWN_ROLES]
+            if fresh and ranked and rng.random() < 0.4:  # a pose with a role of its own: work it into the rotation
+                ranked.insert(1 if i == 0 else 0, fresh[0])
+            # ...preferring one not used in the last two scenes, so it doesn't ping-pong between two poses
+            pick = sorted(ranked + others, key=lambda k: k in out[-2:])[0]
+        out.append(pick)
+    return out
 
 
 def list_characters() -> list[Character]:
@@ -215,16 +316,32 @@ def add(name: str, avatar: Path, voice_audio: list[Path], voice_text: list[str] 
     return load(slug)
 
 
-def set_poses(slug: str, sources: list[Path]) -> Character:
+def _check_roles(roles: list[str] | None, n: int) -> list[str]:
+    if roles is None:
+        return default_roles(n)
+    roles = [r.strip().lower() for r in roles]
+    if len(roles) != n:
+        raise SystemExit(f"Give one role per image ({n} images, {len(roles)} roles).")
+    bad = [r for r in roles if not _ROLE_RE.match(r)]
+    if bad:
+        raise SystemExit(f"Roles are short lower-case words (neutral, point, think, present, shrug...), not {bad}")
+    if len(set(roles)) != len(roles):
+        raise SystemExit(f"Each role once: {roles}")
+    return roles
+
+
+def set_poses(slug: str, sources: list[Path], roles: list[str] | None = None) -> Character:
     """Replaces a character's pictures with these poses, cut out and aligned: the first becomes the main
-    avatar, the rest are the other poses the video swaps to. They must share one canvas size."""
-    from .cutout import cut_poses
+    avatar, the rest are the other poses the video swaps to. They must share one canvas size. The shared
+    crop box and the source canvas size are stored so add_pose can line a later pose up exactly."""
+    from .cutout import cut_poses_with_canvas
 
     character = load(slug)
     for src in sources:
         if not src.exists():
             raise SystemExit(f"Pose image not found: {src}")
-    images = cut_poses(sources)
+    roles = _check_roles(roles, len(sources))
+    images, canvas = cut_poses_with_canvas(sources)
     for old in character.directory.glob("pose-*.png"):
         old.unlink()
     images[0].save(character.directory / "avatar.png", "PNG")
@@ -236,7 +353,103 @@ def set_poses(slug: str, sources: list[Path]) -> Character:
     manifest = json.loads(manifest_path.read_text())
     manifest["avatar"] = "avatar.png"
     manifest["poses"] = names
+    manifest["pose_roles"] = roles
+    manifest["canvas"] = canvas
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    return load(slug)
+
+
+def _paste_onto(image, size: tuple[int, int], offset: tuple[int, int]):
+    from PIL import Image
+
+    out = Image.new("RGBA", size, (0, 0, 0, 0))
+    out.paste(image, offset)  # no mask: onto a transparent canvas the alpha must be copied, not multiplied
+    return out
+
+
+def _align_by_body(new, ref):
+    """Fallback when the existing poses' canvas is unknown (made before it was stored): scale the new
+    cutout so its figure is as tall as the main pose's, stand it on the same floor line and centre its legs
+    (the bottom 30% of the figure, which barely moves between poses) on the main pose's legs.
+    Returns (scaled cutout cropped to its figure, its x, y on the main pose's canvas)."""
+    import numpy as np
+
+    def legs_centre(img):
+        a = np.asarray(img.getchannel("A")) > 8
+        ys, xs = np.nonzero(a)
+        top, bottom = ys.min(), ys.max()
+        band = ys >= bottom - 0.3 * (bottom - top)
+        return float(xs[band].mean()), int(top), int(bottom)
+
+    nbox = new.getchannel("A").point(lambda v: 255 if v > 8 else 0).getbbox()
+    new = new.crop(nbox)
+    rcx, rtop, rbottom = legs_centre(ref)
+    scale = (rbottom - rtop + 1) / new.height
+    new = new.resize((max(1, round(new.width * scale)), max(1, round(new.height * scale))))
+    ncx, _, nbottom = legs_centre(new)
+    return new, round(rcx - ncx), round(rbottom - nbottom)
+
+
+def add_pose(slug: str, image: Path, role: str) -> Character:
+    """Adds ONE pose to a character without redoing the others. The new image is cut out at full size; with
+    the canvas stored by set_poses (same source size) it is cropped with the very same box, and when the new
+    pose reaches outside that box (an arm held out) every picture is padded to the grown box, so all of them
+    still line up. Without a stored canvas it is lined up by its body (scaled to the main pose's height,
+    feet on the same floor line, legs centred) and the result is printed for checking."""
+    from PIL import Image
+
+    from .cutout import _box, cutout, union_box
+
+    character = load(slug)
+    if not image.exists():
+        raise SystemExit(f"Pose image not found: {image}")
+    role = _check_roles([role], 1)[0]
+    if role in character.pose_roles:
+        raise SystemExit(f"{slug!r} already has a {role!r} pose ({', '.join(character.pose_roles)}).")
+    manifest_path = character.directory / MANIFEST
+    manifest = json.loads(manifest_path.read_text())
+    pictures = character.pictures()
+    if not pictures:
+        raise SystemExit(f"{slug!r} has no avatar yet; add one first.")
+    existing = [Image.open(p).convert("RGBA") for p in pictures]
+    cut = cutout(Image.open(image))
+    canvas = manifest.get("canvas") or {}
+    if canvas and list(cut.size) == list(canvas.get("source_size") or []):
+        box, scale = tuple(canvas["box"]), float(canvas.get("scale") or 1.0)
+        nbox = _box(cut) or box
+        union = union_box([box, nbox])
+        size = (round((union[2] - union[0]) * scale), round((union[3] - union[1]) * scale))
+        offset = (round((box[0] - union[0]) * scale), round((box[1] - union[1]) * scale))
+        if union != box:
+            existing = [_paste_onto(img, size, offset) for img in existing]
+        new = cut.crop(union).resize(size) if scale != 1.0 else cut.crop(union)
+        manifest["canvas"] = {**canvas, "box": list(union)}
+        how = "lined up with the stored canvas box" + (" (box grown: every pose padded)" if union != box else "")
+    else:
+        if canvas:
+            print(f"  ! {image.name} is {cut.size[0]}x{cut.size[1]}, not the {canvas.get('source_size')} canvas the "
+                  "other poses were cut from; lining it up by its body instead.")
+        piece, x, y = _align_by_body(cut, existing[0])
+        w, h = existing[0].size
+        left, top = min(0, x), min(0, y)
+        right, bottom = max(w, x + piece.width), max(h, y + piece.height)
+        size = (right - left, bottom - top)
+        if size != (w, h):
+            existing = [_paste_onto(img, size, (-left, -top)) for img in existing]
+        new = _paste_onto(piece, size, (x - left, y - top))
+        how = "lined up by body (no stored canvas): check it with `characters list` and a preview"
+    for img, path in zip(existing, pictures):
+        if img.size != Image.open(path).size:
+            img.save(path, "PNG")
+    k = len(pictures) + 1
+    while (character.directory / f"pose-{k}.png").exists():
+        k += 1
+    name = f"pose-{k}.png"
+    new.save(character.directory / name, "PNG")
+    manifest["poses"] = list(manifest.get("poses") or []) + [name]
+    manifest["pose_roles"] = list(character.pose_roles) + [role]
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    print(f"  added {name} as {role!r}: {how}")
     return load(slug)
 
 
@@ -293,6 +506,12 @@ def main(argv: list[str] | None = None) -> None:
     p_poses = sub.add_parser("poses", help="give a character several poses the video swaps between (first = main)")
     p_poses.add_argument("name")
     p_poses.add_argument("images", nargs="+", type=Path, help="same-size images on a plain background; the first is the main pose")
+    p_poses.add_argument("--roles", help="comma-separated role per image, e.g. neutral,point,think,shrug")
+
+    p_addpose = sub.add_parser("add-pose", help="add one more pose to a character, lined up with its others")
+    p_addpose.add_argument("name")
+    p_addpose.add_argument("image", type=Path)
+    p_addpose.add_argument("--role", required=True, help="neutral, point, think, present, shrug, or another word")
 
     p_say = sub.add_parser("say", help="hear a character's voice without rendering a video")
     p_say.add_argument("name")
@@ -326,8 +545,12 @@ def main(argv: list[str] | None = None) -> None:
             _set_env(args.name)
             print(f"Active character: {args.name}")
     elif args.cmd == "poses":
-        character = set_poses(args.name, args.images)
-        print(f"{character.name} now has {1 + len(character.poses)} poses.")
+        roles = [r for r in args.roles.split(",")] if args.roles else None
+        character = set_poses(args.name, args.images, roles)
+        print(f"{character.name} now has {1 + len(character.poses)} poses: {', '.join(character.pose_roles)}.")
+    elif args.cmd == "add-pose":
+        character = add_pose(args.name, args.image, args.role)
+        print(f"{character.name} now has {len(character.pose_roles)} poses: {', '.join(character.pose_roles)}.")
     elif args.cmd == "say":
         load(args.name)
         print(f"Wrote {_say(args.name, args.text)}")

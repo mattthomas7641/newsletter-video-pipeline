@@ -10,6 +10,7 @@ Manual use:
     ./venv/bin/python -m newsletter_video.youtube_upload 2026-10-08            # upload a day
     ./venv/bin/python -m newsletter_video.youtube_upload 2026-10-08 --dry-run  # show what would upload
     ./venv/bin/python -m newsletter_video.youtube_upload 2026-10-08 --publish  # make a day's uploads public
+    ./venv/bin/python -m newsletter_video.youtube_upload --thumbnails 2026-10-08  # set thumbnails of a day's uploads
 
 Each video's title/description/tags come from the `<video>.json` sidecar the
 pipeline writes next to it. Uploaded video IDs are recorded in
@@ -141,6 +142,13 @@ def write_metadata(script: Script, video_path: Path, privacy: str | None = None)
         pass  # an unreadable environment never blocks writing the sidecar
     if getattr(script, "lineup", None):  # experiment tracking: which format this video was (lineup.py)
         metadata["lineup"] = dict(script.lineup)
+    if getattr(script, "fact_check", None):  # why this video was accepted (factcheck.record): verdicts, evidence
+        metadata["fact_check"] = script.fact_check
+    from .thumbnails import thumb_path
+
+    thumb = thumb_path(video_path)
+    if thumb.exists():  # the title page as the YouTube thumbnail (set after the upload)
+        metadata["thumbnail"] = thumb.name
     path = video_path.with_suffix(".json")
     write_json_atomic(path, metadata)
     return path
@@ -362,7 +370,96 @@ def upload_day(day: date, dry_run: bool = False) -> list[str]:
         record_video(folder, video.stem, "uploaded", youtube_id=video_id, privacy=privacy)
         uploaded.append(video_id)
         log.info("YouTube: uploaded %s → https://youtube.com/shorts/%s (%s)", video.name, video_id, privacy)
+        # The title page as the thumbnail. The video is already up: whatever happens here never undoes or
+        # fails it (an unverified channel, quota, a 403 are logged and recorded, and the next video goes on).
+        outcome = set_thumbnail(youtube, video_id, video)
+        if outcome is not None:
+            record[video.name]["thumbnail"] = outcome
+            write_json_atomic(record_path, record)
+            record_video(folder, video.stem, "uploaded", thumbnail=outcome)
     return uploaded
+
+
+def _thumbnail_media(video: Path):
+    """What to upload as the thumbnail: the video's full vertical title page (YouTube shows a Short's thumbnail
+    9:16 and pads it onto a blurred background in 16:9 places; a 16:9 picture would be centre-cropped into a
+    narrow strip), as a JPEG under YouTube's 2 MB limit. Falls back to the 16:9 <video>.thumb.jpg when there is
+    no title frame. None when the video has no thumbnail at all."""
+    import io
+
+    from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload
+
+    from .thumbnails import thumb_path, title_png_path
+
+    png = title_png_path(video)
+    if png.exists():
+        from PIL import Image
+
+        buf = io.BytesIO()
+        Image.open(png).convert("RGB").save(buf, "JPEG", quality=92)
+        if buf.tell() > 1_900_000:  # keep well under the 2 MB limit
+            buf = io.BytesIO()
+            Image.open(png).convert("RGB").save(buf, "JPEG", quality=80)
+        buf.seek(0)
+        return MediaIoBaseUpload(buf, mimetype="image/jpeg")
+    thumb = thumb_path(video)
+    return MediaFileUpload(str(thumb), mimetype="image/jpeg") if thumb.exists() else None
+
+
+def set_thumbnail(youtube, video_id: str, video: Path) -> str | None:
+    """thumbnails.set for an uploaded video from its title page: "ok", "failed:<reason>", or None when the video
+    has no thumbnail (rendered before thumbnails existed). Never raises."""
+    try:
+        media = _thumbnail_media(video)
+    except Exception as exc:  # noqa: BLE001 - a broken image must not break the upload
+        log.warning("YouTube: thumbnail for %s could not be prepared (%s: %s)", video.name, type(exc).__name__, exc)
+        return f"failed:{type(exc).__name__}: {exc}"[:300]
+    if media is None:
+        return None
+    try:
+        from googleapiclient.errors import HttpError
+
+        youtube.thumbnails().set(videoId=video_id, media_body=media).execute()
+    except HttpError as exc:
+        reason = f"HTTP {exc.resp.status} {getattr(exc, 'reason', '')}".strip()
+        if exc.resp.status == 403:
+            reason += " (custom thumbnails need a verified channel, or the quota is used up)"
+        log.warning("YouTube: thumbnail for %s not set: %s; the video itself is uploaded", video.name, reason)
+        return f"failed:{reason}"[:300]
+    except Exception as exc:  # noqa: BLE001 - network or anything else: the upload stands
+        log.warning("YouTube: thumbnail for %s not set (%s: %s); the video itself is uploaded", video.name,
+                    type(exc).__name__, exc)
+        return f"failed:{type(exc).__name__}: {exc}"[:300]
+    log.info("YouTube: thumbnail set for %s", video.name)
+    return "ok"
+
+
+def set_day_thumbnails(day: date, youtube=None) -> dict[str, str]:
+    """Backfill: sets the thumbnail of every video of `day` that uploads.json records as uploaded and whose
+    thumbnail is not already "ok". Returns {video file name: outcome}."""
+    folder = OUTPUT_DIR / day.isoformat()
+    record_path = folder / "uploads.json"
+    record = read_json(record_path, default={}) or {}
+    todo = [(name, info) for name, info in record.items()
+            if isinstance(info, dict) and info.get("id") and info.get("thumbnail") != "ok"]
+    if not todo:
+        log.info("YouTube: no uploaded videos without a thumbnail for %s", day)
+        return {}
+    if youtube is None:
+        creds = _credentials(interactive=False)
+        if creds is None:
+            raise YouTubeAuthError("YouTube sign-in missing or expired — run `python -m newsletter_video.youtube_upload --auth`")
+        youtube = _youtube_client(creds)
+    results = {}
+    for name, info in todo:
+        outcome = set_thumbnail(youtube, info["id"], folder / name)
+        if outcome is None:
+            log.info("YouTube: %s has no thumbnail file; skipped", name)
+            continue
+        info["thumbnail"] = outcome
+        results[name] = outcome
+        write_json_atomic(record_path, record)
+    return results
 
 
 def days_with_pending_uploads(today: date) -> list[date]:
@@ -475,7 +572,11 @@ if __name__ == "__main__":
             print("Authorized, but this Google account has no YouTube channel yet — create one, then rerun --auth.")
     else:
         try:
-            if "--publish" in sys.argv:
+            if "--thumbnails" in sys.argv:
+                done = set_day_thumbnails(date.fromisoformat(args[0]) if args else date.today())
+                for name, outcome in done.items():
+                    print(f"{name}: {outcome}")
+            elif "--publish" in sys.argv:
                 publish_day(date.fromisoformat(args[0]) if args else date.today())
             else:
                 target = date.fromisoformat(args[0]) if args else date.today()

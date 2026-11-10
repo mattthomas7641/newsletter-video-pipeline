@@ -294,7 +294,8 @@ def prepare_workdir(source: Source, payload: dict, audio: Path | None, work_dir:
         with applied(source.look):  # CHARACTER: whose poses
             payload["avatar"] = avx_builder._avatar_assets(work_dir / "assets", f"{source.day.isoformat()}-{source.key}",
                                                            [s["start"] for s in payload["scenes"]],
-                                                           [s.get("pose") for s in source.avx_scenes])
+                                                           [s.get("pose") for s in source.avx_scenes],
+                                                           [s["style"] for s in source.avx_scenes])
     else:
         vb._prepare_workdir(work_dir)
     assets = work_dir / "assets"

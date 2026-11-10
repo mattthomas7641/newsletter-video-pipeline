@@ -238,12 +238,18 @@ def run(target_date: date | None = None) -> list[Path]:
             log.info("Excluding %d previously-covered story title(s) (all-time, similarity-matched)", len(covered))
 
         log.info("Selecting top stories and building scripts")
+        from . import factcheck
+
+        mark = factcheck.drop_mark()
         if lineup_slots is not None:
             from .lineup import write_scripts
 
             scripts = write_scripts(lineup_slots, target_date, lineup_total, editions, covered, build_scripts)
         else:
             scripts = build_scripts(editions, n_videos=wanted, exclude_titles=covered)
+        drops = factcheck.drops_since(mark)
+        if drops:  # status.json keeps why each refused video was refused (titles, stage, reasons)
+            update_run(out_dir, dropped=[{k: d[k] for k in ("title", "format", "stage", "reasons")} for d in drops])
         for script in scripts:
             log.info("Script %r (%s): %d beats, %d words, stories %s", script.title, script.writer or "?",
                      len(script.beats), script.word_count, [s.title for s in script.stories])
@@ -324,6 +330,10 @@ def clean_old_outputs(today: date, keep_days: int = KEEP_DAYS) -> None:
             if (uploaded.get(video.name) or {}).get("id"):  # a recorded id, not just an attempt
                 freed += video.stat().st_size
                 video.unlink()
+                title = video.with_name(video.stem + ".title.png")  # the full title frame; the small .thumb.jpg stays
+                if title.exists():
+                    freed += title.stat().st_size
+                    title.unlink()
         audio = OUTPUT_DIR / "_audio" / folder.name
         if audio.is_dir():
             freed += sum(f.stat().st_size for f in audio.rglob("*") if f.is_file())

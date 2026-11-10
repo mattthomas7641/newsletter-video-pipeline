@@ -52,6 +52,9 @@ def plan(target_date: date, out_dir: Path, n_videos: int, kind: str = "day",
         if not editions or total == 0:
             raise RuntimeError("No stories scraped; nothing to plan")
         covered = _covered_titles()
+        from . import factcheck
+
+        mark = factcheck.drop_mark()
         log.info("Selecting top stories and building scripts")
         if lineup_slots is not None:  # the standing lineup (lineup.py): formats per slot, one writer call per format
             from .lineup import write_scripts
@@ -65,6 +68,9 @@ def plan(target_date: date, out_dir: Path, n_videos: int, kind: str = "day",
             log.info("Script %r (%s): %d words, stories %s", script.title, script.writer or "?", script.word_count,
                      [s.title for s in script.stories])
     data = pm.new_manifest(scripts, target_date, kind=kind, default_look=resolved, look_overrides=run_overrides)
+    drops = factcheck.drops_since(mark)
+    if drops:  # the videos the checks refused (validator, editor, fact check), with their reasons
+        data["dropped"] = drops
     if lineup_slots is not None:  # each planned video keeps its own slot's look and record
         for entry, script in zip(data["videos"], scripts):
             entry["look"] = pm.looks.compact(pm.looks.validate_look(script.look or {}))

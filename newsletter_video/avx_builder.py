@@ -171,6 +171,7 @@ def build_payload(scenes: list[dict], per_line: list[list[tuple[str, float]]], s
             "index": i, "style": scene["style"], "label": scene.get("label", scene["style"]),
             "eyebrow": scene.get("eyebrow", ""), "start": start, "end": round(end, 3),
             "pal": pal, "transition": transition if i else "cut", "data": data,
+            "variant": scene.get("variant") or VARIANTS.get(scene["style"], ("",))[0],
             "words": [{"w": w, "t": t} for w, t in words],
         })
         prev_bg = pal["bg"]
@@ -199,10 +200,15 @@ def _prepare_workdir(work_dir: Path) -> None:
 
 
 def _avatar_assets(assets: Path, seed: str, scene_starts: list[float],
-                   scene_poses: list[int | None] | None = None) -> dict:
+                   scene_poses: list | None = None, styles: list[str] | None = None) -> dict:
     """The narrator's poses as assets/pose-N.png and when to swap them. The active character (CHARACTER),
-    else the legacy image in assets/character; a pose a character does not have falls back to its main one."""
-    from .video_builder import _avatar_height, character_image, character_poses, pose_changes
+    else the legacy image in assets/character. `scene_poses` is what each scene asked for: a role name
+    ("point", "think"...: the writer's choice) or a picture index (older stored plans). The rules of
+    characters.plan_poses apply on top: the shrug only in the LAST scene (an earlier one is replaced by a
+    fitting pose for the scene's style), never the same pose twice in a row, a pose the character lacks
+    replaced by one it has."""
+    from .characters import plan_poses
+    from .video_builder import _avatar_height, character_image, character_pose_roles, character_poses
 
     main = character_image()
     if main is None:  # no avatar at all: an empty image, so the template's <img> still resolves
@@ -215,21 +221,23 @@ def _avatar_assets(assets: Path, seed: str, scene_starts: list[float],
     for k, pose in enumerate(character_poses(), start=2):
         shutil.copy(pose, assets / f"pose-{k}.png")
         poses.append(f"pose-{k}.png")
-    if scene_poses:
-        scene_poses = [p if isinstance(p, int) and not isinstance(p, bool) and 0 <= p < len(poses) else 0
-                       for p in scene_poses]
     height = min(AVATAR_HEIGHT, _avatar_height(main))
-    if scene_poses and all(p is not None for p in scene_poses):
-        # Chosen per scene (pointing at a chart, shrugging at a question...): one change per scene start.
-        changes, current = [], scene_poses[0]
-        for at, pose in zip(scene_starts[1:], scene_poses[1:]):
-            if pose != current and pose < len(poses):
-                changes.append({"at": round(at, 3), "pose": pose})
-                current = pose
-    else:
-        changes = pose_changes(len(poses), scene_starts[1:], seed)
-    return {"height": height, "poses": poses, "first": scene_poses[0] if scene_poses and scene_poses[0] else 0,
-            "changes": changes}
+    if len(poses) < 2 or not scene_starts:
+        return {"height": height, "poses": poses, "first": 0, "changes": []}
+    roles = character_pose_roles()
+    if len(roles) != len(poses):
+        from .characters import default_roles
+
+        roles = default_roles(len(poses))
+    n = len(scene_starts)
+    kinds = list(styles or [])[:n]
+    plan = plan_poses(roles, n, wanted=list(scene_poses or [])[:n], kinds=kinds, seed=seed)
+    changes, current = [], plan[0]
+    for at, pose in zip(scene_starts[1:], plan[1:]):
+        if pose != current:
+            changes.append({"at": round(at, 3), "pose": pose})
+            current = pose
+    return {"height": height, "poses": poses, "first": plan[0], "changes": changes, "roles": roles}
 
 
 SCENE_GAP = 0.4  # breath between scenes: lets each graphic land before the next line starts
@@ -355,7 +363,7 @@ def build_avx(scenes: list[dict], out_path: Path, work_dir: Path, *, draft_label
     speech_end = min(max(speech_end, length), length + 0.2)
     payload_probe = build_payload(scenes, per_line, speech_end, draft_labels)
     avatar = _avatar_assets(assets, seed, [s["start"] for s in payload_probe["scenes"]],
-                            [s.get("pose") for s in scenes])
+                            [s.get("pose") for s in scenes], [s["style"] for s in scenes])
     payload = build_payload(scenes, per_line, speech_end, draft_labels, avatar)
     _pad_audio(raw, assets / "voice.wav", max(0.0, payload["duration"] - length))
     variables = work_dir / "story.json"
@@ -386,28 +394,139 @@ def _late_cue(scene: dict) -> bool:
     return any(c.split() and _norm(c.split()[0]) in tail and _norm(c.split()[0]) not in toks[:-2] for c in cues)
 
 
-def house_rhythm(n: int) -> list[str]:
-    """The draft's background rhythm for n scenes: light paper for the hook and the first beat, then the
-    blue, then near-black for the rest, and light again for the outro (L L M M D D D L for eight)."""
+def house_rhythm(n: int, family: tuple | None = None, rhythm: str = "classic") -> list[str]:
+    """The background rhythm for n scenes, from a palette family's light / mid / dark grounds (default the
+    house family). "classic" (the draft's): light paper for the hook and the first beat, then the mid colour,
+    then the dark for the rest, light again for the outro (L L M M D D D L for eight). "alternate": light
+    hook, then the mid and dark grounds take turns (L M D M D ... L). "deep": light hook, straight into the
+    dark, the mid colour late (L D D M M ... L). Every rhythm opens and closes on the light ground (the
+    thumbnail is the hook, the question sits on paper)."""
+    light, mid, dark = (g for g, _ in (family or PALETTE_FAMILIES["house"]))
     if n <= 0:
         return []
     if n <= 2:
-        return [LIGHT] * n
+        return [light] * n
     if n == 3:
-        return [LIGHT, MID, LIGHT]
+        return [light, mid, light]
     rest = n - 3
+    if rhythm == "alternate":
+        middle = [mid if k % 2 == 0 else dark for k in range(rest + 1)]
+        return [light] + middle + [light]
+    if rhythm == "deep":
+        darks = (rest + 1) // 2 + 1 if rest > 1 else 1
+        return [light] + [dark] * darks + [mid] * (rest + 1 - darks) + [light]
     mids = rest // 2
-    return [LIGHT, LIGHT] + [MID] * mids + [DARK] * (rest - mids) + [LIGHT]
+    return [light, light] + [mid] * mids + [dark] * (rest - mids) + [light]
 
 
-def apply_look(scenes: list[dict], bg: str = "", accent: str = "") -> list[dict]:
+# --- variety between videos: palette families, transition sets, rhythms and layout variants ------------
+# A day of videos must not look like one video ten times, but every video keeps the house look: the same
+# type, the same eight scene styles, Puck, the paper -> colour -> dark -> paper journey. Each video gets a
+# palette FAMILY (three coherent grounds, each with its accent), a TRANSITION SET (how the ground changes, and
+# how the outro arrives), a RHYTHM, and every scene a layout VARIANT. All are picked deterministically from
+# the video's seed ("<date>-<index>"), so a re-render is identical, and consecutive videos of a day never share
+# a family or a transition set.
+
+PALETTE_FAMILIES: dict[str, tuple[tuple[str, str | None], ...]] = {
+    # (ground, accent) for light, mid, dark; None = the ground's own accent (_default_accent)
+    "house": (("#f3efe6", None), ("#2f4fe0", None), ("#0d0f14", None)),  # paper / cobalt / ink: the original
+    "terracotta": (("#f5ede3", "#c2410c"), ("#b4462b", "#ffd9a8"), ("#1a1411", "#f59e5b")),  # cream / clay / umber
+    "forest": (("#eaf2ea", "#1c8a5a"), ("#1f6b4a", "#ffd23f"), ("#0c1511", "#5ef2b0")),  # mint / forest / pine ink
+    "violet": (("#efebf8", "#6d28d9"), ("#5236c9", "#7ef0d6"), ("#110e1c", "#c4b5fd")),  # lavender / violet / night
+    "ocean": (("#e8f1f5", "#0e7490"), ("#0f5c70", "#ffb86b"), ("#0a1317", "#67e8f9")),  # mist / deep teal / abyss
+}
+FAMILY_ORDER = tuple(PALETTE_FAMILIES)
+# (the transition where the ground changes, the outro's transition)
+TRANSITION_SETS = (("iris", "shutter"), ("wipe", "slide"), ("blinds", "iris"), ("diagonal", "shutter"),
+                   ("slide", "blinds"), ("iris", "diagonal"))
+TRANSITIONS = ("cut", "iris", "shutter", "wipe", "slide", "blinds", "diagonal")
+RHYTHMS = ("classic", "alternate", "deep")
+VARIANTS = {  # the template's layouts per scene style; the first is the original
+    "kinetic": ("stack", "center", "words"),
+    "outro": ("stack", "center", "words"),
+    "stat": ("left", "center", "ring", "bar"),
+    "versus": ("side", "stacked"),
+    "list": ("rows", "chips", "cards"),
+    "timeline": ("vertical", "horizontal"),
+    "chart": ("line", "bars"),
+    "relation": ("diagonal", "mirror"),
+}
+
+
+def _seed_parts(seed: str) -> tuple[int, int]:
+    """(a stable number for the day, the video's index): "2026-11-09-3" -> (crc of the day, 3)."""
+    import zlib
+
+    m = re.match(r"^(.*?)-(\d+)$", seed or "")
+    if m:
+        return zlib.crc32(m.group(1).encode()), int(m.group(2))
+    return zlib.crc32((seed or "").encode()), 0
+
+
+def video_variety(seed: str) -> dict:
+    """The family, transition set and rhythm of one video. An empty seed is the original look (house family,
+    iris + shutter, classic rhythm), so drafts and previews without a seed are unchanged. Within a day the
+    index advances every choice by one step, so neighbours never repeat a family or a transition set."""
+    if not seed:
+        return {"family": "house", "transitions": TRANSITION_SETS[0], "rhythm": "classic"}
+    day, i = _seed_parts(seed)
+    return {"family": FAMILY_ORDER[(day + i) % len(FAMILY_ORDER)],
+            "transitions": TRANSITION_SETS[(day // 7 + i) % len(TRANSITION_SETS)],
+            "rhythm": RHYTHMS[(day // 49 + i) % len(RHYTHMS)]}
+
+
+def _variant_ok(style: str, variant: str, data: dict) -> bool:
+    """Whether a layout can show this scene's data honestly and legibly."""
+    if style == "stat" and variant in ("ring", "bar"):
+        return data.get("suffix") == "%" and isinstance(data.get("value"), (int, float)) and 0 < data["value"] <= 100
+    if style == "chart" and variant == "bars":
+        series = data.get("series") or []
+        return bool(series) and len(series[0].get("values") or []) <= 6
+    if style == "versus" and variant == "stacked":
+        return all(len(" ".join(str(x) for x in (data.get(k) or {}).get("items") or [])) <= 40 for k in ("left", "right"))
+    return True
+
+
+def assign_variants(scenes: list[dict], seed: str) -> list[dict]:
+    """Fills each scene's `variant` (a layout of its style) unless the scene already has a valid one: seeded,
+    never the same variant twice for one style within a video, and only layouts that fit the data (a ring or
+    bar only for a percentage). An empty seed keeps every scene on its original layout."""
+    import random
+
+    rng = random.Random(f"variants:{seed}")
+    used: dict[str, set] = {}
+    for k, sc in enumerate(scenes):
+        style, data = sc.get("style"), sc.get("data") or {}
+        options = [v for v in VARIANTS.get(style, ()) if _variant_ok(style, v, data)]
+        if not options:
+            continue
+        if sc.get("variant") in options:
+            used.setdefault(style, set()).add(sc["variant"])
+            continue
+        if not seed:
+            sc["variant"] = options[0]
+            continue
+        fresh = [v for v in options if v not in used.get(style, set())] or options
+        pick = rng.choice(fresh)
+        sc["variant"] = pick
+        used.setdefault(style, set()).add(pick)
+    return scenes
+
+
+def apply_look(scenes: list[dict], bg: str = "", accent: str = "", seed: str = "") -> list[dict]:
     """Copies of `scenes` coloured for one video: `bg` set = that one plain ground for every scene (scenes
-    then change with each graphic's own directional exit, no wipes); blank = the house rhythm, with a wipe
-    (iris, the outro a shutter) wherever the ground changes. `accent` set = that animation colour on every
-    scene (palette() keeps it readable on each ground); blank = each ground's own accent."""
+    then change with each graphic's own directional exit, no wipes); blank = the video's palette family in its
+    rhythm, with the video's transition wherever the ground changes (and its outro transition for the last
+    scene). `accent` set = that animation colour on every scene (palette() keeps it readable on each ground);
+    blank = each ground's own accent from the family. `seed` ("<date>-<index>") picks the family, transition
+    set, rhythm and each scene's layout variant (video_variety, assign_variants); blank = the original look."""
     bg = normalise_hex(bg or "") or ""
     accent = normalise_hex(accent or "") or ""
-    grounds = [bg] * len(scenes) if bg else house_rhythm(len(scenes))
+    variety = video_variety(seed)
+    family = PALETTE_FAMILIES[variety["family"]]
+    family_accent = {g: a for g, a in family}
+    grounds = [bg] * len(scenes) if bg else house_rhythm(len(scenes), family, variety["rhythm"])
+    change, outro_in = variety["transitions"]
     out = []
     for i, (scene, ground) in enumerate(zip(scenes, grounds)):
         s = copy.deepcopy(scene)
@@ -416,13 +535,15 @@ def apply_look(scenes: list[dict], bg: str = "", accent: str = "") -> list[dict]
         s["bg"] = ground
         if accent:
             s["accent"] = accent
+        elif not bg and family_accent.get(ground):
+            s["accent"] = family_accent[ground]
         else:
             s.pop("accent", None)
         s.pop("transition", None)  # derived from the grounds in build_payload: a cut on the same ground
-        if not bg and i == len(scenes) - 1 and i and grounds[i - 1] != ground:
-            s["transition"] = "shutter"
+        if not bg and i and grounds[i - 1] != ground:
+            s["transition"] = outro_in if i == len(scenes) - 1 else change
         out.append(s)
-    return out
+    return assign_variants(out, seed)
 
 
 def build_avx_short(script, out_path: Path, audio_path: Path, kicker: str = "", seed: str = "avx") -> Path:
@@ -431,15 +552,20 @@ def build_avx_short(script, out_path: Path, audio_path: Path, kicker: str = "", 
     environment (look.applied): CHARACTER narrates, LOOK_BG / LOOK_ACCENT colour the scenes."""
     from .avx_writer import scenes_for
 
-    scenes = apply_look(scenes_for(script), os.environ.get("LOOK_BG", ""), os.environ.get("LOOK_ACCENT", ""))
+    scenes = apply_look(scenes_for(script), os.environ.get("LOOK_BG", ""), os.environ.get("LOOK_ACCENT", ""), seed=seed)
     work_dir = audio_path.parent.parent / "_hf_work_avx"
     from .video_builder import RENDER_CRF
 
+    variety = video_variety(seed)
     log.info("Avatar explainer: rendering %r (%d scenes: %s; %s)", getattr(script, "title", "?"), len(scenes),
-             ", ".join(s["style"] for s in scenes),
-             f"background {scenes[0]['bg']}" if len({s['bg'] for s in scenes}) == 1 else "house rhythm")
-    build_avx(scenes, out_path, work_dir, seed=seed, crf=RENDER_CRF, audio_out=audio_path,
-              log_path=audio_path.with_suffix(".render.log"))
+             ", ".join(f"{s['style']}/{s.get('variant', '')}" for s in scenes),
+             f"background {scenes[0]['bg']}" if len({s['bg'] for s in scenes}) == 1
+             else f"{variety['family']} family, {variety['rhythm']} rhythm, {'+'.join(variety['transitions'])}")
+    info = build_avx(scenes, out_path, work_dir, seed=seed, crf=RENDER_CRF, audio_out=audio_path,
+                     log_path=audio_path.with_suffix(".render.log"))
+    from .thumbnails import avx_title_time, remember
+
+    remember(out_path, lambda: avx_title_time(info["payload"]), "avx")  # the thumbnail is the hook, fully typed
     return out_path
 
 

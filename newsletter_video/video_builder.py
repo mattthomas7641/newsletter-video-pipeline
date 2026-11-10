@@ -35,7 +35,8 @@ import soundfile
 from .runstate import next_index, record_video
 from .script_writer import Script
 from .supervisor import FatalPipelineError, run_subprocess
-from .tts import HYPERFRAMES_VERSION, audio_duration_seconds, base_speed, hyperframes_env, npx_path, speakable, synthesize
+from .tts import (HYPERFRAMES_VERSION, audio_duration_seconds, base_speed, hyperframes_env, npx_path, speakable,
+                  spoken_words, synthesize)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = Path(__file__).resolve().parent / "hf_template"
@@ -108,23 +109,38 @@ def character_poses() -> list[Path]:
 POSE_MIN_GAP_SECONDS = 2.0  # never flick between poses faster than this
 
 
-def pose_changes(n_poses: int, starts: list[float], seed: str) -> list[dict]:
-    """When the avatar swaps pose: the main pose (0) for the hook, then a different pose at each of `starts`
-    (each beat, then the outro), never the same one twice in a row and ending back on the main pose.
-    Deterministic for a given seed, so a re-render of the same video looks the same."""
-    import random
+def character_pose_roles() -> list[str]:
+    """The role of each picture of the active character ([main] + poses: "neutral", "point", "shrug"...)."""
+    from .characters import active, default_roles
+
+    character = active()
+    if character and character.avatar:
+        return list(character.pose_roles)
+    return default_roles(1)
+
+
+def pose_changes(n_poses: int, starts: list[float], seed: str, roles: list[str] | None = None,
+                 kinds: list[str] | None = None) -> list[dict]:
+    """When the avatar swaps pose: the main pose (0) for the hook, then a fitting pose at each of `starts`
+    (each beat, then the outro), never the same one twice in a row. The shrug (a picture whose role is
+    "shrug") is kept for the outro, the last start, and used nowhere else; a character without one ends
+    back on the main pose. Deterministic for a given seed, so a re-render of the same video looks the same.
+    `kinds` names each start's moment for a better fit (characters.STYLE_ROLES; default "beat")."""
+    from .characters import SHRUG, default_roles, plan_poses
 
     if n_poses < 2 or not starts:
         return []
-    rng = random.Random(f"poses:{seed}")
-    changes, current, last_at = [], 0, 0.0
-    for i, at in enumerate(starts):
-        if at - last_at < POSE_MIN_GAP_SECONDS:
+    roles = list(roles) if roles and len(roles) == n_poses else default_roles(n_poses)
+    plan = plan_poses(roles, len(starts) + 1, wanted=[0], kinds=["hook"] + list(kinds or []), seed=seed)
+    if SHRUG not in roles:  # no shrug: the outro is back on the main pose
+        plan[-1] = 0
+        if plan[-2] == 0 and len(plan) > 2:
+            plan[-2] = next(k for k in range(1, n_poses) if k != plan[-3]) if n_poses > 2 or plan[-3] != 1 else 1
+    changes, current, last_at = [], plan[0], 0.0
+    for i, (at, pick) in enumerate(zip(starts, plan[1:])):
+        final = i == len(starts) - 1
+        if pick == current or (at - last_at < POSE_MIN_GAP_SECONDS and not final):
             continue
-        if i == len(starts) - 1 and current != 0:
-            pick = 0
-        else:
-            pick = rng.choice([k for k in range(n_poses) if k != current])
         changes.append({"at": round(at, 3), "pose": pick})
         current, last_at = pick, at
     return changes
@@ -302,7 +318,16 @@ def _align_script(lines: list[str], audio_path: Path) -> list[list[tuple[str, fl
         return _proportional_word_times(lines, onset, offset)
 
     ref = [(i, w) for i, line in enumerate(lines) for w in line.split()]
-    ref_norm = [_normalize_token(w) for _, w in ref]
+    # The voice said the speakable() form ("SaaS" -> "sass", "4x" -> "4 times", "$1.25T" -> "1.25 trillion
+    # dollars"), so the transcript is matched against those spoken words; each original word then takes the
+    # time of its first spoken word. Captions keep the original words and their count.
+    spoken: list[tuple[int, str]] = []  # (index into ref, spoken word)
+    k0 = 0
+    for line in lines:
+        for i, w in spoken_words(line):
+            spoken.append((k0 + i, w))
+        k0 += len(line.split())
+    ref_norm = [_normalize_token(w) for _, w in spoken]
     rec_norm = [_normalize_token(w) for w, _ in recognized]
 
     times: list[float | None] = [None] * len(ref)
@@ -312,7 +337,9 @@ def _align_script(lines: list[str], audio_path: Path) -> list[list[tuple[str, fl
             continue
         n = min(i2 - i1, j2 - j1)
         for k in range(n):
-            times[i1 + k] = recognized[j1 + k][1]
+            orig = spoken[i1 + k][0]
+            if times[orig] is None:  # an original word's time is its first spoken word
+                times[orig] = recognized[j1 + k][1]
 
     # Interpolate any unmatched words from their nearest known neighbors.
     known = [i for i, t in enumerate(times) if t is not None]
@@ -491,7 +518,8 @@ def _build_short(script: Script, out_path: Path, audio_path: Path, work_dir: Pat
                 shutil.copy(pose, assets / f"pose-{k}.png")
             starts = [c["start"] for c in payload["cards"]] + [payload["outro"]["start"]]
             payload["avatar"]["poses"] = ["character.png"] + [f"pose-{k}.png" for k in range(2, 2 + len(extra))]
-            payload["avatar"]["changes"] = pose_changes(len(extra) + 1, starts, background_seed)
+            payload["avatar"]["changes"] = pose_changes(len(extra) + 1, starts, background_seed,
+                                                        roles=character_pose_roles())
     variables_path.write_text(json.dumps({"story": json.dumps(payload)}))
 
     # Render into a side folder and move into place only when complete, so
@@ -520,6 +548,9 @@ def _build_short(script: Script, out_path: Path, audio_path: Path, work_dir: Pat
     if not partial.exists() or partial.stat().st_size == 0:
         raise RuntimeError(f"Renderer exited cleanly but wrote no video for {out_path.name}")
     partial.replace(out_path)
+    from .thumbnails import avatar_title_time, remember
+
+    remember(out_path, lambda: avatar_title_time(payload), "avatar")  # the thumbnail is the hook card
     return out_path
 
 
@@ -556,6 +587,9 @@ def build_shorts(scripts: list[Script], out_dir: Path, audio_dir: Path,
             try:
                 build_short(script, out_path, audio_path, work_dir, kicker,
                             background_seed=f"{target_date.isoformat()}-{i}")
+                from .thumbnails import make_for
+
+                make_for(out_path)  # the title page as the thumbnail; never raises, skips when untimed
                 if on_rendered is not None:
                     on_rendered(script, out_path)
                 record_video(out_dir, out_path.stem, "rendered", title=script.title,

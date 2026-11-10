@@ -3,9 +3,15 @@
 (avx_builder.STYLES), one spoken line plus one purpose-built graphic each.
 
 It mirrors explainer_writer: one structured-output call writes the whole
-day, every scene list is validated in code (validate_scenes), the rejected
+day, every scene list is validated in code (validate_scenes, plus no two
+videos of a day with the same middle sequence of styles), the rejected
 ones go back to Claude once with the validator's exact errors, and a video
 that still fails is skipped with its reasons logged, never rendered broken.
+Then an editor pass (critique: one more call for the whole day) reads every
+video like a first-time viewer against its story; a flagged video gets one
+rewrite with the editor's reasons and is dropped if it is still flagged.
+Stories whose summary is too thin for 5-8 scenes are not offered at all
+(select_stories).
 Without Claude, heuristic_avx_scripts turns the rule-based scripts into
 plain scene lists (kinetic hook, list, outro) flagged writer="heuristic", so
 run_pipeline's FALLBACK_UPLOAD policy applies exactly as for the other
@@ -29,12 +35,12 @@ import os
 import re
 from typing import Any
 
+from . import factcheck
 from .avx_builder import STYLES
 from .scraper import Story
 from .script_writer import (
     ANTHROPIC_TIMEOUT_SECONDS,
     DEFAULT_WRITER_EFFORT,
-    LLM_SUMMARY_CHARS,
     WRITER_MODEL,
     Beat,
     Script,
@@ -47,11 +53,25 @@ log = logging.getLogger("newsletter_video")
 
 MIDDLE_STYLES = ("stat", "timeline", "versus", "chart", "relation", "list")
 MIN_SCENES, MAX_SCENES = 5, 8
-MIN_WORDS, MAX_WORDS = 90, 115  # ~2.6 words/s with a breath between scenes: a ~38-45 s short
+MIN_WORDS, MAX_WORDS = 80, 115  # the absolute floor and ceiling of spoken words
+# Measured on the ten rendered avx drafts of 2026-11-09: 2.44-2.96 spoken words per second, 2.74 on average,
+# pauses between scenes included. A video must still run at least MIN_SECONDS at that pace (83+ words), so a
+# short one is sent back to add one more sourced scene, never padding (90 was an arbitrary floor that dropped
+# good videos at 83-88 words, the Nvidia CEO story among them).
+WORDS_PER_SECOND = 2.74
+MIN_SECONDS = 30.0
 SCENE_MIN_WORDS, SCENE_MAX_WORDS = 4, 32
 MIN_STYLES = 3
-POSES = {0: "standing, neutral", 1: "pointing up at the graphic", 2: "thinking, hand on chin",
-         3: "shrugging, both hands open (a question, a comparison, the outro)"}
+# The narrator's poses, by ROLE (characters.py: each picture of a character has one). The writer names a
+# role per scene; the builder resolves it against the active character's pictures. The shrug is reserved
+# for the LAST scene (the closing question): anywhere else it is repaired away here and in the builder.
+POSE_ROLES = {"neutral": "standing, relaxed (a good opener)", "point": "pointing up at the graphic (numbers, charts)",
+              "think": "thinking, hand on chin (a twist, a timeline, an open question)",
+              "present": "presenting, one hand on hip, the other palm open (comparisons, lists, who-did-what)",
+              "shrug": "shrugging, both hands open: ONLY for the last scene, the closing question"}
+SHRUG = "shrug"
+MAX_POSES = 8  # a stored plan may name a picture by index (older plans): 0..7
+POSES = POSE_ROLES  # the old name
 ICONS = ("wave", "spark", "chip")
 # Character caps, measured against the template (hf_template_avx/index.html) at its type sizes; the
 # template also shrinks a too-wide line to fit, so these keep the type big rather than merely on screen.
@@ -111,7 +131,7 @@ def number_ok(x: float, allowed: set[float]) -> bool:
     """`x` is one of the story's numbers: exactly, rounded to 0-2 decimals, or the same quantity in other
     units of a thousand ("2.35 billion" shown as 2,350 million or 2.4B)."""
     for a in allowed:
-        for scale in (1, 1e3, 1e6, 1e9, 1e12, 1e-3, 1e-6, 1e-9, 1e-12):
+        for scale in (1, 1e3, 1e6, 1e9, 1e12, 1e-3, 1e-6, 1e-9, 1e-12, 100, 0.01):  # 100: "$0.71" said "71 cents"
             v = a * scale
             if abs(v - x) <= 1e-9 * max(1.0, abs(x)):
                 return True
@@ -535,9 +555,17 @@ def validate_scenes(raw: Any, source_text: str | None = None, strict: bool = Tru
         n_words = len(say.split())
         if strict and not SCENE_MIN_WORDS <= n_words <= SCENE_MAX_WORDS:
             scene_errors.append(f"say is {n_words} words (each scene {SCENE_MIN_WORDS}-{SCENE_MAX_WORDS})")
+        if strict and say and not re.search(r"[.!?][\"'”’)]?$", say.strip()):
+            scene_errors.append(f"say {say[-40:]!r} does not end as a complete sentence (end it with . ? or !)")
         pose = scene.get("pose", 0)
-        if isinstance(pose, bool) or not isinstance(pose, int) or not 0 <= pose < len(POSES):
-            repairs.append(f"{where}: pose {pose!r} is not 0-{len(POSES) - 1}; using 0")
+        last = i == len(raw) - 1
+        if isinstance(pose, str) and re.fullmatch(r"[a-z][a-z0-9-]{0,23}", pose.strip().lower()):
+            scene["pose"] = pose = pose.strip().lower()
+            if pose == SHRUG and not last:
+                repairs.append(f"{where}: the shrug is kept for the last scene; the builder picks another pose here")
+                scene.pop("pose")
+        elif isinstance(pose, bool) or not isinstance(pose, int) or not 0 <= pose < MAX_POSES:
+            repairs.append(f"{where}: pose {pose!r} is not a pose role; using the main pose")
             scene["pose"] = 0
         eyebrow = scene.get("eyebrow", "")
         if not isinstance(eyebrow, str):
@@ -571,6 +599,10 @@ def validate_scenes(raw: Any, source_text: str | None = None, strict: bool = Tru
         words = sum(len(s["say"].split()) for s in scenes)
         if not MIN_WORDS <= words <= MAX_WORDS:
             errors.append(f"the spoken lines total {words} words (allowed {MIN_WORDS}-{MAX_WORDS})")
+        elif words / WORDS_PER_SECOND < MIN_SECONDS:
+            errors.append(f"the spoken lines total {words} words, about {words / WORDS_PER_SECOND:.0f} seconds voiced "
+                          f"(at least {MIN_SECONDS:.0f}): add one more scene with another fact the story gives (quoted "
+                          "in the evidence), never filler")
     if errors:
         raise AvxPlanError(errors)
     return scenes, repairs
@@ -667,7 +699,7 @@ def structural_scenes(script: Script) -> list[dict]:
     lines = [{"text": ln, "cue": ln.split()[0]} for ln in hook_lines]
     if len(lines) >= 2:
         lines[-1]["em"] = True
-    hook: dict[str, Any] = {"style": "kinetic", "pose": 0, "eyebrow": eyebrow, "captions": False, "say": script.hook.strip(),
+    hook: dict[str, Any] = {"style": "kinetic", "pose": "neutral", "eyebrow": eyebrow, "captions": False, "say": script.hook.strip(),
                             "data": {"lines": lines}}
     if len(lines) >= 2:
         hook["data"]["underline"] = {"cue": lines[-1]["text"].split()[0]}
@@ -679,12 +711,12 @@ def structural_scenes(script: Script) -> list[dict]:
         for b in group:
             text = _short(b.card or b.say, CAPS["list_item"])
             items.append({"text": text, "cue": text.split()[0] if text else ""})
-        scenes.append({"style": "list", "pose": 1 if k == 0 else 2, "eyebrow": eyebrow,
+        scenes.append({"style": "list", "pose": "present" if k == 0 else "point", "eyebrow": eyebrow,
                        "say": " ".join(b.say.strip() for b in group),
                        "data": {"title": "The short version" if k == 0 else "And there's more", "items": items}})
     outro_say = script.outro.strip() or "Follow for more tech news."
     cta = "Tell me below" if re.search(r"comment|below|tell me|let me know", outro_say, re.IGNORECASE) else "Follow for more"
-    scenes.append({"style": "outro", "pose": 3, "eyebrow": "Your call", "captions": False, "say": outro_say,
+    scenes.append({"style": "outro", "pose": SHRUG, "eyebrow": "Your call", "captions": False, "say": outro_say,
                    "data": {"lines": [{"text": ln, "cue": ln.split()[0]} for ln in _wrap(outro_say, CAPS["outro_line"], 3)],
                             "cta": {"text": cta, "cue": cta.split()[0]}}})
     clean, _ = validate_scenes(scenes, strict=False)  # repairs drop cues the voice does not say
@@ -729,16 +761,22 @@ around them.
 know. Big launches, real numbers, power moves between companies, failures, and things that change how \
 people work or live.
 - Do not cover pure science (physics, space, biology, medicine, climate) unless the story is really about \
-a tech product or company. Skip sponsored items, job posts, generic marketing or growth advice, and minor \
+a tech product or company.
+@SCOPE@- Skip sponsored items, job posts, generic marketing or growth advice, and minor \
 product updates.
 - Each video tells ONE story (or 2 tightly linked ones). Never cover the same story in two videos; \
 newsletters often repeat a story under different titles, treat those as one.
+- Only pick a story whose summary gives enough substance for 5-8 distinct beats (a concrete claim plus \
+evidence, a consequence and a catch). Skip thin ones rather than padding them.
 
 The scenes (`style` exactly; one spoken line each, one graphic each)
 - kinetic: ALWAYS the first scene, the hook. `lines`: 2-4 lines of at most {CAPS['kinetic_line']} characters \
-each that together read as the hook; mark the one punch line `em` (it is set big in serif italic in the \
-accent colour); `cue` = the word to underline (a word of the em line). The type IS the words: keep `say` \
-close to the lines. Open a curiosity gap or lead with the most surprising concrete fact; never a greeting.
+each, the KEY WORDS of the hook copied verbatim from its `say` in the same order (a shortened version \
+made only of words the narrator says, never synonyms: say "OpenAI raised eleven billion dollars and still \
+missed its target." -> lines "OpenAI raised" / "$11 billion" / "and still missed" / "its target."; numbers \
+may be written as digits); mark the one punch line `em` (it is set big in serif italic in the accent \
+colour); `cue` = the word to underline (a word of the em line). Keep the hook's `say` short (8-16 words) \
+so the lines can carry it. Lead with the news itself; never a greeting.
 - stat: one number from the story as the hero, counting up. `value` (a number), `decimals` (0-2), \
 `prefix` (at most {CAPS['prefix']} characters, e.g. "$"), `suffix` (at most {CAPS['suffix']}, e.g. "B", "%", "x", "M+"); \
 prefix + number + suffix at most {CAPS['stat_shown']} characters; `label` what it counts, at most \
@@ -773,20 +811,42 @@ closing question exactly as `say` asks it (no captions here: the type is the spo
 me below") with `text_cue`. Its `say` is the spoken sign-off: a reason to comment or follow, tied to \
 the topic.
 Every scene also has an `eyebrow` (a 1-3 word chapter label above the graphic, at most \
-{CAPS['eyebrow']} characters, e.g. "The stakes", "How we got here") and a `pose` for the narrator: \
-{"; ".join(f"{k} = {v}" for k, v in POSES.items())}. Point (1) at numbers and charts, think (2) at a \
-twist or a timeline, shrug (3) at a comparison, a question and the outro; vary them.
+{CAPS['eyebrow']} characters, e.g. "The stakes", "How we got here") and a `pose` for the narrator, by \
+name: @POSES@. Open on neutral, point at numbers and charts, think at a twist or a timeline, present at a \
+comparison or a list. The shrug is ONLY for the last scene (the closing question), never earlier. Never \
+the same pose in two scenes in a row.
 Fields a style does not use are sent empty: "" for text, [] for lists, 0 for numbers, false for em.
 
-Writing each video
-- Structure: 6-8 scenes: the kinetic hook, then 4-6 middle scenes chosen from stat, timeline, versus, \
+Writing each video: a clear mini-story a stranger can follow
+- The viewer has NOT read the article. Every `say` is one or two complete, natural spoken sentences that \
+make sense on their own when heard once: a subject, a verb, plain words. Never a fragment, never a \
+headline squeezed into half a sentence, never a pun or a phrase that only makes sense if you already know \
+the story. Read each line aloud in your head: if a friend would say "wait, what?", rewrite it.
+- The hook (scene 1) states the actual news or claim in ONE clear, complete sentence, in plain words \
+(who did what, or what is surprising), e.g. "OpenAI raised eleven billion dollars and still missed its \
+target." Never paraphrase or compress the story's title or opening line into a riddle. A short second \
+sentence may add the stakes. Its on-screen `lines` are those same words.
+- Each scene advances exactly ONE idea, and the scenes build in order: the claim (hook) -> the evidence \
+or how it works -> why it matters or what changes -> the catch, the twist or the takeaway -> the closing \
+question. No scene repeats an earlier one in other words, and no scene is filler: never a recap scene \
+that lists again what was already said ("so three things: the round, the price, the doubts").
+- A stat or chart scene shows a number that directly proves the point its own line is making (the \
+growth, the price, the size of the problem), and the line says what the number means. A number that is \
+only background (how many companies an investor backs, how many tips an article lists) is not a stat \
+scene: mention it in words or leave it out.
+- The graphic matches its line: a versus compares the two things the line contrasts, a list holds the \
+items the line names in the same order, a timeline the dates the line walks through.
+- Structure: 5-8 scenes: the kinetic hook, then 3-6 middle scenes chosen from stat, timeline, versus, \
 chart, relation and list to FIT each beat of THAT story (a number gets a stat, a sequence a timeline, a \
 rivalry or before/after a versus, a power move a relation, a set of takeaways a list), then the outro. \
-Use at least two different middle styles (three or more is better) and avoid the same style twice \
-in a row.
-- Length: 95-110 spoken words in total across all `say` lines (never under 90, never over 115). Each \
-`say` is one or two short sentences, 6-25 words, conversational, as if explaining to a smart friend. \
-Build momentum: the what, the surprising detail, why it matters, the catch or open question.
+Use at least two different middle styles and avoid the same style twice in a row. A story with less to \
+say gets fewer scenes, never stretched ones.
+- Vary the shape across the day: the videos must not share one middle sequence of styles. Change which \
+styles you use, their order, where the number lands (early proof or late payoff) and how many scenes \
+there are (some 5, some 6, some 7 or 8).
+- Length: 85-115 spoken words in total across all `say` lines (never under 83: the video must run at least \
+30 seconds; if a story runs short, add one more scene with another fact the story gives, never filler). Each `say` is 6-25 words, conversational, \
+as if explaining to a smart friend.
 - Cues: every `cue`, `text_cue` and `text2_cue` is ONE word copied exactly from that scene's own `say`, \
 the moment that element should appear. A list item, a timeline step or a versus side is cued on the word \
 that names it. Write each `say` so the elements are named early enough to be seen: never cue the last \
@@ -814,13 +874,16 @@ parentheses, bullet characters or markdown. Write money and units in words ("ten
 tokens", "1.8 billion dollars"); symbols like "$" belong only on screen.
 """
 
+AVX_WRITER_SYSTEM = AVX_WRITER_SYSTEM.replace("@SCOPE@", factcheck.SCOPE_NOTE)
+
 _STR = {"type": "string"}
 _SIDE_SCHEMA = {"type": "object", "properties": {
     "name": _STR, "tag": _STR, "items": {"type": "array", "items": _STR}, "initials": _STR, "cue": _STR},
     "required": ["name", "tag", "items", "initials", "cue"], "additionalProperties": False}
 SCENE_SCHEMA = {"type": "object", "properties": {
     "style": {"type": "string", "enum": list(STYLES)},
-    "pose": {"type": "integer", "description": "0 standing, 1 pointing at the graphic, 2 thinking, 3 shrugging"},
+    "pose": {"type": "string", "description": "the narrator's pose by role (neutral, point, think, present...); "
+             "shrug only in the last scene"},
     "eyebrow": {"type": "string", "description": f"1-3 word chapter label, at most {CAPS['eyebrow']} characters"},
     "say": {"type": "string", "description": "the spoken line for this scene"},
     "lines": {"type": "array", "description": "kinetic and outro only, else []", "items": {
@@ -866,8 +929,9 @@ _AVX_SCHEMA = {
                     "scenes": {"type": "array", "items": SCENE_SCHEMA},
                     "post_caption": {"type": "string"},
                     "hashtags": {"type": "array", "items": {"type": "string"}},
+                    "evidence": factcheck.EVIDENCE_SCHEMA,
                 },
-                "required": ["title", "badge", "story_ids", "scenes", "post_caption", "hashtags"],
+                "required": ["title", "badge", "story_ids", "scenes", "post_caption", "hashtags", "evidence"],
                 "additionalProperties": False,
             },
         },
@@ -877,9 +941,30 @@ _AVX_SCHEMA = {
 }
 
 
+def pose_roles() -> list[str]:
+    """The pose roles the active character has (its pictures' roles), else the house set."""
+    try:
+        from .characters import active
+
+        character = active()
+    except Exception:  # noqa: BLE001 - a missing CHARACTER folder is reported elsewhere
+        character = None
+    if character and character.avatar and character.pose_roles:
+        return list(character.pose_roles)
+    return ["neutral", "point", "think", "shrug"]
+
+
+def _poses_text() -> str:
+    roles = pose_roles()
+    order = [r for r in POSE_ROLES if r in roles and r != SHRUG] + [r for r in roles if r not in POSE_ROLES]
+    if SHRUG in roles:
+        order.append(SHRUG)
+    return "; ".join(f'"{r}" = {POSE_ROLES.get(r, "another pose of the narrator")}' for r in order)
+
+
 def _system_prompt() -> str:
     """The prompt plus the narrator's persona (tone only), like the other writers."""
-    prompt = AVX_WRITER_SYSTEM
+    prompt = AVX_WRITER_SYSTEM.replace("@POSES@", _poses_text()) + factcheck.GROUNDING_RULES
     try:
         from .characters import active
 
@@ -895,9 +980,9 @@ def _system_prompt() -> str:
     return prompt
 
 
-def _call_writer(user: str) -> dict | None:
-    """One structured-output call; None when Claude is unavailable (same model, effort and retries as the
-    other writers)."""
+def _claude_json(system: str, user: str, schema: dict, what: str, key: str) -> dict | None:
+    """One structured-output call (same model, effort and retries as the other writers); None when Claude is
+    unavailable or the answer is unusable. `key` is the list the answer must hold."""
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return None
     try:
@@ -905,7 +990,7 @@ def _call_writer(user: str) -> dict | None:
     except ImportError:
         return None
     try:
-        output_config = {"format": {"type": "json_schema", "schema": _AVX_SCHEMA}}
+        output_config = {"format": {"type": "json_schema", "schema": schema}}
         effort = os.environ.get("WRITER_EFFORT", DEFAULT_WRITER_EFFORT)
         if effort:
             output_config["effort"] = effort
@@ -915,35 +1000,46 @@ def _call_writer(user: str) -> dict | None:
             model=WRITER_MODEL,
             max_tokens=64000,
             # The prompt is the same for the first call and the repair call: cache it.
-            system=[{"type": "text", "text": _system_prompt(), "cache_control": {"type": "ephemeral"}}],
+            system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": user}],
             output_config=output_config,
             betas=["server-side-fallback-2026-07-01"],
             extra_body={"fallbacks": "default"},
         )
     except (anthropic.APIError, WriterNetworkError) as exc:
-        log.warning("Claude avatar explainer writer failed (%s: %s)", type(exc).__name__, getattr(exc, "message", exc))
+        log.warning("Claude avatar explainer %s failed (%s: %s)", what, type(exc).__name__, getattr(exc, "message", exc))
         return None
     if response.stop_reason in ("refusal", "max_tokens"):
-        log.warning("Claude avatar explainer writer stopped with %s", response.stop_reason)
+        log.warning("Claude avatar explainer %s stopped with %s", what, response.stop_reason)
         return None
     text = next((b.text for b in response.content if b.type == "text"), "")
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        log.warning("Claude avatar explainer writer returned unparseable JSON")
+        log.warning("Claude avatar explainer %s returned unparseable JSON", what)
         return None
-    if not isinstance(data, dict) or not isinstance(data.get("videos"), list):
-        log.warning("Claude avatar explainer writer returned no video list")
+    if not isinstance(data, dict) or not isinstance(data.get(key), list):
+        log.warning("Claude avatar explainer %s returned no %s list", what, key)
         return None
-    log.info("Claude wrote %d avatar explainer scene lists (%d in / %d out tokens)", len(data["videos"]),
+    log.info("Claude avatar explainer %s: %d %s (%d in / %d out tokens)", what, len(data[key]), key,
              response.usage.input_tokens, response.usage.output_tokens)
     return data
 
 
+def _call_writer(user: str) -> dict | None:
+    return _claude_json(_system_prompt(), user, _AVX_SCHEMA, "writer", "videos")
+
+
 def _source_text(video: dict, candidates: list[Story]) -> str:
-    ids = [i for i in video.get("story_ids") or [] if isinstance(i, int) and 0 <= i < len(candidates)]
-    return "\n".join(f"{candidates[i].title}\n{candidates[i].summary}" for i in ids)
+    """The text the video's facts may come from: its stories' titles and summaries, plus the linked article
+    excerpts once the fact check has fetched them (FACTCHECK_FETCH_ARTICLES)."""
+    return "\n".join(factcheck.story_text(s) for s in _video_stories(video, candidates))
+
+
+def _video_stories(video: Any, candidates: list[Story]) -> list[Story]:
+    ids = [i for i in (video.get("story_ids") or [] if isinstance(video, dict) else [])
+           if isinstance(i, int) and 0 <= i < len(candidates)]
+    return [candidates[i] for i in dict.fromkeys(ids)]
 
 
 def check_video(video: Any, candidates: list[Story]) -> tuple[list[dict], list[str]]:
@@ -963,15 +1059,58 @@ def check_video(video: Any, candidates: list[Story]) -> tuple[list[dict], list[s
         scenes, repairs = validate_scenes([scene_from_writer(s) if isinstance(s, dict) else s for s in raw], source, strict=True)
     except AvxPlanError as exc:
         raise AvxPlanError(errors + exc.errors) from None
+    if source:  # grounded generation: every spoken line's quotes must really be in the stories
+        ev_errors, ev_warnings, _ = factcheck.check_evidence(video.get("evidence"), [sc["say"] for sc in scenes], source)
+        if factcheck.evidence_strict("avx"):
+            errors += ev_errors
+        else:
+            repairs += [f"evidence (not enforced): {e}" for e in ev_errors]
+        repairs += [f"evidence: {w}" for w in ev_warnings]
     if errors:
         raise AvxPlanError(errors)
     return scenes, repairs
 
 
-def _validated_videos(user: str, n_videos: int, candidates: list[Story]) -> list[tuple[dict, list[dict]]] | None:
-    """Asks for the videos, validates every scene list, gives Claude one chance to fix the rejected ones
-    with the exact errors, and returns the accepted (video, scenes) pairs; None when Claude was unavailable."""
-    data = _call_writer(user)
+def _candidate(video: dict, scenes: list[dict], candidates: list[Story]) -> factcheck.Candidate:
+    """A validated video as the fact check sees it: its stories, every spoken and on-screen string, and the
+    writer's evidence (for the audit record)."""
+    stories = _video_stories(video, candidates)
+    _, warnings, mapping = factcheck.check_evidence(video.get("evidence"), [sc["say"] for sc in scenes],
+                                                    _source_text(video, candidates))
+    title = str(video.get("title", "")).strip() or "Untitled"
+    return factcheck.Candidate(title=title, stories=stories,
+                               items=factcheck.items_avx(scenes, title, str(video.get("post_caption", ""))),
+                               key=(video, scenes), evidence=mapping, evidence_warnings=warnings)
+
+
+# --- variety across the day: no two videos with the same shape -------------------------------------
+
+def middle_sequence(scenes: list[dict]) -> tuple[str, ...]:
+    """The styles between the hook and the outro, in order: a video's "shape"."""
+    return tuple(s.get("style", "") for s in scenes[1:-1])
+
+
+def sequence_clashes(shapes: list[tuple[str, ...] | None]) -> dict[int, str]:
+    """{index: reason} for every video whose middle sequence repeats an EARLIER video's (the first keeps it)."""
+    seen: dict[tuple[str, ...], int] = {}
+    out = {}
+    for i, shape in enumerate(shapes):
+        if shape is None:
+            continue
+        if shape in seen:
+            out[i] = (f"its middle scenes ({' -> '.join(shape)}) are the same sequence as video {seen[shape] + 1}'s; "
+                      "every video of the day needs its own shape: change the styles, their order or the scene count")
+        else:
+            seen[shape] = i
+    return out
+
+
+def _validated_videos(user: str, n_videos: int, candidates: list[Story],
+                      avoid_shapes: tuple = (), first: dict | None = None) -> list[tuple[dict, list[dict]]] | None:
+    """Asks for the videos (or takes `first`, an answer already written), validates every scene list (and that no
+    two share a middle sequence), gives Claude one chance to rewrite the rejected ones with the exact errors, and
+    returns the accepted (video, scenes) pairs; None when Claude was unavailable."""
+    data = first if first is not None else _call_writer(user)
     if data is None:
         return None
     videos = data.get("videos", [])[:n_videos]
@@ -982,31 +1121,40 @@ def _validated_videos(user: str, n_videos: int, candidates: list[Story]) -> list
             results.append((video, scenes, repairs))
         except AvxPlanError as exc:
             results.append((video, None, exc.errors))
+    for i, why in _clashes(results, avoid_shapes).items():
+        results[i] = (results[i][0], None, [why])
     rejected = [(i, v, errs) for i, (v, s, errs) in enumerate(results) if s is None]
     if rejected:
         notes = "\n".join(f"- video {i + 1} ({str(v.get('title', '') if isinstance(v, dict) else '')[:60]!r}):\n  "
                           + "\n  ".join(errs) for i, v, errs in rejected)
         log.info("Avatar explainer: %d of %d scene lists rejected, asking Claude to fix them once:\n%s",
                  len(rejected), len(results), notes)
-        repair = (user + "\n\nYour previous answer is below. The automatic checks rejected these videos:\n" + notes
-                  + "\n\nReturn all videos again: keep the accepted ones exactly as they were and rewrite the "
-                  "rejected ones so they pass.\n\nPrevious answer:\n" + json.dumps(data))
+        # Only the rejected videos are rewritten: returning a whole day of scene lists again would run past the
+        # output limit (one avx video is ~5k output tokens).
+        keep = [middle_sequence(sc) for _, sc, _ in results if sc] + [tuple(x) for x in avoid_shapes]
+        repair = (user + "\n\nThe automatic checks rejected these videos you wrote:\n" + notes
+                  + f"\n\nRewrite ONLY these {len(rejected)} videos so they pass, in the order listed. Do not reuse "
+                  "these middle scene sequences, which other videos already use: "
+                  + ("; ".join(" -> ".join(x) for x in keep) or "none")
+                  + ".\n\nThe rejected videos as you wrote them:\n" + json.dumps([v for _, v, _ in rejected]))
         data2 = _call_writer(repair)
         if data2 is not None:
-            videos2 = data2.get("videos", [])[:n_videos]
-            for i, _, _ in rejected:
-                if i >= len(videos2):
+            videos2 = list(data2.get("videos") or [])
+            for n, (i, _, _) in enumerate(rejected):
+                if n >= len(videos2):
                     continue
                 try:
-                    scenes, repairs = check_video(videos2[i], candidates)
-                    results[i] = (videos2[i], scenes, repairs)
+                    scenes, repairs = check_video(videos2[n], candidates)
+                    results[i] = (videos2[n], scenes, repairs)
                 except AvxPlanError as exc:
-                    results[i] = (videos2[i], None, exc.errors)
+                    results[i] = (videos2[n], None, exc.errors)
+        for i, why in _clashes(results, avoid_shapes).items():
+            results[i] = (results[i][0], None, [why])
     accepted = []
     for video, scenes, notes in results:
         title = str(video.get("title", "") if isinstance(video, dict) else "").strip() or "Untitled"
         if scenes is None:
-            log.error("Avatar explainer: skipping %r, its scene list failed validation:\n  %s", title, "\n  ".join(notes))
+            factcheck.note_drop("avx", "validator", title, _video_stories(video, candidates), notes)
             continue
         for note in notes:
             log.info("Avatar explainer: %r repair: %s", title, note)
@@ -1014,29 +1162,329 @@ def _validated_videos(user: str, n_videos: int, candidates: list[Story]) -> list
     return accepted
 
 
-def llm_avx_scripts(candidates: list[Story], n_videos: int) -> list[Script] | None:
-    """The avatar explainer counterpart of script_writer._llm_scripts: one call for the day's videos.
-    Videos whose scene list fails validation are skipped with a logged reason (an empty list means every one
-    was rejected: no video rather than a broken one); None means Claude could not be used at all."""
+def _clashes(results: list, avoid_shapes: tuple) -> dict[int, str]:
+    """sequence_clashes over this answer, counting shapes already used today (a refill round) as earlier videos."""
+    avoid = [tuple(x) for x in avoid_shapes]
+    shapes = avoid + [middle_sequence(s) if s else None for _, s, _ in results]
+    return {i - len(avoid): why for i, why in sequence_clashes(shapes).items() if i >= len(avoid)}
+
+
+# --- the editor: one cheap Claude pass that reads every video like a viewer would ---------------------
+
+CRITIC_KINDS = ("unclear", "unsupported", "weak_hook", "graphic_mismatch", "repetitive", "incoherent")
+CRITIC_SYSTEM = """\
+You are the strict final editor of a tech-news Shorts channel. Each video is an avatar explainer: a \
+narrator speaks one line per scene while a graphic plays. Viewers have NOT read the article, hear each line \
+once, and swipe away the moment something does not make sense.
+
+For every video you get the source story (the only facts allowed) and its scenes: each scene's style, the \
+spoken line, and what the graphic shows. Flag a video ("fix") when ANY of these is true, naming the scene:
+- unclear: a spoken line that is garbled, a fragment, a half-sentence, a paraphrased headline that does \
+not read as a normal sentence, or that a first-time viewer would not understand on its own.
+- unsupported: a claim, number, name or outcome the story does not support (overstated, invented, or \
+twisted in meaning).
+- weak_hook: the first line does not plainly state the actual news or claim (who did what, or what is \
+surprising) in one clear sentence.
+- graphic_mismatch: the graphic does not show what its line says, or a number/chart that does not \
+support the point its own line makes (a background number dressed up as the key stat).
+- repetitive: a scene that restates an earlier one instead of adding something new, or filler stretched \
+from a thin story.
+- incoherent: the scenes do not build one story in order (claim, evidence, why it matters, takeaway, \
+question).
+Be concrete in `detail`: quote the problem and say what a fix would be. Mark each problem's `severity`: \
+"blocker" when it would confuse or mislead a first-time viewer (a garbled or fragment line, a hook that \
+hides the news, a wrong or unsupported claim, a graphic that contradicts or does not support its line, a \
+scene that only repeats another), "minor" for wording or emphasis you would merely polish. Only blockers \
+send a video back, so do not inflate minor points. A video with no blocker gets "ok".
+"""
+_CRITIC_SCHEMA = {
+    "type": "object",
+    "properties": {"reviews": {"type": "array", "items": {
+        "type": "object",
+        "properties": {
+            "video": {"type": "integer", "description": "the video's number as given"},
+            "verdict": {"type": "string", "enum": ["ok", "fix"]},
+            "problems": {"type": "array", "items": {
+                "type": "object",
+                "properties": {"scene": {"type": "integer", "description": "1-based scene number, 0 = whole video"},
+                               "kind": {"type": "string", "enum": list(CRITIC_KINDS)},
+                               "severity": {"type": "string", "enum": ["blocker", "minor"]},
+                               "detail": {"type": "string"}},
+                "required": ["scene", "kind", "severity", "detail"], "additionalProperties": False}},
+        },
+        "required": ["video", "verdict", "problems"], "additionalProperties": False}}},
+    "required": ["reviews"], "additionalProperties": False,
+}
+
+
+def _call_critic(user: str) -> dict | None:
+    return _claude_json(CRITIC_SYSTEM, user, _CRITIC_SCHEMA, "editor", "reviews")
+
+
+def _describe(scenes: list[dict]) -> str:
+    out = []
+    for k, sc in enumerate(scenes, start=1):
+        role = "hook" if k == 1 else "closing question" if k == len(scenes) else sc["style"]
+        out.append(f"  {k}. [{role}] says: {sc.get('say', '')!r}\n     graphic ({sc['style']}): {_card(sc)!r}")
+    return "\n".join(out)
+
+
+def critique(videos: list[tuple[str, list[dict], str]]) -> dict[int, list[str]] | None:
+    """One Claude call for the whole batch: {video index: [reasons]} for every flagged video ({} = all clean),
+    None when the editor could not run (the videos then ship as validated, with a warning)."""
+    if not videos:
+        return {}
+    blocks = [f"VIDEO {i + 1}: {title}\nStory:\n{source}\nScenes:\n{_describe(scenes)}"
+              for i, (title, scenes, source) in enumerate(videos)]
+    data = _call_critic("Review these videos.\n\n" + "\n\n".join(blocks))
+    if data is None:
+        return None
+    flagged: dict[int, list[str]] = {}
+    for review in data.get("reviews") or []:
+        if not isinstance(review, dict):
+            continue
+        i = review.get("video")
+        if not isinstance(i, int) or not 1 <= i <= len(videos):
+            continue
+        problems = [p for p in review.get("problems") or [] if isinstance(p, dict)]
+        blockers = [p for p in problems if p.get("severity", "blocker") != "minor"]
+        if blockers:  # minor notes never send a video back
+            flagged[i - 1] = [f"scene {p.get('scene', 0)} ({p.get('kind', '?')}): {p.get('detail', '')}".strip()
+                              for p in blockers]
+    return flagged
+
+
+def _critic_pass(user: str, accepted: list[tuple[dict, list[dict]]], candidates: list[Story]) -> list[tuple[dict, list[dict]]]:
+    """The editor reads every accepted video; a flagged one gets ONE rewrite with the editor's reasons, is
+    validated and reviewed again, and is dropped if it is still flagged (never shipped)."""
+    reviews = critique([(str(v.get("title", "")), s, _source_text(v, candidates)) for v, s in accepted])
+    if reviews is None:
+        log.warning("Avatar explainer: the editor pass could not run; shipping the %d validated videos unreviewed",
+                    len(accepted))
+        return accepted
+    if not reviews:
+        log.info("Avatar explainer: the editor passed all %d videos", len(accepted))
+        return accepted
+    flagged = sorted(reviews)
+    notes = "\n".join(f"- video {n + 1} ({str(accepted[i][0].get('title', ''))[:60]!r}):\n  " + "\n  ".join(reviews[i])
+                      for n, i in enumerate(flagged))
+    log.info("Avatar explainer: the editor flagged %d of %d videos, asking for one rewrite:\n%s", len(flagged),
+             len(accepted), notes)
+    keep_shapes = [middle_sequence(s) for i, (_, s) in enumerate(accepted) if i not in reviews]
+    repair = (user + "\n\nAn editor reviewed some of the videos you wrote and flagged these problems:\n" + notes
+              + "\n\nRewrite ONLY these flagged videos so a first-time viewer follows every line, fixing every "
+              "problem listed (you may pick a different, richer story from the list if the story was too thin), "
+              "and keep every rule of the brief (the hook's on-screen lines are its own spoken words, the caps, "
+              "only the story's numbers). "
+              f"Return exactly {len(flagged)} videos, in the order listed above. Do not reuse these middle scene "
+              "sequences, which other videos already use: " + ("; ".join(" -> ".join(x) for x in keep_shapes) or "none")
+              + ".\n\nThe flagged videos as you wrote them:\n" + json.dumps([accepted[i][0] for i in flagged]))
+    data = _call_writer(repair)
+    fixed: dict[int, tuple[dict, list[dict]]] = {}
+    invalid: dict[int, list[str]] = {}
+    rewrites = factcheck.align_rewrites([accepted[i][0] for i in flagged], list((data or {}).get("videos") or []))
+    for n, i in enumerate(flagged):
+        if rewrites[n] is None:
+            continue
+        try:
+            fixed[i] = (rewrites[n], check_video(rewrites[n], candidates)[0])
+        except AvxPlanError as exc:
+            invalid[i] = exc.errors
+    if invalid:  # the rewrite broke a hard rule (a cap, a number): one more try with the validator's errors
+        bad = [i for i in flagged if i in invalid]
+        notes2 = "\n".join(f"- video {n + 1}:\n  " + "\n  ".join(invalid[i]) for n, i in enumerate(bad))
+        log.info("Avatar explainer: %d rewrites failed validation, asking once more:\n%s", len(bad), notes2)
+        again = _call_writer(repair + "\n\nYour rewrites of these videos failed the automatic checks:\n" + notes2
+                             + f"\n\nReturn exactly {len(bad)} videos, these ones only, in this order, fixed.\n\n"
+                             "Your rewrites:\n" + json.dumps([rewrites[flagged.index(i)] for i in bad]))
+        for n, i in enumerate(bad):
+            video = ((again or {}).get("videos") or [None] * len(bad))[n] if again and n < len(again.get("videos") or []) else None
+            if video is None:
+                continue
+            try:
+                fixed[i] = (video, check_video(video, candidates)[0])
+                invalid.pop(i)
+            except AvxPlanError as exc:
+                invalid[i] = exc.errors
+    for i, errs in invalid.items():
+        log.error("Avatar explainer: the rewrite of %r failed validation:\n  %s",
+                  str(accepted[i][0].get("title", "")), "\n  ".join(errs))
+    order = list(fixed)  # the second review numbers the rewritten videos in this order
+    second = critique([(str(v.get("title", "")), s, _source_text(v, candidates)) for v, s in fixed.values()]) if fixed else {}
+    if second is None:  # the editor could not run again: a rewrite nobody re-read is not shipped
+        second = {k: ["the editor could not review the rewrite"] for k in range(len(order))}
+    still = {order[k]: reasons for k, reasons in second.items()}
+    out = []
+    for i, pair in enumerate(accepted):
+        title = str(pair[0].get("title", ""))
+        if i not in reviews:
+            out.append(pair)
+        elif i in fixed and i not in still:
+            log.info("Avatar explainer: %r rewritten after the editor's notes and passed", title)
+            out.append(fixed[i])
+        else:
+            why = still.get(i) or reviews[i] or invalid.get(i) or []
+            factcheck.note_drop("avx", "editor", title, _video_stories(pair[0], candidates),
+                                ["still flagged by the editor:"] + list(why))
+    clashes = sequence_clashes([middle_sequence(s) for _, s in out])
+    for k in sorted(clashes, reverse=True):
+        factcheck.note_drop("avx", "editor", str(out[k][0].get("title", "")), _video_stories(out[k][0], candidates),
+                            [f"after the rewrite: {clashes[k]}"])
+        out.pop(k)
+    return out
+
+
+def _fact_check_pass(user: str, accepted: list[tuple[dict, list[dict]]], candidates: list[Story],
+                     avoid_shapes: tuple = ()) -> list[tuple[dict, list[dict], dict]]:
+    """The independent verifier (factcheck.gate) over the day's videos: a video with an unsupported or
+    contradicted claim gets one repair with the verifier's reasons and quotes, is validated and verified again,
+    and is dropped if it still fails. Returns (video, scenes, fact_check record)."""
+
+    def rewrite(pairs):
+        keep = [middle_sequence(c.key[1]) for c in cands if all(c is not p for p, _ in pairs)] + list(avoid_shapes)
+        note = (f"Return exactly {len(pairs)} videos, in the order listed, each with the same story_ids. Do not "
+                "reuse these middle scene sequences, which other videos already use: "
+                + ("; ".join(" -> ".join(x) for x in keep) or "none") + ".")
+        prompt = (user + "\n\n" + factcheck.repair_prompt(note, pairs)
+                  + "\n\nThe videos as you wrote them:\n" + json.dumps([c.key[0] for c, _ in pairs]))
+        data = _call_writer(prompt)
+
+        def check(v):
+            try:
+                return _candidate(v, check_video(v, candidates)[0], candidates), []
+            except AvxPlanError as exc:
+                return None, exc.errors
+
+        return factcheck.checked_rewrites([c.key[0] for c, _ in pairs], list((data or {}).get("videos") or []), check,
+                                          lambda tail: list((_call_writer(prompt + tail) or {}).get("videos") or []))
+
+    cands = [_candidate(v, s, candidates) for v, s in accepted]
+    result = factcheck.gate("avx", cands, rewrite)
+    out = [(c.key[0], c.key[1], rec) for c, rec in result.accepted]
+    clashes = _clashes([(v, s, None) for v, s, _ in out], avoid_shapes)
+    for k in sorted(clashes, reverse=True):
+        factcheck.note_drop("avx", "fact check", str(out[k][0].get("title", "")), _video_stories(out[k][0], candidates),
+                            [f"after the repair: {clashes[k]}"])
+        out.pop(k)
+    return out
+
+
+# --- which stories the writer sees ----------------------------------------------------------------------
+
+AVX_SUMMARY_CHARS = 900  # the writer sees the whole summary: trimmed to 400, "7 Ways to Handle Your AI Gross
+# Margin Problem" lost the half that made it a story, and the video was stretched from what was left
+MIN_SUMMARY_WORDS = 40  # below this a summary rarely holds 5-8 distinct beats (claim, evidence, why, catch)
+THIN_FLOOR_WORDS = 20  # a top-up story is never thinner than this
+POOL_PER_VIDEO = 2  # stories offered per requested video, so the writer can still choose
+
+
+def _words(text: str) -> int:
+    return len((text or "").split())
+
+
+def select_stories(candidates: list[Story], n_videos: int) -> list[Story]:
+    """The stories rich enough for an avatar explainer, in their original order: every story whose summary has
+    at least MIN_SUMMARY_WORDS words. When that leaves fewer than POOL_PER_VIDEO per requested video, the
+    fullest of the thinner ones (down to THIN_FLOOR_WORDS) are added back so the day still gets its count."""
+    rich = [s for s in candidates if _words(s.summary) >= MIN_SUMMARY_WORDS]
+    want = POOL_PER_VIDEO * n_videos
+    chosen = {id(s) for s in rich}
+    if len(rich) < want:
+        thin = sorted((s for s in candidates if id(s) not in chosen and _words(s.summary) >= THIN_FLOOR_WORDS),
+                      key=lambda s: -_words(s.summary))
+        for s in thin[: want - len(rich)]:
+            chosen.add(id(s))
+        log.info("Avatar explainer: only %d stories have %d+ summary words; topped up with %d thinner ones",
+                 len(rich), MIN_SUMMARY_WORDS, len(chosen) - len(rich))
+    out = [s for s in candidates if id(s) in chosen]
+    skipped = [s for s in candidates if id(s) not in chosen]
+    if skipped:
+        log.info("Avatar explainer: skipped %d stories too thin for 5-8 scenes (under %d summary words): %s",
+                 len(skipped), MIN_SUMMARY_WORDS, "; ".join(f"{s.title[:50]!r} ({_words(s.summary)})" for s in skipped[:12]))
+    return out or list(candidates)
+
+
+AVX_VIDEOS_PER_CALL = 4  # one avx video is ~5k output tokens: ten in one call ran into the 64k output limit
+
+
+def _story_lines(candidates: list[Story], ids: list[int]) -> str:
+    return "\n\n".join(f"[{i}] ({candidates[i].edition} / {candidates[i].section}) {candidates[i].title}{_site(candidates[i])}"
+                       f"\n{_trim(candidates[i].summary, AVX_SUMMARY_CHARS)}" for i in ids)
+
+
+def _first_drafts(candidates: list[Story], n_videos: int, avoid: str) -> dict | None:
+    """A day's first drafts written in parallel calls of at most AVX_VIDEOS_PER_CALL videos, each from its own
+    share of the stories (dealt round-robin, so every share gets strong ones; ids stay global). None only when
+    every call failed; a failed call just means fewer drafts (the refill rounds make up the count)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    k = -(-n_videos // AVX_VIDEOS_PER_CALL)
+    counts = [n_videos // k + (1 if g < n_videos % k else 0) for g in range(k)]
+    shares = [[i for i in range(len(candidates)) if i % k == g] for g in range(k)]
+
+    def write(g: int) -> dict | None:
+        return _call_writer(
+            f"Write exactly {counts[g]} videos from the stories below, each as an avatar explainer scene list. Order "
+            f"them with the strongest video first. Reference stories by their [id]. Give each video its own shape: no "
+            f"two videos may use the same sequence of middle scene styles, and vary the scene count (other writers "
+            f"cover today's other stories in parallel, so prefer less common shapes).{avoid}\n\n"
+            + _story_lines(candidates, shares[g]))
+
+    with ThreadPoolExecutor(max_workers=min(3, k)) as pool:
+        answers = list(pool.map(write, range(k)))
+    if all(a is None for a in answers):
+        return None
+    videos = [v for a, n in zip(answers, counts) for v in list((a or {}).get("videos") or [])[:n]]
+    log.info("Avatar explainer: %d first drafts from %d parallel writer calls (%d failed)", len(videos), k,
+             sum(a is None for a in answers))
+    return {"videos": videos}
+
+
+def llm_avx_scripts(candidates: list[Story], n_videos: int, avoid_shapes: tuple = ()) -> list[Script] | None:
+    """The avatar explainer counterpart of script_writer._llm_scripts: one call for the day's videos, the
+    validator (with one repair), then the editor (with one rewrite). Videos that fail either are skipped with
+    a logged reason (an empty list means every one was rejected: no video rather than a broken one); None
+    means Claude could not be used at all."""
+    candidates = select_stories(candidates, n_videos)
     stories = "\n\n".join(
-        f"[{i}] ({s.edition} / {s.section}) {s.title}\n{_trim(s.summary, LLM_SUMMARY_CHARS)}"
+        f"[{i}] ({s.edition} / {s.section}) {s.title}{_site(s)}\n{_trim(s.summary, AVX_SUMMARY_CHARS)}"
         for i, s in enumerate(candidates)
     )
+    avoid = (" These middle scene sequences are already used by today's other videos, do not reuse them: "
+             + "; ".join(" -> ".join(x) for x in avoid_shapes) + ".") if avoid_shapes else ""
     user = (f"Write exactly {n_videos} videos from today's stories below, each as an avatar explainer scene list. "
-            f"Order them with the strongest video first. Reference stories by their [id].\n\n{stories}")
-    accepted = _validated_videos(user, n_videos, candidates)
+            f"Order them with the strongest video first. Reference stories by their [id]. Give each video its own "
+            f"shape: no two videos may use the same sequence of middle scene styles, and vary the scene count.{avoid}"
+            f"\n\n{stories}")
+    first = _first_drafts(candidates, n_videos, avoid) if n_videos > AVX_VIDEOS_PER_CALL else None
+    if n_videos > AVX_VIDEOS_PER_CALL and first is None:
+        return None
+    accepted = _validated_videos(user, n_videos, candidates, avoid_shapes, first=first)
     if accepted is None:
         return None
+    if accepted and os.environ.get("AVX_EDITOR", "1").strip().lower() not in ("0", "off", "false", "no"):
+        accepted = _critic_pass(user, accepted, candidates)
+    checked = _fact_check_pass(user, accepted, candidates, avoid_shapes) if accepted else []
     scripts = []
-    for video, scenes in accepted:
-        ids = [i for i in video.get("story_ids", []) if isinstance(i, int) and 0 <= i < len(candidates)]
-        scripts.append(script_from_scenes(scenes, str(video.get("title", "")).strip() or "Untitled",
-                                          str(video.get("badge") or "NEWS"), [candidates[i] for i in ids],
-                                          str(video.get("post_caption", "")), list(video.get("hashtags") or [])))
+    for video, scenes, rec in checked:
+        script = script_from_scenes(scenes, str(video.get("title", "")).strip() or "Untitled",
+                                    str(video.get("badge") or "NEWS"), _video_stories(video, candidates),
+                                    str(video.get("post_caption", "")), list(video.get("hashtags") or []))
+        script.fact_check = rec
+        scripts.append(script)
     if len(scripts) < n_videos:
-        log.warning("Avatar explainer: %d of %d videos dropped for invalid scene lists", n_videos - len(scripts), n_videos)
+        log.warning("Avatar explainer: %d of %d videos dropped (invalid scene lists or editor flags)",
+                    n_videos - len(scripts), n_videos)
     return scripts
 
 
-__all__ = ["AvxPlanError", "validate_scenes", "scene_from_writer", "script_from_scenes", "structural_scenes",
+__all__ = ["AvxPlanError", "critique", "select_stories", "sequence_clashes", "validate_scenes", "scene_from_writer", "script_from_scenes", "structural_scenes",
            "heuristic_avx_scripts", "llm_avx_scripts", "scenes_for", "plan_dict", "is_avx_plan", "check_video"]
+
+
+def _site(story) -> str:
+    """" [link: nytimes.com]": who published the linked article, so an allegation can be attributed to it."""
+    from .factcheck import publisher
+
+    site = publisher(getattr(story, "url", ""))
+    return f" [link: {site}]" if site else ""
