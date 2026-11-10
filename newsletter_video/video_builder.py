@@ -289,6 +289,43 @@ def _proportional_word_times(lines: list[str], onset: float, offset: float) -> l
     return per_line
 
 
+FASTER_WHISPER_MODEL = "tiny.en"
+_faster_whisper_model = None
+
+
+def _whisper_backend() -> str:
+    """WHISPER_BACKEND=mlx|faster picks the transcriber; the default is mlx-whisper where it is installed (an
+    Apple-silicon Mac) and faster-whisper (CPU, any Linux/container) everywhere else."""
+    forced = os.environ.get("WHISPER_BACKEND", "auto").strip().lower()
+    if forced in ("mlx", "faster"):
+        return forced
+    import importlib.util
+
+    try:
+        return "mlx" if importlib.util.find_spec("mlx_whisper") else "faster"
+    except ValueError:  # already imported without a spec (a stand-in module): it is there
+        return "mlx"
+
+
+def _transcribe_words(audio_path: Path) -> list[tuple[str, float]]:
+    """[(word, start seconds)] for the clip, from whichever Whisper backend is available."""
+    if _whisper_backend() == "mlx":
+        import mlx_whisper
+
+        result = mlx_whisper.transcribe(str(audio_path), path_or_hf_repo=WHISPER_MODEL, word_timestamps=True)
+        return [(w["word"].strip(), float(w["start"]))
+                for seg in result["segments"] for w in seg.get("words", [])]
+    global _faster_whisper_model
+    from faster_whisper import WhisperModel
+
+    if _faster_whisper_model is None:  # loaded once per process; int8 keeps it fast on a plain CPU
+        _faster_whisper_model = WhisperModel(os.environ.get("FASTER_WHISPER_MODEL", FASTER_WHISPER_MODEL),
+                                             device="cpu", compute_type="int8")
+    segments, _info = _faster_whisper_model.transcribe(str(audio_path), word_timestamps=True, language="en",
+                                                       beam_size=1)
+    return [(w.word.strip(), float(w.start)) for seg in segments for w in (seg.words or [])]
+
+
 def _normalize_token(word: str) -> str:
     return re.sub(r"[^a-z0-9]", "", word.lower())
 
@@ -301,16 +338,7 @@ def _align_script(lines: list[str], audio_path: Path) -> list[list[tuple[str, fl
     spoken time."""
     onset, offset, _ = _speech_span(audio_path)
     try:
-        import mlx_whisper
-
-        result = mlx_whisper.transcribe(
-            str(audio_path), path_or_hf_repo=WHISPER_MODEL, word_timestamps=True
-        )
-        recognized = [
-            (w["word"].strip(), float(w["start"]))
-            for seg in result["segments"]
-            for w in seg.get("words", [])
-        ]
+        recognized = _transcribe_words(audio_path)
         if not recognized:
             raise ValueError("no words recognized")
     except Exception:

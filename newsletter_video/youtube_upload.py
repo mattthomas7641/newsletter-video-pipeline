@@ -172,7 +172,10 @@ def _credentials(interactive: bool):
     if creds and creds.expired and creds.refresh_token and not missing:
         try:
             creds.refresh(Request())
-            TOKEN.write_text(creds.to_json())
+            try:
+                TOKEN.write_text(creds.to_json())
+            except OSError as exc:  # a read-only secret mount in the cloud: the token is still good in memory
+                log.warning("Could not save the refreshed YouTube token (%s)", exc)
             return creds
         except Exception as exc:  # revoked, or expired after 7 days in "Testing" mode
             log.warning("YouTube token refresh failed (%s)", exc)
