@@ -530,6 +530,21 @@ _JEV_CORPORATE_INSTRUCTIONS = (
     "the conduct of its leaders, and it matters for the company, its chips, AI or products, or tech policy. It is NOT "
     "personal gossip with no company impact, a sponsored item, a job posting, marketing or growth advice, or pure science."
 )
+# The third way into scope (2026-11-10), and the ranking signal: "would a well-informed person following AI and tech
+# want to know this today?". Measured on 595 stories (two weeks of all four newsletters, Claude-labelled must-cover /
+# worth-covering / skip): the two questions above let in only 75% of the must-cover stories (Meta's $95B offering,
+# Anthropic's IPO filing, SpaceX's $40B chip debt, GPT-6 Cyber and Mistral's trillion-parameter weights were all
+# below 0.5 on the topic question), because their long list of exclusions pulled the scores of plainly on-topic news
+# down. This question, at 0.4, catches 99% of them and lets in 7% of the skip pile. Added to the union, with the
+# score also added to the ranking, the writer's top-30 pool holds 83 of 83 must-cover stories (it held 61).
+JEV_IMPORTANT_THRESHOLD = 0.4
+_JEV_IMPORTANT_INSTRUCTIONS = (
+    "Would a well-informed person who follows AI and technology want to know this today? Yes for: new frontier "
+    "model or product launches, big money moves (funding, IPO, acquisitions, billion-dollar compute or chip deals), "
+    "major legal, regulatory, security or national-security events, leadership or governance news at major tech or "
+    "AI companies, and genuine AI capability breakthroughs. No for tutorials, opinion essays, growth, marketing or "
+    "fundraising advice, minor features, and routine updates."
+)
 _JEV_NEWSWORTHINESS_INSTRUCTIONS = (
     "How interesting and worth covering this story is for a curious, tech-savvy "
     "audience that scrolls fast and leaves the moment something feels boring or "
@@ -560,6 +575,7 @@ def _jev_rank_candidates(candidates: list[Story], n_videos: int) -> list[Story] 
     questions = {
         "in_scope": ts.Noul(instructions=_JEV_IN_SCOPE_INSTRUCTIONS),
         "corporate": ts.Noul(instructions=_JEV_CORPORATE_INSTRUCTIONS),
+        "important": ts.Noul(instructions=_JEV_IMPORTANT_INSTRUCTIONS),
         "newsworthiness": ts.Score(
             instructions=_JEV_NEWSWORTHINESS_INSTRUCTIONS,
             criteria=_JEV_NEWSWORTHINESS_LEVELS,
@@ -582,7 +598,7 @@ def _jev_rank_candidates(candidates: list[Story], n_videos: int) -> list[Story] 
             continue
         if not _jev_in_scope(response.answers):
             continue
-        scored.append((response.answers["newsworthiness"].score, story))
+        scored.append((response.answers["newsworthiness"].score + _jev_importance(response.answers), story))
 
     scored.sort(key=lambda pair: pair[0], reverse=True)
     pool_size = max(n_videos * JEV_POOL_MULTIPLIER, JEV_MIN_POOL)
@@ -592,11 +608,19 @@ def _jev_rank_candidates(candidates: list[Story], n_videos: int) -> list[Story] 
     return ranked  # may legitimately be [] if nothing cleared the bar — not the same as Jev being unavailable
 
 
+def _jev_importance(answers) -> float:
+    """The "would a well-informed person want to know this" probability (0 when the question was not asked)."""
+    important = answers.get("important") if hasattr(answers, "get") else None
+    return float(important.noul) if important is not None else 0.0
+
+
 def _jev_in_scope(answers) -> bool:
-    """In scope by the general question, or by the corporate/legal/national-security one."""
+    """In scope by the general question, by the corporate/legal/national-security one, or because a well-informed
+    follower of AI and tech would want to know it."""
     corporate = answers.get("corporate") if hasattr(answers, "get") else None
-    return answers["in_scope"].noul >= JEV_IN_SCOPE_THRESHOLD or (
-        corporate is not None and corporate.noul >= JEV_IN_SCOPE_THRESHOLD)
+    return (answers["in_scope"].noul >= JEV_IN_SCOPE_THRESHOLD
+            or (corporate is not None and corporate.noul >= JEV_IN_SCOPE_THRESHOLD)
+            or _jev_importance(answers) >= JEV_IMPORTANT_THRESHOLD)
 
 
 class WriterNetworkError(Exception):

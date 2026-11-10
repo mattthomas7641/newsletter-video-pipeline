@@ -446,6 +446,7 @@ def test_jev_lets_in_corporate_and_national_security_stories_by_the_second_quest
             corporate = 0.86 if ceo else 0.05
             return types.SimpleNamespace(answers={
                 "in_scope": types.SimpleNamespace(noul=general), "corporate": types.SimpleNamespace(noul=corporate),
+                "important": types.SimpleNamespace(noul=0.05),
                 "newsworthiness": types.SimpleNamespace(score=0.9 if ceo else 0.5)})
 
     fake = types.SimpleNamespace(Noul=Noul, Score=Score, TypeSafeClient=Client, TypeSafeError=Exception)
@@ -456,7 +457,7 @@ def test_jev_lets_in_corporate_and_national_security_stories_by_the_second_quest
                Story("ai", "Launches", "A model launch", "x", "")]
     ranked = sw._jev_rank_candidates(stories, 1)
     assert [s.title for s in ranked] == ["Nvidia's investigation of its CEO", "A model launch"]
-    assert seen[0] == ["corporate", "in_scope", "newsworthiness"]
+    assert seen[0] == ["corporate", "important", "in_scope", "newsworthiness"]
     assert "espionage" in sw._JEV_CORPORATE_INSTRUCTIONS and "NOT personal gossip" in sw._JEV_CORPORATE_INSTRUCTIONS
 
 
@@ -575,3 +576,38 @@ def test_a_repair_that_only_breaks_a_format_rule_gets_one_more_try():
     assert out == ["a", "b2"] and len(asked) == 1 and "29 words" in asked[0]
     out = fc.checked_rewrites([{"story_ids": [2]}], [{"story_ids": [2], "title": "b"}], check, lambda tail: None)
     assert out == [None]
+
+
+def test_jev_lets_in_important_news_the_topic_question_scored_low_and_ranks_it_higher(monkeypatch):
+    """The 2026-11-10 audit: Meta's $95B stock offering scored 0.44 on the topic question and 0.35 on the corporate
+    one, yet any follower of AI news wants it. The "important" question lets it in and lifts it in the ranking."""
+    class Noul:
+        def __init__(self, instructions):
+            self.instructions = instructions
+
+    class Score(Noul):
+        def __init__(self, instructions, criteria):
+            self.instructions = instructions
+
+    table = {  # title -> (topic, corporate, important, newsworthiness)
+        "Meta announces a $95 billion stock offering": (0.44, 0.35, 0.85, 1.7),
+        "A routine minor update": (0.8, 0.05, 0.1, 1.9),
+        "Ten growth hacks": (0.1, 0.02, 0.05, 1.5),
+    }
+
+    class Client:
+        def system_one(self, state, questions):
+            topic, corp, imp, news = table[state.split("\n")[0]]
+            return types.SimpleNamespace(answers={
+                "in_scope": types.SimpleNamespace(noul=topic), "corporate": types.SimpleNamespace(noul=corp),
+                "important": types.SimpleNamespace(noul=imp), "newsworthiness": types.SimpleNamespace(score=news)})
+
+    fake = types.SimpleNamespace(Noul=Noul, Score=Score, TypeSafeClient=Client, TypeSafeError=Exception)
+    monkeypatch.setitem(__import__("sys").modules, "typesafe_sdk", fake)
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-not-real")
+    stories = [Story("ai", "Business", t, "x", "") for t in table]
+    ranked = sw._jev_rank_candidates(stories, 1)
+    # the offering is in scope (important 0.85) and outranks the routine update (1.7+0.85 vs 1.9+0.1);
+    # the growth-hacks piece fails every question
+    assert [s.title for s in ranked] == ["Meta announces a $95 billion stock offering", "A routine minor update"]
+    assert sw.JEV_IMPORTANT_THRESHOLD == 0.4 and "well-informed" in sw._JEV_IMPORTANT_INSTRUCTIONS

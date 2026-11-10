@@ -18,15 +18,15 @@ MARGIN_STORY = Story(
              "personalized email from an AI SDR. Keep measuring the token cost behind each one, since two support "
              "resolutions can bring in the same revenue and cost wildly different amounts."),
     url="https://example.com/margins")
-CHARGE_HOOK = ("Charge by the token, they ask four times as good? Customers will wonder whether you beat the model "
-               "by that much.")
+CHARGE_HOOK = ("Customers will ask whether your AI startup is four times as good as the model it resells. "
+               "That is the pricing question now.")
 
 
 def _margin_video(hook: str = CHARGE_HOOK) -> dict:
     scenes = [
         _scene(style="kinetic", pose="neutral", eyebrow="AI pricing", say=hook,
-               lines=[{"text": "Charge by the", "em": False, "cue": "Charge"}, {"text": "token?", "em": True, "cue": "token"}],
-               cue="token"),
+               lines=[{"text": "Customers ask:", "em": False, "cue": "Customers"}, {"text": "4x as good?", "em": True, "cue": "four"}],
+               cue="four"),
         _scene(style="stat", pose="point", eyebrow="The investor",
                say="One investor in more than seven hundred companies walks through how AI startups should price.",
                value=700, suffix="+", label="Companies invested in", cue="seven"),
@@ -56,7 +56,7 @@ def _keyword_critic(calls):
         reviews = []
         for n, block in enumerate(user.split("VIDEO ")[1:], start=1):
             problems = []
-            if "they ask four times as good?" in block:
+            if "Customers will ask whether" in block:
                 problems.append({"scene": 1, "kind": "unclear", "detail": "the hook is a garbled half-sentence"})
             if "Companies invested in" in block:
                 problems.append({"scene": 2, "kind": "graphic_mismatch", "detail": "700+ companies does not support the point"})
@@ -68,10 +68,10 @@ def _keyword_critic(calls):
 
 
 def _fixed_margin_video() -> dict:
-    v = _margin_video("AI startups that charge by the token get asked if they are four times better than the model.")
+    v = _margin_video("AI startups that bill per use get asked if they are four times better than the model.")
     v["scenes"][0]["lines"] = [{"text": "AI startups that", "em": False, "cue": "AI"},
-                               {"text": "charge by the", "em": False, "cue": "charge"},
-                               {"text": "token get asked", "em": True, "cue": "token"}]
+                               {"text": "bill per use get", "em": False, "cue": "bill"},
+                               {"text": "asked if they", "em": True, "cue": "asked"}]
     v["scenes"][1] = _scene(style="list", pose="point", eyebrow="Who pays",
                             say="An investor explains who should pay the token bill and how to price around it.",
                             label="Who pays the bill", items=[{"text": "Token bill", "cue": "token"},
@@ -93,9 +93,9 @@ def test_the_charge_by_the_token_video_is_flagged_rewritten_and_shipped(monkeypa
     scripts = w.llm_avx_scripts([STORY, MARGIN_STORY], 2)
     assert len(critic_calls) == 2 and len(writer_calls) == 2  # one review of the day, one of the rewrite
     assert "garbled half-sentence" in writer_calls[1] and "700+ companies" in writer_calls[1]
-    assert "Charge by the token, they ask" not in critic_calls[1]  # only the rewritten video is re-read
+    assert "Customers will ask whether your AI startup" not in critic_calls[1]  # only the rewritten video is re-read
     assert [s.title for s in scripts] == [VIDEO["title"], "Charge by the token?"]
-    assert scripts[1].hook.startswith("AI startups that charge by the token")
+    assert scripts[1].hook.startswith("AI startups that bill per use")
 
 
 def test_a_video_still_flagged_after_its_rewrite_is_dropped(monkeypatch):
