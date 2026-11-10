@@ -150,6 +150,8 @@ Copy `.env.example` to `.env`. Everything is optional:
 | `FALLBACK_UPLOAD` | What to do with rule-based fallback scripts when uploads are on: `skip` (default: make none, notify), `private` or `public` |
 | `NOTIFY_WEBHOOK_URL`, `NOTIFY_WEBHOOK_FORMAT`, `NOTIFY_MACOS` | Where run notifications go (see [When things fail](#when-things-fail)) |
 | `RUN_DEADLINE_MINUTES`, `RENDER_TIMEOUT_SECONDS`, `VOICEBOX_GENERATION_TIMEOUT` | Wall-clock limits: whole run (default 240), one render attempt (1200), one Voicebox clip (420) |
+| `FACTCHECK`, `FACTCHECK_AVX`, `FACTCHECK_EXPLAINER`, `FACTCHECK_AVATAR` | The fact check (see [Accuracy](#accuracy-evidence-fact-check-and-refill)): `FACTCHECK=0` switches it off everywhere; the per-format switches override the defaults |
+| `FACTCHECK_FETCH_ARTICLES`, `FACTCHECK_REFILL_ROUNDS`, `FACTCHECK_BATCH`, `FACTCHECK_TIMEOUT_SECONDS`, `FACTCHECK_EFFORT` | Give the checker the linked article too (default off), extra writer rounds to replace dropped videos (2), videos per checker call (5), the checker's time budget per round (480 s), its effort (the writer's) |
 | `STYLE_LIBRARY`, `STYLE_VISION*`, `STYLE_RECREATE_ROUNDS`, `STYLE_PLANNER_*` | The style library folder (`off` to disable) and the model/budget settings for analysing references and planning styles (see [Style library](#style-library-teach-the-look-by-example)) |
 
 Videos land between 40 and 45 seconds: Claude aims for 100–110 words, and if the voiceover
@@ -321,7 +323,9 @@ Claude sees it. Jev classifies and scores; it never writes text. For each story'
 summary it answers two questions:
 
 - **In scope?** A yes/no probability. Stories below 0.5 are dropped
-  (`JEV_IN_SCOPE_THRESHOLD`).
+  (`JEV_IN_SCOPE_THRESHOLD`), unless they clear 0.5 on a second, narrow question: major
+  investigation, legal, regulatory, national-security, governance or leadership news about big
+  tech, chip and AI companies and their leaders (`_JEV_CORPORATE_INSTRUCTIONS`).
 - **How newsworthy?** Low (minor, routine or sponsored-feeling), Medium (solid but
   unsurprising) or High (surprising, consequential, weird or genuinely useful).
 
@@ -336,6 +340,35 @@ Failure handling:
   candidate unranked.
 - A later single call fails: that story is kept at the bottom of the ranking rather than
   silently dropped.
+
+### Accuracy: evidence, fact check and refill
+Every video goes through three accuracy layers (`newsletter_video/factcheck.py`, shared by all three writers):
+
+1. **Evidence.** With each video the writer returns, for every spoken line, the words of the story
+   that support it, copied verbatim (or marks the line as a question, call to action or transition).
+   Code checks each quote really occurs in the story (case, punctuation and "..." tolerated), so
+   evidence cannot be made up, and checks the relations code can check: a number said to be below,
+   above or within a range or another number, a percentage going up or down, "more than" vs
+   "nearly". A failure goes back to the writer once with the exact error, like the other validators.
+2. **An independent fact check.** A separate Claude call that sees only the sources and the
+   finished video (every spoken line, every on-screen string, the title and caption) judges each
+   item supported, partially supported, unsupported, contradicted or not a claim, with the source
+   quote and a reason. It enforces: nothing beyond the source, correct comparisons, numbers, units
+   and time frames, the source's attribution ("reportedly", "plans to"), no added causes, motives or
+   superlatives, the right entities, and for allegations about named people: attribution in the
+   same sentence, the source's caveats kept, no loaded words and no accusatory question. A video
+   with a blocker is repaired once with those reasons and checked again; if it still fails it is
+   not made. One call checks five videos; a day takes two or three calls (~20 s each).
+3. **Refill.** When any check drops a video, the writer is asked again for the shortfall from the
+   stories nobody has used (at most `FACTCHECK_REFILL_ROUNDS` extra rounds). A day can still end
+   short: a failing video is never shipped to hit the count.
+
+If the checker itself is unavailable (no key, API down, timeout, a malformed answer) the run does
+not stop: the validated videos ship marked `unverified` and the log says so loudly. A verdict of
+unsupported or contradicted never fails open. Each sidecar and plan entry keeps a small
+`fact_check` record (verdict counts, the quote behind each spoken line, anything flagged, any
+repair), and the day's dropped videos with their reasons go to `status.json` (`dropped`) and the
+plan (`dropped`).
 
 ## How the pipeline works
 

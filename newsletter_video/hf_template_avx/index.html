@@ -688,6 +688,178 @@
         height: 90px;
       }
 
+      /* ---- layout variants (avx_builder.VARIANTS) ---- */
+      .kin-center {
+        align-items: center;
+        text-align: center;
+      }
+      .stat-center {
+        left: 0;
+        width: 936px;
+        justify-content: center;
+        transform-origin: center bottom;
+      }
+      .stat-in-ring {
+        top: 160px;
+        font-size: 190px;
+      }
+      .stat-label-center {
+        left: 0;
+        width: 936px;
+        text-align: center;
+      }
+      .stat-label-center > .in {
+        display: inline-block;
+      }
+      .stat-label-ring {
+        top: 540px;
+      }
+      .stat-ring {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 936px;
+        height: 640px;
+      }
+      .stat-rule {
+        position: absolute;
+        left: 388px;
+        top: 450px;
+        width: 160px;
+        height: 10px;
+        border-radius: 5px;
+        background: var(--accent);
+      }
+      .stat-bar {
+        position: absolute;
+        left: 0;
+        top: 470px;
+        width: 900px;
+      }
+      .stat-bar::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 900px;
+        height: 46px;
+        border-radius: 23px;
+        background: var(--hair);
+      }
+      .stat-bar-fill {
+        position: relative;
+        width: 900px;
+        height: 46px;
+        border-radius: 23px;
+        background: var(--accent);
+        transform-origin: left center;
+      }
+      .stat-bar-ends {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 14px;
+        font-size: 22px;
+        color: var(--mute);
+      }
+      .vs-row {
+        left: 0;
+        width: 936px;
+        height: 282px;
+        padding: 34px 40px;
+        overflow: hidden;
+      }
+      .vs-row .vs-title {
+        margin-bottom: 26px;
+      }
+      .vs-row .vs-tag {
+        position: absolute;
+        right: 40px;
+        top: 40px;
+        margin: 0;
+      }
+      .vs-row-items {
+        display: flex;
+        gap: 34px;
+        white-space: nowrap;
+      }
+      .vs-row-items .vs-item {
+        font-size: 36px;
+      }
+      .li-chip {
+        position: absolute;
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        padding: 22px 46px 22px 24px;
+        border-radius: 999px;
+        background: var(--surface);
+        box-shadow: 0 10px 28px rgba(var(--shadow), 0.16);
+        white-space: nowrap;
+        font-weight: 800;
+        font-size: 60px;
+        letter-spacing: -0.03em;
+      }
+      .scene.dark .li-chip {
+        box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.08) inset, 0 12px 30px rgba(0, 0, 0, 0.4);
+      }
+      .li-chip svg {
+        width: 72px;
+        height: 72px;
+        flex: none;
+      }
+      .li-card {
+        left: 0;
+        width: 936px;
+        height: 150px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding-right: 36px;
+        border-radius: 26px;
+      }
+      .li-numeral {
+        width: 140px;
+        flex: none;
+        text-align: center;
+        font-size: 124px;
+        line-height: 1;
+        color: var(--accent);
+      }
+      .tl-text-h {
+        position: absolute;
+        text-align: center;
+      }
+      .tl-text-h .tl-title {
+        white-space: normal;
+        font-size: 54px;
+        line-height: 1.04;
+      }
+      .tl-tail-h {
+        position: absolute;
+        left: 0;
+        width: 936px;
+        text-align: center;
+      }
+      .ch-legend {
+        position: absolute;
+        right: 0;
+        display: flex;
+        gap: 26px;
+        font-size: 24px;
+        white-space: nowrap;
+      }
+      .ch-legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .ch-legend i {
+        width: 18px;
+        height: 18px;
+        border-radius: 4px;
+        display: inline-block;
+      }
+
       /* ---- avatar ---- */
       #character-wrap {
         position: absolute;
@@ -846,6 +1018,12 @@
         }
         return size;
       }
+      // The width of an element's text itself (a block's scrollWidth is its box, not its text).
+      const textWidth = (el) => {
+        const r = document.createRange();
+        r.selectNodeContents(el);
+        return r.getBoundingClientRect().width;
+      };
       const fmt = (v, dec) => Number(v).toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec });
 
       // ---------------------------------------------------------------- scenes
@@ -857,7 +1035,8 @@
       //    the punch line in serif italic, then a hand-drawn underline.
       BUILD.kinetic = function (sc, stage, side, tl, opts) {
         const d = sc.data;
-        const box = h("div", "kin");
+        const variant = sc.variant || "stack"; // stack (left, lines rise) | center | words (each word pops)
+        const box = h("div", "kin" + (variant === "center" ? " kin-center" : ""));
         stage.append(box);
         const lines = d.lines.map((ln) => {
           const el = h("div", "kin-line" + (ln.em ? " em" : ""), ln.text);
@@ -890,10 +1069,18 @@
           svg.append(underline);
           em.append(svg);
         }
-        const splits = lines.map((el) => new SplitText(el, { type: "words", mask: "words", wordsClass: "kw" }));
+        const words = variant === "words";
+        const splits = lines.map((el) => new SplitText(el, words ? { type: "words", wordsClass: "kw" } : { type: "words", mask: "words", wordsClass: "kw" }));
         splits.forEach((sp, i) => {
           const t = Math.max(sc.start + 0.05, at(d.lines[i], sc.start + 0.2 + i * 0.3) - 0.12);
-          if (d.lines[i].em) {
+          if (words) {
+            // each word pops in on a spring, alternately tilted, the punch line from further away
+            tl.fromTo(sp.words, { opacity: 0, scale: d.lines[i].em ? 0.3 : 0.55, y: 28, rotation: (k) => (k % 2 ? 7 : -7), transformOrigin: "50% 80%" },
+              { opacity: 1, scale: 1, y: 0, rotation: 0, duration: POP.duration, ease: POP.ease, stagger: 0.09 }, t);
+          } else if (variant === "center") {
+            // centred lines open from the middle word outwards
+            tl.fromTo(sp.words, { yPercent: 110, rotation: d.lines[i].em ? -5 : 0 }, { yPercent: 0, rotation: 0, duration: 0.8, ease: "avx.out", stagger: { each: 0.06, from: "center" } }, t);
+          } else if (d.lines[i].em) {
             tl.fromTo(sp.words, { yPercent: 105, rotation: 6 }, { yPercent: 0, rotation: 0, duration: 0.9, ease: "avx.out", stagger: 0.07 }, t);
           } else {
             tl.fromTo(sp.words, { yPercent: 110 }, { yPercent: 0, duration: 0.75, ease: "avx.out", stagger: 0.06 }, t);
@@ -903,10 +1090,11 @@
           tl.fromTo(underline, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.6, ease: "avx.inOut" }, at(d.underline, sc.start + 1.2));
         }
         // Secondary motion: a slow push-in while it holds.
-        tl.fromTo(box, { scale: 1 }, { scale: 1.025, duration: Math.max(0.5, sc.end - sc.start), ease: "sine.inOut", transformOrigin: "0% 50%" }, sc.start);
+        tl.fromTo(box, { scale: 1 }, { scale: 1.025, duration: Math.max(0.5, sc.end - sc.start), ease: "sine.inOut", transformOrigin: variant === "center" ? "50% 50%" : "0% 50%" }, sc.start);
         return {
           exit(t) {
-            tl.to(splits.flatMap((sp) => sp.words), { yPercent: -110, duration: 0.38, ease: "avx.in", stagger: 0.015 }, t);
+            if (words) tl.to(splits.flatMap((sp) => sp.words), { scale: 0.6, opacity: 0, duration: 0.3, ease: "avx.in", stagger: 0.012 }, t);
+            else tl.to(splits.flatMap((sp) => sp.words), { yPercent: -110, duration: 0.38, ease: "avx.in", stagger: 0.015 }, t);
             if (underline) tl.to(underline, { drawSVG: "100% 100%", duration: 0.3, ease: "avx.in" }, t);
           },
         };
@@ -915,20 +1103,26 @@
       // 2. Big number count-up + unit chart (each dot = a slice of the total).
       BUILD.stat = function (sc, stage, side, tl) {
         const d = sc.data;
-        const num = h("div", "stat-num");
+        const pct = d.suffix === "%" && d.value > 0 && d.value <= 100;
+        // left (the original) | center | ring (a percentage drawn as a ring) | bar (a percentage as a bar)
+        const variant = (sc.variant === "ring" || sc.variant === "bar") && !pct ? "left" : sc.variant || "left";
+        const num = h("div", "stat-num" + (variant === "center" || variant === "ring" ? " stat-center" : "") + (variant === "ring" ? " stat-in-ring" : ""));
         const dec = d.decimals || 0;
         const digits = h("span", "stat-digits", fmt(d.value, dec));
         const suffix = h("span", "stat-suffix", d.suffix || "");
         if (d.prefix) num.append(h("span", "", d.prefix));
         num.append(digits, suffix);
-        const label = masked("stat-label", d.label);
+        const centred = variant === "center" || variant === "ring";
+        const label = masked("stat-label" + (centred ? " stat-label-center" : "") + (variant === "ring" ? " stat-label-ring" : ""), d.label);
         stage.append(num, label.m);
-        shrinkToFit(num, 900, 120); // measured at the final value, then reset to 0 for the count
+        const numWidth = () => [...num.children].reduce((a, c) => a + c.offsetWidth, 0) + 12;
+        shrinkToFit(num, variant === "ring" ? 400 : 900, variant === "ring" ? 90 : 120, centred ? numWidth : undefined); // at the final value
         digits.textContent = fmt(0, dec);
         shrinkToFit(label.m, 930, 34, () => label.inner.scrollWidth);
         const dotsBox = h("div", "dots");
+        if (variant === "center") dotsBox.style.left = (936 - 826) / 2 + "px";
         // dots: 0 = no unit chart (a made-up scale is worse than none); fill = how many of them the value reaches
-        const n = d.dots == null ? 20 : d.dots, perRow = 10, size = 52, gap = 34;
+        const n = variant === "ring" || variant === "bar" ? 0 : d.dots == null ? 20 : d.dots, perRow = 10, size = 52, gap = 34;
         const filled = d.fill == null ? n : Math.max(0, Math.min(n, d.fill));
         const fills = [];
         for (let i = 0; i < n; i++) {
@@ -940,9 +1134,26 @@
           dotsBox.append(dot);
           fills.push({ dot, f });
         }
-        const key = masked("dot-key mono", d.dot_label || "");
+        const key = masked("dot-key mono" + (variant === "center" ? " stat-label-center" : ""), d.dot_label || "");
         stage.append(dotsBox);
         if (n && d.dot_label) stage.append(key.m);
+        // ring: the share drawn round the number; bar: the share as a filling bar (percentages only: a real scale)
+        let arc = null, ringSvg = null, barFill = null, barBox = null;
+        if (variant === "ring") {
+          ringSvg = s("svg", { class: "stat-ring", viewBox: "0 0 936 640" });
+          ringSvg.append(s("circle", { cx: 468, cy: 270, r: 228, fill: "none", stroke: sc.pal.hair, "stroke-width": 26 }));
+          arc = s("circle", { cx: 468, cy: 270, r: 228, fill: "none", stroke: sc.pal.accent, "stroke-width": 26, "stroke-linecap": "round", transform: "rotate(-90 468 270)" });
+          ringSvg.append(arc);
+          stage.prepend(ringSvg);
+        } else if (variant === "bar") {
+          barBox = h("div", "stat-bar");
+          barFill = h("div", "stat-bar-fill");
+          barBox.append(barFill);
+          const ends = h("div", "stat-bar-ends mono");
+          ends.append(h("span", "", "0"), h("span", "", "100%"));
+          barBox.append(ends);
+          stage.append(barBox);
+        }
         let src = null;
         if (d.source) {
           src = h("div", "source mono", d.source);
@@ -971,9 +1182,24 @@
         });
         if (n && d.dot_label) tl.fromTo(key.inner, { yPercent: 110 }, { yPercent: 0, duration: 0.6, ease: "avx.out" }, tc + 0.3);
         if (src) tl.fromTo(src, { x: 30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.7, ease: "avx.out" }, tc + COUNT);
+        if (arc) {
+          tl.fromTo(ringSvg, { scale: 0.85, opacity: 0, transformOrigin: "468px 270px" }, { scale: 1, opacity: 1, duration: 0.6, ease: "avx.out" }, t0);
+          tl.fromTo(arc, { drawSVG: "0% 0%" }, { drawSVG: `0% ${d.value}%`, duration: COUNT, ease: "power3.out" }, tc); // in step with the count
+        }
+        if (barFill) {
+          tl.fromTo(barBox, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, ease: "avx.out" }, t0 + 0.2);
+          tl.fromTo(barFill, { scaleX: 0 }, { scaleX: d.value / 100, duration: COUNT, ease: "power3.out" }, tc);
+        }
+        if (variant === "center" && !n) {
+          const rule = h("div", "stat-rule");
+          stage.append(rule);
+          tl.fromTo(rule, { scaleX: 0 }, { scaleX: 1, duration: 0.7, ease: "avx.inOut" }, tc + COUNT * 0.6);
+        }
         return {
           exit(t) {
-            tl.to([num, label.m, dotsBox, key.m, src].filter(Boolean), { x: -140, opacity: 0, duration: 0.4, ease: "avx.in", stagger: 0.04 }, t);
+            const parts = [num, label.m, dotsBox, key.m, src, ringSvg, barBox, ...stage.querySelectorAll(".stat-rule")].filter(Boolean);
+            if (centred) tl.to(parts, { y: -90, opacity: 0, duration: 0.4, ease: "avx.in", stagger: 0.04 }, t);
+            else tl.to(parts, { x: -140, opacity: 0, duration: 0.4, ease: "avx.in", stagger: 0.04 }, t);
           },
         };
       };
@@ -1426,9 +1652,401 @@
         return ret;
       };
 
+      // ---------------------------------------------------------------- layout variants
+      // The same data in another arrangement (avx_builder.VARIANTS picks one per scene, seeded): a day of
+      // videos then doesn't repeat one layout per style. The originals above are the first variant of each.
+      const VARIANT = {};
+
+      // Versus, stacked: two full-width cards, the named-first side on top, items in a row.
+      VARIANT["versus:stacked"] = function (sc, stage, side, tl) {
+        const d = sc.data;
+        const mk = (spec, y, hot) => {
+          const card = h("div", "card vs-row");
+          card.style.top = y + "px";
+          const title = h("div", "vs-title", spec.title);
+          const tag = h("div", "vs-tag mono", spec.tag);
+          tag.style.background = hot ? sc.pal.accent : "transparent";
+          tag.style.color = hot ? sc.pal.onAccent : sc.pal.ink;
+          tag.style.border = hot ? "none" : `2px solid ${sc.pal.hair}`;
+          const row = h("div", "vs-row-items");
+          const items = spec.items.map((txt) => {
+            const it = h("div", "vs-item");
+            const b = h("div", "vs-bullet");
+            b.style.background = hot ? sc.pal.accent : sc.pal.mute;
+            it.append(b, h("span", "", txt));
+            row.append(it);
+            return it;
+          });
+          card.append(title, row);
+          if (spec.tag) card.append(tag);
+          stage.append(card);
+          shrinkToFit(title, spec.tag ? 856 - tag.offsetWidth - 30 : 856, 40, () => textWidth(title));
+          shrinkToFit(row, 856, 22, () => row.scrollWidth);
+          return { card, items };
+        };
+        const R = mk(d.right, 0, true);
+        const L = mk(d.left, 328, false);
+        const badge = h("div", "vs-badge", "VS");
+        badge.style.left = "780px";
+        badge.style.top = "305px";
+        stage.append(badge);
+        const tr = Math.max(sc.start + 0.05, at(d.right, sc.start + 0.2) - 0.15);
+        const tlf = Math.max(tr + 0.6, at(d.left, sc.start + 2) - 0.15);
+        tl.fromTo(R.card, { y: -70, opacity: 0, scale: 0.96 }, { y: 0, opacity: 1, scale: 1, duration: 0.75, ease: "avx.out" }, tr);
+        tl.fromTo(R.items, { x: 50, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: "avx.out", stagger: 0.12 }, tr + 0.3);
+        tl.fromTo(badge, { scale: 0, rotation: 40 }, { scale: 1, rotation: 0, duration: POP.duration, ease: POP.ease }, tlf - 0.2);
+        tl.fromTo(L.card, { y: 70, opacity: 0, scale: 0.96 }, { y: 0, opacity: 1, scale: 1, duration: 0.75, ease: "avx.out" }, tlf);
+        tl.fromTo(L.items, { x: 50, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: "avx.out", stagger: 0.12 }, tlf + 0.3);
+        if (d.verdict) {
+          const stamp = h("div", "stamp mono", d.verdict.text);
+          stamp.style.left = "auto";
+          stamp.style.right = "34px";
+          stamp.style.top = "auto";
+          stamp.style.bottom = "34px";
+          L.card.append(stamp);
+          shrinkToFit(stamp, 420, 18, () => stamp.offsetWidth);
+          const tv = at(d.verdict, tlf + 0.8) - 0.05;
+          tl.fromTo(stamp, { scale: 1.8, rotation: 10, opacity: 0 }, { scale: 1, rotation: 4, opacity: 1, duration: 0.32, ease: "power4.in" }, tv);
+          tl.to(R.card, { opacity: 0.55, duration: 0.4, ease: "power2.out" }, tv + 0.1);
+        }
+        return {
+          exit(t) {
+            tl.to(R.card, { y: -320, opacity: 0, duration: 0.45, ease: "avx.in" }, t);
+            tl.to(L.card, { y: 320, opacity: 0, duration: 0.45, ease: "avx.in" }, t);
+            tl.to(badge, { scale: 0, duration: 0.3, ease: "avx.in" }, t);
+          },
+        };
+      };
+
+      // Lists as chips (pills stepping down and right) or as numbered cards.
+      function listTitle(sc, stage) {
+        const title = h("div", "li-title");
+        const words = sc.data.title.split(" ");
+        words.forEach((w, i) => title.append(h("span", i === 1 ? "serif" : "", w + (i < words.length - 1 ? " " : ""))));
+        stage.append(title);
+        shrinkToFit(title, 930, 30, () => title.offsetWidth);
+        return title;
+      }
+      function check(sc, cls) {
+        const svg = s("svg", { class: cls, viewBox: "0 0 84 84" });
+        const disc = s("circle", { cx: 42, cy: 42, r: 38, fill: sc.pal.accent });
+        const tick = s("path", { d: "M25,43 L37,55 L60,30", fill: "none", stroke: sc.pal.onAccent, "stroke-width": 7, "stroke-linecap": "round", "stroke-linejoin": "round" });
+        svg.append(disc, tick);
+        return { svg, disc, tick };
+      }
+      VARIANT["list:chips"] = function (sc, stage, side, tl) {
+        const d = sc.data;
+        const title = listTitle(sc, stage);
+        const chips = d.items.map((it, i) => {
+          const chip = h("div", "li-chip");
+          chip.style.left = i * 56 + "px";
+          chip.style.top = 118 + i * 168 + "px";
+          const c = check(sc, "");
+          const txt = h("span", "", it.text);
+          chip.append(c.svg, txt);
+          stage.append(chip);
+          shrinkToFit(chip, 936 - i * 56, 30, () => chip.offsetWidth);
+          return { chip, ...c };
+        });
+        const t0 = sc.start + 0.05;
+        tl.fromTo(title, { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: "avx.out" }, t0);
+        chips.forEach((c, i) => {
+          const t = Math.max(t0 + 0.3 + i * 0.4, at(d.items[i], t0 + 0.8 + i * 1.2) - 0.25);
+          tl.fromTo(c.chip, { scale: 0.5, opacity: 0, rotation: -5, transformOrigin: "0% 50%" }, { scale: 1, opacity: 1, rotation: 0, duration: POP.duration, ease: POP.ease }, t);
+          tl.fromTo(c.disc, { scale: 0, transformOrigin: "50% 50%" }, { scale: 1, duration: POP.duration, ease: POP.ease }, t + 0.15);
+          tl.fromTo(c.tick, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.28, ease: "power2.out" }, t + 0.3);
+          if (i > 0) tl.to(chips.slice(0, i).map((p) => p.chip), { opacity: 0.55, duration: 0.4 }, t + 0.1);
+        });
+        return {
+          exit(t) {
+            tl.to([title, ...chips.map((c) => c.chip)], { x: 160, opacity: 0, duration: 0.4, ease: "avx.in", stagger: 0.04 }, t);
+          },
+        };
+      };
+      VARIANT["list:cards"] = function (sc, stage, side, tl) {
+        const d = sc.data;
+        const title = listTitle(sc, stage);
+        const cards = d.items.map((it, i) => {
+          const card = h("div", "card li-card");
+          card.style.top = 104 + i * 172 + "px";
+          const numeral = h("div", "li-numeral serif", String(i + 1));
+          const txt = masked("li-text", it.text);
+          card.append(numeral, txt.m);
+          stage.append(card);
+          shrinkToFit(txt.m, 740, 32, () => txt.inner.scrollWidth);
+          return { card, numeral, txt };
+        });
+        const t0 = sc.start + 0.05;
+        tl.fromTo(title, { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: "avx.out" }, t0);
+        cards.forEach((c, i) => {
+          const t = Math.max(t0 + 0.3 + i * 0.4, at(d.items[i], t0 + 0.8 + i * 1.2) - 0.25);
+          tl.fromTo(c.card, { y: 80, opacity: 0, rotation: i % 2 ? -1.5 : 1.5 }, { y: 0, opacity: 1, rotation: 0, duration: SETTLE.duration, ease: SETTLE.ease }, t);
+          tl.fromTo(c.numeral, { scale: 0.4, opacity: 0 }, { scale: 1, opacity: 1, duration: POP.duration, ease: POP.ease }, t + 0.12);
+          tl.fromTo(c.txt.inner, { yPercent: 110 }, { yPercent: 0, duration: 0.65, ease: "avx.out" }, t + 0.15);
+          if (i > 0) tl.to(cards.slice(0, i).map((p) => p.card), { opacity: 0.6, duration: 0.4 }, t + 0.1);
+        });
+        return {
+          exit(t) {
+            tl.to([title, ...cards.map((c) => c.card)], { y: -80, opacity: 0, duration: 0.4, ease: "avx.in", stagger: 0.04 }, t);
+          },
+        };
+      };
+
+      // Timeline, horizontal: the rail runs left to right, each step's year and title under its node.
+      VARIANT["timeline:horizontal"] = function (sc, stage, side, tl) {
+        const d = sc.data;
+        const n = d.nodes.length, Y = 210, X0 = 120, X1 = 816;
+        const xs = d.nodes.map((_, i) => (n === 1 ? 468 : X0 + (i * (X1 - X0)) / (n - 1)));
+        const W = n >= 3 ? 300 : 400;
+        const svg = s("svg", { class: "tl-svg", viewBox: "0 0 936 640" });
+        stage.append(svg);
+        const rail = s("path", { d: `M20,${Y} L916,${Y}`, stroke: sc.pal.hair, "stroke-width": 4, fill: "none", "stroke-linecap": "round" });
+        svg.append(rail);
+        const segs = [];
+        const nodes = d.nodes.map((nd, i) => {
+          if (i > 0) {
+            const seg = s("path", { d: `M${xs[i - 1] + 52},${Y} L${xs[i] - 52},${Y}`, stroke: sc.pal.accent, "stroke-width": 6, fill: "none", "stroke-linecap": "round" });
+            svg.append(seg);
+            segs.push(seg);
+          }
+          const node = h("div", "tl-node");
+          node.style.left = xs[i] + "px";
+          node.style.top = Y + "px";
+          const disc = h("div", "tl-disc");
+          const ring = h("div", "tl-ring");
+          const isvg = s("svg", { width: 60, height: 60, viewBox: "-30 -30 60 60" });
+          const icon = s("path", { d: ICONS[nd.icon] || ICONS.spark, fill: "none", stroke: sc.pal.ink, "stroke-width": 4.5, "stroke-linecap": "round", "stroke-linejoin": "round" });
+          isvg.append(icon);
+          disc.append(isvg);
+          node.append(ring, disc);
+          const text = h("div", "tl-text-h");
+          text.style.left = Math.max(0, Math.min(936 - W, xs[i] - W / 2)) + "px";
+          text.style.top = Y + 82 + "px";
+          text.style.width = W + "px";
+          const year = masked("tl-year mono", nd.year);
+          const title = masked("tl-title", nd.title);
+          text.append(year.m, title.m);
+          stage.append(node, text);
+          // titles may wrap to two lines; a single word that is still too wide shrinks the type
+          let size = 62;
+          title.inner.style.fontSize = size + "px";
+          while (title.inner.scrollWidth > W + 1 && size > 30) { size -= 2; title.inner.style.fontSize = size + "px"; }
+          while (title.inner.offsetHeight > 140 && size > 30) { size -= 2; title.inner.style.fontSize = size + "px"; }
+          return { node, ring, icon, year, title, text };
+        });
+        let sub = null;
+        if (d.tail) {
+          sub = masked("tl-sub tl-tail-h", d.tail.text);
+          sub.m.style.top = "540px";
+          stage.append(sub.m);
+          shrinkToFit(sub.m, 930, 26, () => textWidth(sub.inner));
+        }
+        tl.fromTo(rail, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 1.0, ease: "avx.inOut" }, sc.start + 0.25);
+        nodes.forEach((nd, i) => {
+          const t = Math.max(sc.start + 0.35, at(d.nodes[i], sc.start + 0.4 + i * 1.5) - 0.15);
+          if (i > 0) tl.fromTo(segs[i - 1], { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.45, ease: "avx.inOut" }, t - 0.4);
+          tl.fromTo(nd.node, { scale: 0 }, { scale: 1, duration: POP.duration, ease: POP.ease }, t);
+          tl.fromTo(nd.icon, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.5, ease: "avx.inOut" }, t + 0.1);
+          tl.fromTo(nd.ring, { scale: 1, opacity: 0.9 }, { scale: 1.7, opacity: 0, duration: 0.8, ease: "power2.out" }, t + 0.05);
+          tl.fromTo(nd.year.inner, { yPercent: 110 }, { yPercent: 0, duration: 0.6, ease: "avx.out" }, t + 0.05);
+          tl.fromTo(nd.title.inner, { yPercent: 110 }, { yPercent: 0, duration: 0.75, ease: "avx.out" }, t + 0.12);
+          if (i > 0) tl.to(nodes.slice(0, i).map((p) => p.text), { opacity: 0.45, duration: 0.4, ease: "power2.out" }, t);
+        });
+        if (sub) tl.fromTo(sub.inner, { yPercent: 110 }, { yPercent: 0, duration: 0.7, ease: "avx.out" }, at(d.tail, sc.start + 5) - 0.1);
+        return {
+          exit(t) {
+            tl.to([svg, ...nodes.map((x) => x.node), ...nodes.map((x) => x.text), sub && sub.m].filter(Boolean), { x: -140, opacity: 0, duration: 0.42, ease: "avx.in", stagger: 0.03 }, t);
+          },
+        };
+      };
+
+      // Chart as bars: the same real series, one group of bars per label, rising on their cue.
+      VARIANT["chart:bars"] = function (sc, stage, side, tl) {
+        const d = sc.data;
+        const A = { x: 40, y: 110, w: 760, h: 400 };
+        const all = d.series.flatMap((x) => x.values);
+        const max = Math.max(...all) * 1.15 || 1;
+        const n = d.series[0].values.length;
+        const two = d.series.length > 1;
+        const gw = A.w / n;
+        const bw = two ? Math.min(64, gw * 0.34) : Math.min(110, gw * 0.56);
+        const gx = (i) => A.x + (i + 0.5) * gw;
+        const svg = s("svg", { class: "ch-svg", viewBox: "0 0 936 640" });
+        stage.append(svg);
+        const grid = [];
+        for (let g = 0; g <= 4; g++) {
+          const y = A.y + (A.h * g) / 4;
+          const ln = s("line", { x1: A.x, x2: A.x + A.w, y1: y, y2: y, stroke: sc.pal.hair, "stroke-width": g === 4 ? 3 : 1.5 });
+          svg.append(ln);
+          grid.push(ln);
+        }
+        const colours = [sc.pal.accent, sc.pal.ink];
+        const labelAll = n * d.series.length <= 8;
+        const bars = d.series.map((ser, si) => ser.values.map((v, i) => {
+          const x = two ? gx(i) + (si ? 4 : -bw - 4) : gx(i) - bw / 2;
+          const hgt = Math.max(2, (v / max) * A.h);
+          const r = s("rect", { x, y: A.y + A.h - hgt, width: bw, height: hgt, rx: 8, fill: colours[si], "fill-opacity": si ? 0.85 : 1 });
+          svg.append(r);
+          let lab = null;
+          if (labelAll || i === 0 || i === n - 1) {
+            lab = h("div", "ch-val mono", fmt(v, Number.isInteger(v) ? 0 : 1));
+            lab.style.left = x + bw / 2 - 40 + "px";
+            lab.style.width = "80px";
+            lab.style.textAlign = "center";
+            lab.style.top = A.y + A.h - hgt - 34 + "px";
+            stage.append(lab);
+          }
+          return { r, lab, x, top: A.y + A.h - hgt };
+        }));
+        (d.x_labels || []).forEach((t, i) => {
+          const xl = h("div", "ch-axis-label mono", t);
+          xl.style.left = gx(i) - 50 + "px";
+          xl.style.width = "100px";
+          xl.style.textAlign = "center";
+          xl.style.top = A.y + A.h + 18 + "px";
+          stage.append(xl);
+          grid.push(xl);
+        });
+        const yl = h("div", "ch-axis-label mono", d.y_label || "");
+        yl.style.left = A.x + "px";
+        yl.style.top = A.y - 70 + "px";
+        stage.append(yl);
+        const legend = h("div", "ch-legend mono");
+        legend.style.top = A.y - 72 + "px";
+        d.series.forEach((ser, si) => {
+          const sw = h("i", "");
+          sw.style.background = colours[si];
+          const it = h("span", "");
+          it.append(sw, document.createTextNode(ser.name));
+          legend.append(it);
+        });
+        stage.append(legend);
+        let call = null;
+        if (d.callout) {
+          call = h("div", "card callout");
+          if (d.callout.kicker) call.append(h("div", "callout-k mono", d.callout.kicker));
+          call.append(h("div", "callout-t", d.callout.text || ""));
+          side.append(call);
+        }
+        const t0 = sc.start + 0.05;
+        tl.fromTo(grid, { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.45, ease: "avx.out", stagger: 0.03 }, t0);
+        tl.fromTo([yl, legend], { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5, ease: "avx.out" }, t0 + 0.1);
+        let last = t0;
+        bars.forEach((row, si) => {
+          const ts = Math.max(t0 + 0.15, at(d.series[si], t0 + 0.2 + si * 0.5) - 0.1);
+          row.forEach((b, i) => {
+            const tb = ts + i * 0.12;
+            tl.fromTo(b.r, { scaleY: 0, transformOrigin: "50% 100%" }, { scaleY: 1, duration: 0.6, ease: "power3.out" }, tb);
+            if (b.lab) tl.fromTo(b.lab, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "avx.out" }, tb + 0.35);
+            last = Math.max(last, tb + 0.6);
+          });
+        });
+        if (call) tl.fromTo(call, { y: 40, opacity: 0, scale: 0.94 }, { y: 0, opacity: 1, scale: 1, duration: SETTLE.duration, ease: SETTLE.ease }, Math.max(last, at(d.callout, last + 0.4) - 0.45));
+        return {
+          exit(t) {
+            tl.to([svg, ...stage.querySelectorAll(".ch-axis-label, .ch-val, .ch-legend")], { opacity: 0, y: 40, duration: 0.38, ease: "avx.in", stagger: 0.01 }, t);
+            if (call) tl.to(call, { x: 120, opacity: 0, duration: 0.38, ease: "avx.in" }, t);
+          },
+        };
+      };
+
+      // Relation, mirrored: the actor top right, the one acted on lower left, the arrow sweeping back.
+      VARIANT["relation:mirror"] = function (sc, stage, side, tl) {
+        const d = sc.data;
+        const chip = (p, hot) => {
+          const el = h("div", "card person" + (hot ? " hot" : ""));
+          const disc = h("div", "mono-disc", p.initials);
+          const txt = h("div", "");
+          txt.append(h("div", "p-name", p.name), h("div", "p-role mono", p.role));
+          el.append(disc, txt);
+          stage.append(el);
+          return el;
+        };
+        const A = chip(d.from, false);
+        const B = chip(d.to, true);
+        shrinkToFit(A.querySelector(".p-name"), 760, 30, () => A.offsetWidth);
+        shrinkToFit(B.querySelector(".p-name"), 700, 30, () => B.offsetWidth);
+        const aw = A.offsetWidth, bw = B.offsetWidth;
+        A.style.left = 936 - aw + "px";
+        A.style.top = "10px";
+        B.style.left = "0px";
+        B.style.top = "262px";
+        const ax = 936 - aw + 74, by = 262 + B.offsetHeight / 2;
+        const svg = s("svg", { class: "rel-svg", viewBox: "0 0 936 640" });
+        stage.insertBefore(svg, A);
+        const ex = bw + 14;
+        const arrow = s("path", { d: `M${ax},160 C${ax},250 ${ax - 60},${by} ${ex + 24},${by}`, fill: "none", stroke: sc.pal.accent, "stroke-width": 6, "stroke-linecap": "round" });
+        const head = s("path", { d: `M${ex + 26},${by - 18} L${ex},${by} L${ex + 26},${by + 18}`, fill: "none", stroke: sc.pal.accent, "stroke-width": 6, "stroke-linecap": "round", "stroke-linejoin": "round" });
+        svg.append(arrow, head);
+        const verb = h("div", "verb mono", d.verb.text);
+        stage.append(verb);
+        verb.style.left = Math.min(936 - verb.offsetWidth, ax + 24) + "px";
+        verb.style.top = "200px";
+        const wrap = h("div", "hl-wrap");
+        const mark = h("div", "hl-mark");
+        const text = h("div", "hl-text", d.phrase.text);
+        const on = h("div", "hl-on", d.phrase.text);
+        wrap.append(mark, text, on);
+        stage.append(wrap);
+        {
+          let size = 168;
+          while (wrap.offsetWidth > 936 && size > 80) {
+            size -= 4;
+            text.style.fontSize = on.style.fontSize = size + "px";
+          }
+        }
+        wrap.style.left = 936 - wrap.offsetWidth + "px";
+        wrap.style.transformOrigin = "right center";
+        const ta = Math.max(sc.start + 0.05, at(d.from, sc.start + 0.2) - 0.2);
+        const tv = at(d.verb, ta + 0.4);
+        const tb = Math.max(tv + 0.3, at(d.to, tv + 0.8) - 0.25);
+        const tp = Math.max(tb + 0.4, at(d.phrase, tb + 1) - 0.2);
+        tl.fromTo(A, { x: 80, opacity: 0 }, { x: 0, opacity: 1, duration: 0.7, ease: "avx.out" }, ta);
+        tl.fromTo(arrow, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.55, ease: "avx.inOut" }, tv - 0.1);
+        tl.fromTo(head, { drawSVG: "50% 50%" }, { drawSVG: "0% 100%", duration: 0.25, ease: "avx.out" }, tv + 0.4);
+        tl.fromTo(verb, { scale: 0, rotation: 8 }, { scale: 1, rotation: 3, duration: POP.duration, ease: POP.ease }, tv + 0.1);
+        tl.fromTo(B, { x: -80, opacity: 0 }, { x: 0, opacity: 1, duration: 0.7, ease: "avx.out" }, tb);
+        tl.fromTo(B, { rotation: 0 }, { rotation: -2, duration: 0.18, ease: "power2.out", yoyo: true, repeat: 1, immediateRender: false }, tb + 0.55);
+        tl.to(A, { opacity: 0.6, duration: 0.4 }, tp);
+        tl.fromTo(wrap, { yPercent: 30, opacity: 0, rotation: 0 }, { yPercent: 0, opacity: 1, rotation: 2, duration: 0.7, ease: "avx.out" }, tp - 0.15);
+        tl.fromTo(mark, { scaleX: 0 }, { scaleX: 1, duration: 0.55, ease: "avx.inOut" }, tp + 0.25);
+        tl.fromTo(on, { clipPath: "inset(0% 100% 0% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: 0.55, ease: "avx.inOut" }, tp + 0.25);
+        return {
+          exit(t) {
+            tl.to([A, B, svg, verb], { y: -100, opacity: 0, duration: 0.4, ease: "avx.in", stagger: 0.03 }, t);
+            tl.to(wrap, { x: -200, opacity: 0, duration: 0.4, ease: "avx.in" }, t + 0.05);
+          },
+        };
+      };
+
       // ---------------------------------------------------------------- build
       function build() {
         const tl = gsap.timeline({ paused: true });
+        // How a new ground arrives (one per video for the beats, another for the outro: see
+        // avx_builder.TRANSITION_SETS). Every one is a clip on the scene's ground, so the content behind it
+        // waits the same 0.4 s whichever is used. All finish within 0.75 s.
+        const blinds = (p) => {
+          const n = 6, pts = [];
+          for (let k = 0; k < n; k++) {
+            const y0 = (k * 100) / n, y1 = y0 + (p * 100) / n;
+            pts.push(`0% ${y0}%`, `100% ${y0}%`, `100% ${y1}%`, `0% ${y1}%`);
+          }
+          return `polygon(${pts.join(", ")})`;
+        };
+        const WIPES = {
+          // a circle opening from Puck's chest: the colour change comes from him
+          iris: (bg, t) => tl.fromTo(bg, { clipPath: "circle(0px at 250px 1250px)" }, { clipPath: "circle(1600px at 250px 1250px)", duration: 0.75, ease: "avx.inOut" }, t),
+          // the new ground drops from the top like a roller blind
+          shutter: (bg, t) => tl.fromTo(bg, { clipPath: "inset(0% 0% 100% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: 0.7, ease: "avx.inOut" }, t),
+          // a straight sweep from the left edge
+          wipe: (bg, t) => tl.fromTo(bg, { clipPath: "inset(0% 100% 0% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: 0.65, ease: "avx.inOut" }, t),
+          // the ground slides in from the right as a solid sheet
+          slide: (bg, t) => tl.fromTo(bg, { xPercent: 100 }, { xPercent: 0, duration: 0.7, ease: "avx.inOut" }, t),
+          // six horizontal slats open together
+          blinds: (bg, t) => tl.fromTo(bg, { clipPath: blinds(0) }, { clipPath: blinds(1), duration: 0.7, ease: "avx.inOut" }, t),
+          // a slanted edge sweeps across, top corner first
+          diagonal: (bg, t) => tl.fromTo(bg, { clipPath: "polygon(0% 0%, 0% 0%, -40% 100%, -40% 100%)" }, { clipPath: "polygon(0% 0%, 140% 0%, 100% 100%, -40% 100%)", duration: 0.75, ease: "avx.inOut" }, t),
+        };
         const scenes = story.scenes || [];
         const ground = document.getElementById("ground");
         if (scenes.length) {
@@ -1456,7 +2074,7 @@
         });
         // Builders run after every scene is in the DOM (layout measured once, here).
         built.forEach((b) => {
-          const fn = BUILD[b.sc.style] || BUILD.kinetic;
+          const fn = VARIANT[b.sc.style + ":" + b.sc.variant] || BUILD[b.sc.style] || BUILD.kinetic;
           // Behind a wipe, content waits until the new ground has covered the stage.
           const delay = b.sc.index === 0 ? 0 : b.sc.transition !== "cut" ? 0.4 : 0.18;
           b.api = fn({ ...b.sc, start: b.sc.start + delay }, b.stage, b.side, tl) || {};
@@ -1470,14 +2088,9 @@
           if (i === 0 || sc.transition === "cut") {
             tl.set(b.bg, { opacity: 0 }, 0);
             tl.set(b.el, { opacity: 1 }, i === 0 ? 0 : tIn);
-          } else if (sc.transition === "iris") {
-            // circle opening from Puck's chest: the colour change comes from him
-            tl.set(b.el, { opacity: 1 }, tIn - 0.15);
-            tl.fromTo(b.bg, { clipPath: "circle(0px at 250px 1250px)" }, { clipPath: "circle(1600px at 250px 1250px)", duration: 0.75, ease: "avx.inOut" }, tIn - 0.15);
           } else {
-            // shutter: the new ground drops from the top like a blind
             tl.set(b.el, { opacity: 1 }, tIn - 0.15);
-            tl.fromTo(b.bg, { clipPath: "inset(0% 0% 100% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: 0.7, ease: "avx.inOut" }, tIn - 0.15);
+            (WIPES[sc.transition] || WIPES.shutter)(b.bg, tIn - 0.15);
           }
           if (i > 0 && sc.transition !== "cut") tl.set(ground, { background: sc.pal.bg }, tIn + 0.65);
           const tE = tIn + (i === 0 ? 0.05 : sc.transition !== "cut" ? 0.4 : 0.18);

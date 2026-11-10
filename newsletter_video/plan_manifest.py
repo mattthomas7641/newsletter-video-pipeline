@@ -113,6 +113,8 @@ def entry_from_script(script: Script, index: int, look_overrides: dict | None = 
     }
     if getattr(script, "lineup", None):
         entry["lineup"] = dict(script.lineup)
+    if getattr(script, "fact_check", None):  # the fact check's record (factcheck.record)
+        entry["fact_check"] = script.fact_check
     plan = getattr(script, "plan", None)
     if plan is not None:
         from .explainer_writer import plan_dict
@@ -162,6 +164,8 @@ def script_from_entry(entry: dict) -> Script:
     script.look = looks.validate_look(entry.get("look") or {})
     if isinstance(entry.get("lineup"), dict):
         script.lineup = dict(entry["lineup"])
+    if isinstance(entry.get("fact_check"), dict):
+        script.fact_check = dict(entry["fact_check"])
     return script
 
 

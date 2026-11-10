@@ -22,6 +22,7 @@ MIN_POCKET_AREA = 60
 MAX_FILLED_HOLE = 2500  # pixels; enclosed holes up to this size can be filled
 UPPER_BODY = 0.31  # holes whose centre is in the top share of the picture (head, collar) are always filled
 SHADOW_ZONE = 0.12  # the bottom share of the picture where a ground shadow can sit
+SHADOW_HUE_TOLERANCE = 30  # shadows are a little warmer than the darkened ground (22 left one pose's shadow behind)
 
 
 def _near(rgb: np.ndarray, colour, tol: float) -> np.ndarray:
@@ -64,7 +65,7 @@ def cutout(image: Image.Image) -> Image.Image:
     zone[int(height * (1 - SHADOW_ZONE)):] = True
     k = (rgb @ bg) / (bg @ bg)
     off_line = np.sqrt(((rgb - k[..., None] * bg) ** 2).sum(axis=2))
-    shadow = zone & (k > 0.4) & (k < 0.9) & (off_line < 22)
+    shadow = zone & (k > 0.4) & (k < 0.9) & (off_line < SHADOW_HUE_TOLERANCE)
     slabels, scount = ndi.label(shadow)
     if scount:
         ssizes = ndi.sum(shadow, slabels, range(1, scount + 1))
@@ -101,6 +102,18 @@ def _box(image: Image.Image) -> tuple[int, int, int, int] | None:
 
 def cut_poses(sources: list[Path], max_side: int = 2000) -> list[Image.Image]:
     """Every source cut out and cropped to one shared box. They must be the same size."""
+    return cut_poses_with_canvas(sources, max_side)[0]
+
+
+def union_box(boxes) -> tuple[int, int, int, int]:
+    boxes = [b for b in boxes if b]
+    return (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+
+
+def cut_poses_with_canvas(sources: list[Path], max_side: int = 2000) -> tuple[list[Image.Image], dict]:
+    """cut_poses plus the canvas facts a later pose needs to line up with these without the sources:
+    {"source_size": [w, h] of the originals, "box": the shared union box in source pixels, "scale": how much
+    the crop was shrunk to fit max_side (1.0 = not at all)}. characters.add_pose stores and reuses them."""
     cuts = [cutout(Image.open(p)) for p in sources]
     sizes = {c.size for c in cuts}
     if len(sizes) > 1:
@@ -109,10 +122,11 @@ def cut_poses(sources: list[Path], max_side: int = 2000) -> list[Image.Image]:
     boxes = [b for b in (_box(c) for c in cuts) if b]
     if not boxes:
         raise ValueError("Nothing was left after removing the background; is the background one plain colour?")
-    union = (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+    union = union_box(boxes)
     out = []
     for c in cuts:
         c = c.crop(union)
         c.thumbnail((max_side, max_side))
         out.append(c)
-    return out
+    scale = out[0].width / (union[2] - union[0])
+    return out, {"source_size": list(cuts[0].size), "box": list(union), "scale": round(scale, 6)}

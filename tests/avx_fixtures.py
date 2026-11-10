@@ -50,8 +50,19 @@ SCENES = [
            text="Tell me below", text_cue="Tell"),
 ]
 
+EVIDENCE = [
+    {"line": 1, "kind": "factual", "quotes": ["Nvidia reported revenue of $57 billion for its third quarter",
+                                              "demand for Blackwell chips is off the charts"]},
+    {"line": 2, "kind": "factual", "quotes": ["up 62% from a year ago", "Data center sales reached $51.2 billion"]},
+    {"line": 3, "kind": "factual", "quotes": ["CEO Jensen Huang said demand for Blackwell chips is off the charts"]},
+    {"line": 4, "kind": "factual", "quotes": ["Rival AMD is racing to catch up with its MI450 chips, due in 2026"]},
+    {"line": 5, "kind": "factual", "quotes": ["demand for Blackwell chips is off the charts", "Rival AMD is racing to catch up"]},
+    {"line": 6, "kind": "question", "quotes": []},
+]
+
 VIDEO = {"title": "Nvidia made $57 billion in one quarter", "badge": "AI CHIPS", "story_ids": [0], "scenes": SCENES,
-         "post_caption": "Nvidia's quarter hit $57 billion. Can anyone catch up?", "hashtags": ["nvidia", "#AI", "technews"]}
+         "post_caption": "Nvidia's quarter hit $57 billion. Can anyone catch up?", "hashtags": ["nvidia", "#AI", "technews"],
+         "evidence": EVIDENCE}
 
 
 def video(**changes) -> dict:

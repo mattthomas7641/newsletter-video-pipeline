@@ -34,6 +34,13 @@ def isolated_env(monkeypatch, tmp_path):
     monkeypatch.setenv("VIDEOS_PER_DAY", "3")
     monkeypatch.setenv("BACKGROUND_STYLE", "none")
     monkeypatch.setenv("VIDEO_STYLE", "avatar")  # these suites test the classic path; explainer tests set their own
+    # The fact check (factcheck.py) is off unless a test turns it on: older fixtures carry no evidence quotes.
+    # Article fetching is always off (no network), and its cache lives under tmp_path.
+    monkeypatch.setenv("FACTCHECK", "0")
+    monkeypatch.setenv("FACTCHECK_FETCH_ARTICLES", "0")
+    monkeypatch.setenv("FACTCHECK_CACHE_DIR", str(tmp_path / "article-cache"))
+    for key in ("FACTCHECK_AVX", "FACTCHECK_EXPLAINER", "FACTCHECK_AVATAR", "FACTCHECK_REFILL_ROUNDS", "FACTCHECK_BATCH"):
+        monkeypatch.delenv(key, raising=False)
     out = tmp_path / "output"
     out.mkdir()
     monkeypatch.setattr(run_pipeline, "OUTPUT_DIR", out)

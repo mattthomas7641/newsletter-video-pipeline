@@ -469,7 +469,11 @@ def render_plan(plan: ScenePlan, out_path: Path, audio_path: Path, work_dir: Pat
     from .look import world_of
 
     payload = story_payload(plan, per_line, speech_duration, kicker, tail, theme, world=world_of() or None)
-    return render_story(payload, out_path, work_dir)
+    out = render_story(payload, out_path, work_dir)
+    from .thumbnails import explainer_title_time, remember
+
+    remember(out_path, lambda: explainer_title_time(payload), "explainer")  # the thumbnail is the title scene
+    return out
 
 
 def render_story(payload: dict, out_path: Path, work_dir: Path) -> Path:

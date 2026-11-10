@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import glob
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -386,46 +385,9 @@ def _cartoon_effect(path: Path) -> None:
     tmp.replace(path)
 
 
-_SCALES = {"k": "thousand", "m": "million", "b": "billion", "t": "trillion"}
-_MONEY_RE = re.compile(
-    r"\$(\d[\d,]*)(?:\.(\d+))?"
-    r"(?:\s?([KMBT])\b|\s(thousand|million|billion|trillion)\b)?",
-    re.IGNORECASE,
-)
-
-
-def _say_money(match: re.Match) -> str:
-    whole, decimals = match.group(1).replace(",", ""), match.group(2) or ""
-    scale = match.group(4) or _SCALES.get((match.group(3) or "").lower())
-    if scale:  # "$1.8 billion", "$2.5B" -> "1.8 billion dollars"
-        number = whole + (f".{decimals}" if decimals else "")
-        return f"{number} {scale.lower()} dollars"
-    cents = int((decimals + "00")[:2]) if decimals else 0
-    if int(whole) == 0 and decimals:  # "$0.05" -> "5 cents", "$0.005" -> "0.5 cents"
-        if len(decimals) > 2:
-            return f"{float('0.' + decimals) * 100:g} cents"
-        return "1 cent" if cents == 1 else f"{cents} cents"
-    dollars = "1 dollar" if int(whole) == 1 else f"{int(whole):,} dollars"
-    return f"{dollars} and {cents} cents" if cents else dollars
-
-
-# Coined/brand words the voice gets wrong, respelled the way they're meant
-# to be said. Matched case-insensitively as whole words.
-PRONUNCIATIONS = {
-    "Mathocalypse": "Math-apocalypse",
-}
-
-
-def speakable(text: str) -> str:
-    """Rewrites symbols TTS voices read literally ("zero dot zero five") into
-    the words a person would say, and respells known coined words."""
-    for word, spoken in PRONUNCIATIONS.items():
-        text = re.sub(rf"\b{re.escape(word)}\b", spoken, text, flags=re.IGNORECASE)
-    text = _MONEY_RE.sub(_say_money, text)
-    text = re.sub(r"\b(\d+(?:\.\d+)?)x\b", r"\1 times", text)
-    text = re.sub(r"~\s?(?=\d)", "about ", text)
-    text = text.replace(" & ", " and ").replace(" vs. ", " versus ").replace(" vs ", " versus ")
-    return text
+# The audio-only pronunciation layer (respellings, money, years, acronyms...) lives in pronounce.py;
+# re-exported here because callers import it from tts.
+from .pronounce import PRONUNCIATIONS, speakable, spoken_words  # noqa: E402,F401
 
 
 def base_speed() -> float:
