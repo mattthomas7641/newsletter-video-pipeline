@@ -50,7 +50,9 @@ def _fetch(url: str) -> str | None:
     last_exc: Exception | None = None
     for attempt in range(FETCH_ATTEMPTS):
         try:
-            resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=20)
+            # No redirects: for a date that is not published yet tldr.tech answers 307 -> the latest edition, which would
+            # otherwise be read as that date's stories.
+            resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=20, allow_redirects=False)
             if resp.status_code != 200:
                 return None
             return resp.text
