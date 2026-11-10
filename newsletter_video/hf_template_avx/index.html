@@ -1,0 +1,2199 @@
+<!doctype html>
+<!--
+  AVX: avatar explainer (1080x1920). A separate format from hf_template
+  (avatar over gameplay) and hf_template_explainer (faceless explainer).
+
+  Puck stands bottom-left on a PLAIN background colour; each scene plays one
+  purpose-built graphic in the zone above and to the right of him.
+
+  Driven by newsletter_video/avx_builder.py, which writes assets/voice.wav,
+  assets/pose-N.png and renders with --variables-file {"story": "<json>"}.
+  Every colour comes from the payload (scene.pal, derived in Python from the
+  scene's `bg`), so changing the background is one hex value per scene.
+
+  Layout (px on the 1080x1920 canvas), kept clear of the Shorts UI:
+    stage    x 72..1008, y 196..900   the main graphic
+    side     x 572..972, y 940..1340  supporting graphic, right of the avatar
+    captions x 572..952, y 1392..1600
+    avatar   left -20, bottom 0, 980 tall (x ~ -20..523, y 940..1920)
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"story","type":"string","label":"Story JSON","default":"{\"duration\":3,\"draft_labels\":true,\"scenes\":[{\"index\":0,\"style\":\"kinetic\",\"label\":\"Kinetic type\",\"eyebrow\":\"Sample\",\"start\":0,\"end\":3,\"transition\":\"cut\",\"pal\":{\"bg\":\"#f3efe6\",\"ink\":\"#101114\",\"mute\":\"#5f5e5a\",\"hair\":\"#d2cfc7\",\"surface\":\"#fcfbf8\",\"accent\":\"#f94b1e\",\"accent2\":\"#1694b5\",\"onAccent\":\"#101114\",\"shadow\":\"16,17,20\",\"light\":true},\"data\":{\"lines\":[{\"text\":\"Plain ground,\",\"at\":0.2},{\"text\":\"bold motion\",\"em\":true,\"at\":0.7}],\"underline\":{\"at\":1.2}},\"words\":[]}],\"captions\":[]}"}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <!-- GSAP 3.14.2 + its (free since 3.13) plugins, vendored: renders never touch the network. -->
+    <script src="lib/gsap.min.js"></script>
+    <script src="lib/SplitText.min.js"></script>
+    <script src="lib/DrawSVGPlugin.min.js"></script>
+    <script src="lib/CustomEase.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Inter Tight";
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: block;
+        src: url("fonts/InterTight-latin.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "JetBrains Mono";
+        font-style: normal;
+        font-weight: 100 800;
+        font-display: block;
+        src: url("fonts/JetBrainsMono-latin.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Instrument Serif";
+        font-style: italic;
+        font-weight: 400;
+        font-display: block;
+        src: url("fonts/InstrumentSerif-Italic-latin.woff2") format("woff2");
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #f3efe6;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: "Inter Tight", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      #ground {
+        position: absolute;
+        inset: 0;
+        background: #f3efe6;
+      }
+      #vignette {
+        position: absolute;
+        inset: 0;
+        z-index: 90;
+        pointer-events: none;
+        background: radial-gradient(130% 85% at 55% 38%, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.07) 100%);
+      }
+
+      /* ---- scene scaffold ---- */
+      .scene {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        color: var(--ink);
+      }
+      .scene-bg {
+        position: absolute;
+        inset: 0;
+        background: var(--bg);
+      }
+      .eyebrow {
+        position: absolute;
+        left: 72px;
+        top: 196px;
+        width: 936px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        font-family: "JetBrains Mono", monospace;
+        font-weight: 600;
+        font-size: 25px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--mute);
+      }
+      .eb-mask {
+        overflow: hidden;
+        padding: 4px 0;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        white-space: nowrap;
+      }
+      .eb-in {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .eb-num {
+        color: var(--accent);
+      }
+      .eb-sq {
+        width: 12px;
+        height: 12px;
+        background: var(--accent);
+        border-radius: 2px;
+      }
+      .eb-rule {
+        flex: 1;
+        height: 2px;
+        background: var(--hair);
+        transform-origin: left center;
+      }
+      .stage {
+        position: absolute;
+        left: 72px;
+        top: 260px;
+        width: 936px;
+        height: 640px;
+      }
+      .side {
+        position: absolute;
+        left: 572px;
+        top: 940px;
+        width: 400px;
+        height: 400px;
+      }
+      .mask {
+        display: block;
+        overflow: hidden;
+      }
+      .mask > .in {
+        display: block;
+      }
+      .mono {
+        font-family: "JetBrains Mono", monospace;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      .serif {
+        font-family: "Instrument Serif", serif;
+        font-style: italic;
+        font-weight: 400;
+      }
+      .card {
+        position: absolute;
+        background: var(--surface);
+        border-radius: 30px;
+        box-shadow:
+          0 1px 2px rgba(var(--shadow), 0.08),
+          0 10px 24px rgba(var(--shadow), 0.1),
+          0 30px 70px rgba(var(--shadow), 0.14);
+      }
+      .scene.dark .card {
+        box-shadow:
+          0 0 0 1.5px rgba(255, 255, 255, 0.07) inset,
+          0 10px 24px rgba(0, 0, 0, 0.35),
+          0 30px 80px rgba(0, 0, 0, 0.45);
+      }
+      svg {
+        overflow: visible;
+      }
+
+      /* ---- 1 kinetic ---- */
+      .kin {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-start;
+      }
+      .kin-line {
+        display: block;
+        width: max-content;
+        white-space: nowrap;
+        font-weight: 800;
+        letter-spacing: -0.045em;
+        line-height: 1;
+        padding: 6px 0 10px;
+      }
+      .kin-line.em {
+        font-family: "Instrument Serif", serif;
+        font-style: italic;
+        font-weight: 400;
+        letter-spacing: -0.02em;
+        color: var(--accent);
+        line-height: 0.92;
+        padding: 0 0 20px;
+        position: relative;
+      }
+      .kin-underline {
+        position: absolute;
+        left: 0;
+        bottom: -26px;
+        width: 100%;
+        height: 60px;
+      }
+
+      /* ---- 2 stat ---- */
+      .stat-num {
+        position: absolute;
+        left: -8px;
+        top: 40px;
+        display: flex;
+        align-items: baseline;
+        font-weight: 800;
+        font-size: 290px;
+        letter-spacing: -0.06em;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+        transform-origin: left bottom;
+      }
+      .stat-suffix {
+        color: var(--accent);
+        margin-left: 6px;
+        display: inline-block;
+      }
+      .stat-label {
+        position: absolute;
+        left: 0;
+        top: 350px;
+        white-space: nowrap;
+        font-weight: 700;
+        font-size: 58px;
+        letter-spacing: -0.02em;
+      }
+      .dots {
+        position: absolute;
+        left: 0;
+        top: 460px;
+      }
+      .dot {
+        position: absolute;
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        border: 3px solid var(--hair);
+      }
+      .dot-fill {
+        position: absolute;
+        inset: -3px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+      .dot-key {
+        position: absolute;
+        left: 0;
+        top: 610px;
+        font-size: 22px;
+        color: var(--mute);
+      }
+      .source {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 400px;
+        font-size: 20px;
+        line-height: 1.5;
+        color: var(--mute);
+        border-left: 3px solid var(--accent);
+        padding-left: 18px;
+      }
+
+      /* ---- 3 timeline ---- */
+      .tl-svg {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 936px;
+        height: 640px;
+      }
+      .tl-node {
+        position: absolute;
+        width: 104px;
+        height: 104px;
+        margin: -52px 0 0 -52px;
+      }
+      .tl-disc {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        background: var(--surface);
+        border: 5px solid var(--accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 12px 30px rgba(var(--shadow), 0.3);
+      }
+      .tl-ring {
+        position: absolute;
+        inset: -4px;
+        border-radius: 50%;
+        border: 4px solid var(--accent);
+        opacity: 0;
+      }
+      .tl-text {
+        position: absolute;
+        left: 0;
+        width: 640px;
+      }
+      .tl-year {
+        font-size: 30px;
+        color: var(--accent);
+      }
+      .tl-title {
+        font-weight: 800;
+        font-size: 74px;
+        letter-spacing: -0.035em;
+        line-height: 1.05;
+        white-space: nowrap;
+      }
+      .tl-sub {
+        font-weight: 600;
+        font-size: 40px;
+        color: var(--mute);
+        letter-spacing: -0.01em;
+        line-height: 1.2;
+      }
+      .tl-bracket-label {
+        position: absolute;
+        font-size: 24px;
+        color: var(--ink);
+        white-space: nowrap;
+      }
+
+      /* ---- 4 versus ---- */
+      .vs-card {
+        top: 0;
+        width: 428px;
+        height: 610px;
+        padding: 40px 36px;
+        overflow: hidden;
+      }
+      .vs-tag {
+        display: inline-block;
+        font-size: 22px;
+        padding: 8px 14px 8px 16px;
+        border-radius: 999px;
+        margin-bottom: 22px;
+      }
+      .vs-title {
+        white-space: nowrap;
+        font-weight: 800;
+        font-size: 76px;
+        letter-spacing: -0.04em;
+        line-height: 1;
+        margin-bottom: 34px;
+      }
+      .vs-item {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        font-weight: 700;
+        font-size: 38px;
+        letter-spacing: -0.015em;
+        height: 58px;
+        white-space: nowrap;
+      }
+      .vs-bullet {
+        width: 14px;
+        height: 14px;
+        border-radius: 4px;
+        flex: none;
+      }
+      .vs-pace {
+        position: absolute;
+        left: 36px;
+        right: 36px;
+        bottom: 40px;
+      }
+      .vs-pace-label {
+        font-size: 20px;
+        color: var(--ink);
+        margin-bottom: 12px;
+        display: flex;
+        justify-content: space-between;
+      }
+      .vs-track {
+        height: 16px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.12);
+        overflow: hidden;
+      }
+      .scene.light .vs-track {
+        background: rgba(0, 0, 0, 0.08);
+      }
+      .vs-fill {
+        height: 100%;
+        border-radius: 8px;
+        transform-origin: left center;
+      }
+      .vs-badge {
+        position: absolute;
+        left: 468px;
+        top: 305px;
+        width: 112px;
+        height: 112px;
+        margin: -56px 0 0 -56px;
+        border-radius: 50%;
+        background: var(--ink);
+        color: var(--bg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 40px;
+        letter-spacing: -0.02em;
+        z-index: 3;
+        box-shadow: 0 14px 34px rgba(0, 0, 0, 0.3);
+      }
+      .stamp {
+        position: absolute;
+        left: 26px;
+        top: 422px;
+        padding: 8px 16px;
+        border: 4px solid var(--accent);
+        color: var(--accent);
+        border-radius: 12px;
+        font-size: 27px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        white-space: nowrap;
+        z-index: 4;
+        background: var(--surface);
+      }
+
+      /* ---- 5 chart ---- */
+      .ch-svg {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 936px;
+        height: 640px;
+      }
+      .ch-axis-label {
+        position: absolute;
+        font-size: 22px;
+        color: var(--mute);
+        white-space: nowrap;
+      }
+      .ch-note {
+        position: absolute;
+        right: 0;
+        top: 0;
+        font-size: 20px;
+        color: var(--mute);
+        border: 2px solid var(--hair);
+        border-radius: 999px;
+        padding: 8px 16px;
+      }
+      .ch-end {
+        position: absolute;
+        font-weight: 800;
+        font-size: 34px;
+        letter-spacing: -0.02em;
+        white-space: nowrap;
+      }
+      .ch-val {
+        position: absolute;
+        font-size: 22px;
+        color: var(--ink);
+        white-space: nowrap;
+      }
+      .ch-gap {
+        position: absolute;
+        font-size: 24px;
+        white-space: nowrap;
+        color: var(--ink);
+      }
+      .callout {
+        left: 0;
+        top: 70px;
+        width: 400px;
+        padding: 30px 32px 34px;
+      }
+      .callout-k {
+        font-size: 20px;
+        color: var(--accent);
+        margin-bottom: 14px;
+      }
+      .callout-t {
+        font-weight: 800;
+        font-size: 52px;
+        letter-spacing: -0.03em;
+        line-height: 1.02;
+      }
+
+      /* ---- 6 relation ---- */
+      .person {
+        position: absolute;
+        display: flex;
+        align-items: center;
+        gap: 26px;
+        padding: 22px 40px 22px 22px;
+        border-radius: 999px;
+        white-space: nowrap;
+      }
+      .mono-disc {
+        width: 104px;
+        height: 104px;
+        border-radius: 50%;
+        background: var(--ink);
+        color: var(--bg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 40px;
+        letter-spacing: -0.02em;
+        flex: none;
+      }
+      .person.hot .mono-disc {
+        background: var(--accent);
+        color: var(--onAccent);
+      }
+      .p-name {
+        font-weight: 800;
+        font-size: 50px;
+        letter-spacing: -0.03em;
+        line-height: 1.05;
+      }
+      .p-role {
+        font-size: 22px;
+        color: var(--mute);
+        margin-top: 6px;
+      }
+      .rel-svg {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 936px;
+        height: 640px;
+      }
+      .verb {
+        position: absolute;
+        font-size: 24px;
+        padding: 10px 18px;
+        border-radius: 999px;
+        background: var(--accent);
+        color: var(--onAccent);
+        white-space: nowrap;
+      }
+      .hl-wrap {
+        position: absolute;
+        left: 0;
+        top: 470px;
+        padding: 0 48px 12px 30px;
+        transform-origin: left center;
+      }
+      .hl-mark {
+        position: absolute;
+        inset: 8px 0 0 0;
+        background: var(--accent);
+        border-radius: 10px;
+        transform-origin: left center;
+      }
+      .hl-text,
+      .hl-on {
+        font-family: "Instrument Serif", serif;
+        font-style: italic;
+        font-size: 168px;
+        line-height: 1;
+        letter-spacing: -0.02em;
+        white-space: nowrap;
+        position: relative;
+      }
+      .hl-on {
+        position: absolute;
+        inset: 0;
+        padding: 0 48px 12px 30px;
+        color: var(--onAccent);
+      }
+
+      /* ---- 7 list ---- */
+      .li-title {
+        position: absolute;
+        left: 0;
+        top: 10px;
+        white-space: nowrap;
+        font-weight: 700;
+        font-size: 52px;
+        letter-spacing: -0.025em;
+        color: var(--mute);
+      }
+      .li-title .serif {
+        color: var(--accent);
+        font-size: 64px;
+      }
+      .li-row {
+        position: absolute;
+        left: 0;
+        width: 936px;
+        height: 150px;
+        display: flex;
+        align-items: center;
+        gap: 30px;
+      }
+      .li-num {
+        width: 54px;
+        font-size: 24px;
+        color: var(--mute);
+      }
+      .li-check {
+        width: 84px;
+        height: 84px;
+        flex: none;
+      }
+      .li-text {
+        font-weight: 800;
+        font-size: 66px;
+        letter-spacing: -0.035em;
+        white-space: nowrap;
+      }
+      .li-rule {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 2px;
+        background: var(--hair);
+        transform-origin: left center;
+      }
+
+      /* ---- 8 outro ---- */
+      .cta {
+        left: 0;
+        top: 40px;
+        width: 400px;
+        padding: 30px 32px;
+        display: flex;
+        align-items: center;
+        gap: 22px;
+      }
+      .cta-icon {
+        width: 76px;
+        height: 76px;
+        border-radius: 22px;
+        background: var(--accent);
+        flex: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .cta-t {
+        font-weight: 800;
+        font-size: 46px;
+        letter-spacing: -0.03em;
+        line-height: 1.02;
+      }
+      .cta-arrow {
+        position: absolute;
+        left: 300px;
+        top: 230px;
+        width: 70px;
+        height: 90px;
+      }
+
+      /* ---- layout variants (avx_builder.VARIANTS) ---- */
+      .kin-center {
+        align-items: center;
+        text-align: center;
+      }
+      .stat-center {
+        left: 0;
+        width: 936px;
+        justify-content: center;
+        transform-origin: center bottom;
+      }
+      .stat-in-ring {
+        top: 160px;
+        font-size: 190px;
+      }
+      .stat-label-center {
+        left: 0;
+        width: 936px;
+        text-align: center;
+      }
+      .stat-label-center > .in {
+        display: inline-block;
+      }
+      .stat-label-ring {
+        top: 540px;
+      }
+      .stat-ring {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 936px;
+        height: 640px;
+      }
+      .stat-rule {
+        position: absolute;
+        left: 388px;
+        top: 450px;
+        width: 160px;
+        height: 10px;
+        border-radius: 5px;
+        background: var(--accent);
+      }
+      .stat-bar {
+        position: absolute;
+        left: 0;
+        top: 470px;
+        width: 900px;
+      }
+      .stat-bar::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 900px;
+        height: 46px;
+        border-radius: 23px;
+        background: var(--hair);
+      }
+      .stat-bar-fill {
+        position: relative;
+        width: 900px;
+        height: 46px;
+        border-radius: 23px;
+        background: var(--accent);
+        transform-origin: left center;
+      }
+      .stat-bar-ends {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 14px;
+        font-size: 22px;
+        color: var(--mute);
+      }
+      .vs-row {
+        left: 0;
+        width: 936px;
+        height: 282px;
+        padding: 34px 40px;
+        overflow: hidden;
+      }
+      .vs-row .vs-title {
+        margin-bottom: 26px;
+      }
+      .vs-row .vs-tag {
+        position: absolute;
+        right: 40px;
+        top: 40px;
+        margin: 0;
+      }
+      .vs-row-items {
+        display: flex;
+        gap: 34px;
+        white-space: nowrap;
+      }
+      .vs-row-items .vs-item {
+        font-size: 36px;
+      }
+      .li-chip {
+        position: absolute;
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        padding: 22px 46px 22px 24px;
+        border-radius: 999px;
+        background: var(--surface);
+        box-shadow: 0 10px 28px rgba(var(--shadow), 0.16);
+        white-space: nowrap;
+        font-weight: 800;
+        font-size: 60px;
+        letter-spacing: -0.03em;
+      }
+      .scene.dark .li-chip {
+        box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.08) inset, 0 12px 30px rgba(0, 0, 0, 0.4);
+      }
+      .li-chip svg {
+        width: 72px;
+        height: 72px;
+        flex: none;
+      }
+      .li-card {
+        left: 0;
+        width: 936px;
+        height: 150px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding-right: 36px;
+        border-radius: 26px;
+      }
+      .li-numeral {
+        width: 140px;
+        flex: none;
+        text-align: center;
+        font-size: 124px;
+        line-height: 1;
+        color: var(--accent);
+      }
+      .tl-text-h {
+        position: absolute;
+        text-align: center;
+      }
+      .tl-text-h .tl-title {
+        white-space: normal;
+        font-size: 54px;
+        line-height: 1.04;
+      }
+      .tl-tail-h {
+        position: absolute;
+        left: 0;
+        width: 936px;
+        text-align: center;
+      }
+      .ch-legend {
+        position: absolute;
+        right: 0;
+        display: flex;
+        gap: 26px;
+        font-size: 24px;
+        white-space: nowrap;
+      }
+      .ch-legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .ch-legend i {
+        width: 18px;
+        height: 18px;
+        border-radius: 4px;
+        display: inline-block;
+      }
+
+      /* ---- avatar ---- */
+      #character-wrap {
+        position: absolute;
+        z-index: 100;
+        left: -20px;
+        bottom: 0;
+        line-height: 0;
+      }
+      #character-bob {
+        position: relative;
+      }
+      .pose {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        height: 980px;
+        width: auto;
+        opacity: 0;
+      }
+      .pose.base {
+        position: relative;
+      }
+
+      /* ---- captions ---- */
+      #captions {
+        position: absolute;
+        z-index: 110;
+        left: 572px;
+        top: 1392px;
+        width: 380px;
+        height: 210px;
+      }
+      .cap {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 380px;
+        opacity: 0;
+        font-weight: 800;
+        font-size: 56px;
+        line-height: 1.08;
+        letter-spacing: -0.025em;
+        color: var(--ink);
+      }
+      .cap-w {
+        display: inline-block;
+        margin-right: 0.24em;
+      }
+
+      /* ---- draft-only style tag ---- */
+      #tag {
+        position: absolute;
+        z-index: 120;
+        left: 0;
+        right: 0;
+        top: 64px;
+        display: flex;
+        justify-content: center;
+        opacity: 0;
+      }
+      .tag-pill {
+        position: absolute;
+        top: 0;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 12px 22px;
+        border-radius: 999px;
+        font-family: "JetBrains Mono", monospace;
+        font-weight: 600;
+        font-size: 22px;
+        letter-spacing: 0.06em;
+        background: rgba(0, 0, 0, 0.72);
+        color: #fff;
+        white-space: nowrap;
+        opacity: 0;
+      }
+      .tag-sw {
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        border: 2px solid rgba(255, 255, 255, 0.7);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1080" data-height="1920">
+      <div id="ground"></div>
+      <div id="scenes"></div>
+      <div id="vignette"></div>
+      <div id="character-wrap"><div id="character-bob"></div></div>
+      <div id="captions"></div>
+      <div id="tag"></div>
+      <audio id="voice" src="assets/voice.wav" data-start="0" data-track-index="1"></audio>
+    </div>
+
+    <script>
+      gsap.registerPlugin(SplitText, DrawSVGPlugin, CustomEase);
+      // House eases: one family, three energies. Linear only where motion is mechanical.
+      CustomEase.create("avx.out", "M0,0 C0.16,1 0.3,1 1,1"); // fast launch, long settle (entrances)
+      CustomEase.create("avx.in", "M0,0 C0.45,0 0.7,0.25 1,1"); // exits: accelerate away
+      CustomEase.create("avx.inOut", "M0,0 C0.83,0 0.17,1 1,1"); // wipes, draws, repositioning
+
+      // Baked damped spring (closed form → seek-safe). dampingFraction < 1 = small physical overshoot.
+      function springEase(response, damping) {
+        const w = (2 * Math.PI) / response, z = damping;
+        const wd = w * Math.sqrt(1 - z * z);
+        const pos = (t) => 1 - Math.exp(-z * w * t) * (Math.cos(wd * t) + ((z * w) / wd) * Math.sin(wd * t));
+        let T = 12 / (z * w);
+        for (let i = 4800; i >= 0; i--) {
+          const t = (i / 4800) * (12 / (z * w));
+          if (Math.abs(1 - pos(t)) > 0.001) { T = ((i + 1) / 4800) * (12 / (z * w)); break; }
+        }
+        const xT = pos(T);
+        return { duration: T, ease: (p) => pos(p * T) + p * (1 - xT) };
+      }
+      const POP = springEase(0.42, 0.62); // playful pop: nodes, badges, stamps
+      const SETTLE = springEase(0.5, 0.82); // the iOS register: felt, not seen
+
+      const NS = "http://www.w3.org/2000/svg";
+      const story = JSON.parse(window.__hyperframes.getVariables().story);
+      const scenesRoot = document.getElementById("scenes");
+      const END = story.duration;
+
+      function h(tag, cls, text) {
+        const el = document.createElement(tag);
+        if (cls) el.className = cls;
+        if (text != null) el.textContent = text;
+        return el;
+      }
+      function s(tag, attrs) {
+        const el = document.createElementNS(NS, tag);
+        for (const k in attrs) el.setAttribute(k, attrs[k]);
+        return el;
+      }
+      function masked(cls, text) {
+        const m = h("div", "mask " + (cls || ""));
+        const inner = h("div", "in", text);
+        m.append(inner);
+        return { m, inner };
+      }
+      function setPal(el, pal) {
+        for (const k of ["bg", "ink", "mute", "hair", "surface", "accent", "accent2", "onAccent", "shadow"]) {
+          el.style.setProperty("--" + k, pal[k]);
+        }
+        el.classList.add(pal.light ? "light" : "dark");
+      }
+      const at = (o, fallback) => (o && typeof o.at === "number" ? o.at : fallback);
+      // Generated text varies in length: shrink a line's type (never below minPx) until it fits maxW.
+      function shrinkToFit(el, maxW, minPx, width) {
+        const w = width || (() => el.scrollWidth);
+        let size = parseFloat(getComputedStyle(el).fontSize);
+        while (w() > maxW && size > minPx) {
+          size -= 2;
+          el.style.fontSize = size + "px";
+        }
+        return size;
+      }
+      // The width of an element's text itself (a block's scrollWidth is its box, not its text).
+      const textWidth = (el) => {
+        const r = document.createRange();
+        r.selectNodeContents(el);
+        return r.getBoundingClientRect().width;
+      };
+      const fmt = (v, dec) => Number(v).toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+
+      // ---------------------------------------------------------------- scenes
+      // Each builder gets (scene, stage, side, tl) and returns { exit(t) } — how
+      // its content leaves when the next scene shares the background (no wipe).
+      const BUILD = {};
+
+      // 1. Kinetic typography: lines rise through masks on their spoken word,
+      //    the punch line in serif italic, then a hand-drawn underline.
+      BUILD.kinetic = function (sc, stage, side, tl, opts) {
+        const d = sc.data;
+        const variant = sc.variant || "stack"; // stack (left, lines rise) | center | words (each word pops)
+        const box = h("div", "kin" + (variant === "center" ? " kin-center" : ""));
+        stage.append(box);
+        const lines = d.lines.map((ln) => {
+          const el = h("div", "kin-line" + (ln.em ? " em" : ""), ln.text);
+          box.append(el);
+          return el;
+        });
+        // Fit: plain lines share one size, the em line gets ~1.45x of it.
+        let size = opts && opts.size ? opts.size : 150;
+        const fit = () => {
+          lines.forEach((el, i) => (el.style.fontSize = (d.lines[i].em ? size * 1.5 : size) + "px"));
+          return Math.max(...lines.map((el) => el.scrollWidth));
+        };
+        while (fit() > 880 && size > 60) size -= 4;
+        // ...and the block must fit the stage's height (4 lines of a long hook would spill into the eyebrow)
+        const tall = () => lines.reduce((a, el) => a + el.offsetHeight, 0);
+        while (tall() > 610 && size > 60) { size -= 4; fit(); }
+        let underline = null;
+        const emIdx = d.lines.findIndex((l) => l.em);
+        if (d.underline && emIdx >= 0) {
+          const em = lines[emIdx];
+          const r = document.createRange();
+          r.selectNodeContents(em);
+          const w = Math.min(r.getBoundingClientRect().width, 900);
+          const svg = s("svg", { class: "kin-underline", viewBox: `0 0 ${w} 60`, preserveAspectRatio: "none" });
+          svg.style.width = w + "px";
+          underline = s("path", {
+            d: `M6,38 C${w * 0.25},20 ${w * 0.55},18 ${w - 8},28 M${w * 0.18},50 C${w * 0.42},40 ${w * 0.7},38 ${w * 0.9},44`,
+            fill: "none", stroke: sc.pal.accent, "stroke-width": 10, "stroke-linecap": "round",
+          });
+          svg.append(underline);
+          em.append(svg);
+        }
+        const words = variant === "words";
+        const splits = lines.map((el) => new SplitText(el, words ? { type: "words", wordsClass: "kw" } : { type: "words", mask: "words", wordsClass: "kw" }));
+        splits.forEach((sp, i) => {
+          const t = Math.max(sc.start + 0.05, at(d.lines[i], sc.start + 0.2 + i * 0.3) - 0.12);
+          if (words) {
+            // each word pops in on a spring, alternately tilted, the punch line from further away
+            tl.fromTo(sp.words, { opacity: 0, scale: d.lines[i].em ? 0.3 : 0.55, y: 28, rotation: (k) => (k % 2 ? 7 : -7), transformOrigin: "50% 80%" },
+              { opacity: 1, scale: 1, y: 0, rotation: 0, duration: POP.duration, ease: POP.ease, stagger: 0.09 }, t);
+          } else if (variant === "center") {
+            // centred lines open from the middle word outwards
+            tl.fromTo(sp.words, { yPercent: 110, rotation: d.lines[i].em ? -5 : 0 }, { yPercent: 0, rotation: 0, duration: 0.8, ease: "avx.out", stagger: { each: 0.06, from: "center" } }, t);
+          } else if (d.lines[i].em) {
+            tl.fromTo(sp.words, { yPercent: 105, rotation: 6 }, { yPercent: 0, rotation: 0, duration: 0.9, ease: "avx.out", stagger: 0.07 }, t);
+          } else {
+            tl.fromTo(sp.words, { yPercent: 110 }, { yPercent: 0, duration: 0.75, ease: "avx.out", stagger: 0.06 }, t);
+          }
+        });
+        if (underline) {
+          tl.fromTo(underline, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.6, ease: "avx.inOut" }, at(d.underline, sc.start + 1.2));
+        }
+        // Secondary motion: a slow push-in while it holds.
+        tl.fromTo(box, { scale: 1 }, { scale: 1.025, duration: Math.max(0.5, sc.end - sc.start), ease: "sine.inOut", transformOrigin: variant === "center" ? "50% 50%" : "0% 50%" }, sc.start);
+        return {
+          exit(t) {
+            if (words) tl.to(splits.flatMap((sp) => sp.words), { scale: 0.6, opacity: 0, duration: 0.3, ease: "avx.in", stagger: 0.012 }, t);
+            else tl.to(splits.flatMap((sp) => sp.words), { yPercent: -110, duration: 0.38, ease: "avx.in", stagger: 0.015 }, t);
+            if (underline) tl.to(underline, { drawSVG: "100% 100%", duration: 0.3, ease: "avx.in" }, t);
+          },
+        };
+      };
+
+      // 2. Big number count-up + unit chart (each dot = a slice of the total).
+      BUILD.stat = function (sc, stage, side, tl) {
+        const d = sc.data;
+        const pct = d.suffix === "%" && d.value > 0 && d.value <= 100;
+        // left (the original) | center | ring (a percentage drawn as a ring) | bar (a percentage as a bar)
+        const variant = (sc.variant === "ring" || sc.variant === "bar") && !pct ? "left" : sc.variant || "left";
+        const num = h("div", "stat-num" + (variant === "center" || variant === "ring" ? " stat-center" : "") + (variant === "ring" ? " stat-in-ring" : ""));
+        const dec = d.decimals || 0;
+        const digits = h("span", "stat-digits", fmt(d.value, dec));
+        const suffix = h("span", "stat-suffix", d.suffix || "");
+        if (d.prefix) num.append(h("span", "", d.prefix));
+        num.append(digits, suffix);
+        const centred = variant === "center" || variant === "ring";
+        const label = masked("stat-label" + (centred ? " stat-label-center" : "") + (variant === "ring" ? " stat-label-ring" : ""), d.label);
+        stage.append(num, label.m);
+        const numWidth = () => [...num.children].reduce((a, c) => a + c.offsetWidth, 0) + 12;
+        shrinkToFit(num, variant === "ring" ? 400 : 900, variant === "ring" ? 90 : 120, centred ? numWidth : undefined); // at the final value
+        digits.textContent = fmt(0, dec);
+        shrinkToFit(label.m, 930, 34, () => label.inner.scrollWidth);
+        const dotsBox = h("div", "dots");
+        if (variant === "center") dotsBox.style.left = (936 - 826) / 2 + "px";
+        // dots: 0 = no unit chart (a made-up scale is worse than none); fill = how many of them the value reaches
+        const n = variant === "ring" || variant === "bar" ? 0 : d.dots == null ? 20 : d.dots, perRow = 10, size = 52, gap = 34;
+        const filled = d.fill == null ? n : Math.max(0, Math.min(n, d.fill));
+        const fills = [];
+        for (let i = 0; i < n; i++) {
+          const dot = h("div", "dot");
+          dot.style.left = (i % perRow) * (size + gap) + "px";
+          dot.style.top = Math.floor(i / perRow) * (size + gap * 0.6) + "px";
+          const f = h("div", "dot-fill");
+          dot.append(f);
+          dotsBox.append(dot);
+          fills.push({ dot, f });
+        }
+        const key = masked("dot-key mono" + (variant === "center" ? " stat-label-center" : ""), d.dot_label || "");
+        stage.append(dotsBox);
+        if (n && d.dot_label) stage.append(key.m);
+        // ring: the share drawn round the number; bar: the share as a filling bar (percentages only: a real scale)
+        let arc = null, ringSvg = null, barFill = null, barBox = null;
+        if (variant === "ring") {
+          ringSvg = s("svg", { class: "stat-ring", viewBox: "0 0 936 640" });
+          ringSvg.append(s("circle", { cx: 468, cy: 270, r: 228, fill: "none", stroke: sc.pal.hair, "stroke-width": 26 }));
+          arc = s("circle", { cx: 468, cy: 270, r: 228, fill: "none", stroke: sc.pal.accent, "stroke-width": 26, "stroke-linecap": "round", transform: "rotate(-90 468 270)" });
+          ringSvg.append(arc);
+          stage.prepend(ringSvg);
+        } else if (variant === "bar") {
+          barBox = h("div", "stat-bar");
+          barFill = h("div", "stat-bar-fill");
+          barBox.append(barFill);
+          const ends = h("div", "stat-bar-ends mono");
+          ends.append(h("span", "", "0"), h("span", "", "100%"));
+          barBox.append(ends);
+          stage.append(barBox);
+        }
+        let src = null;
+        if (d.source) {
+          src = h("div", "source mono", d.source);
+          side.append(src);
+        }
+        const t0 = sc.start + 0.1;
+        // The count lands on the spoken number: it reaches ~97% as the cue word is said.
+        const COUNT = 1.9;
+        const tc = Math.max(t0 + 0.3, at(d.count, t0 + 1.8) - 1.3);
+        tl.fromTo(num, { yPercent: 30, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 0.7, ease: "avx.out" }, t0);
+        const proxy = { v: 0 };
+        tl.fromTo(proxy, { v: 0 }, {
+          v: d.value, duration: COUNT, ease: "power3.out",
+          onUpdate: () => (digits.textContent = fmt(proxy.v, dec)),
+        }, tc);
+        tl.fromTo(num, { scale: 0.86 }, { scale: 1, duration: COUNT, ease: "power3.out" }, tc);
+        tl.fromTo(suffix, { yPercent: 40, opacity: 0 }, { yPercent: 0, opacity: 1, duration: SETTLE.duration, ease: SETTLE.ease }, tc + COUNT * 0.55);
+        tl.fromTo(label.inner, { yPercent: 110 }, { yPercent: 0, duration: 0.7, ease: "avx.out" }, t0 + 0.25);
+        if (fills.length) tl.fromTo(fills.map((x) => x.dot), { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: "avx.out", stagger: 0.02 }, t0 + 0.2);
+        // Dots fill in step with the counter's eased progress (power3.out over COUNT).
+        fills.forEach(({ f }, i) => {
+          if (i >= filled) { tl.set(f, { scale: 0 }, t0); return; } // past the value: stays an empty ring
+          const p = (i + 1) / filled; // value fraction at which this dot is reached
+          const tt = 1 - Math.cbrt(1 - p); // invert power3.out
+          tl.fromTo(f, { scale: 0 }, { scale: 1, duration: 0.28, ease: "back.out(2)" }, tc + tt * COUNT - 0.12);
+        });
+        if (n && d.dot_label) tl.fromTo(key.inner, { yPercent: 110 }, { yPercent: 0, duration: 0.6, ease: "avx.out" }, tc + 0.3);
+        if (src) tl.fromTo(src, { x: 30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.7, ease: "avx.out" }, tc + COUNT);
+        if (arc) {
+          tl.fromTo(ringSvg, { scale: 0.85, opacity: 0, transformOrigin: "468px 270px" }, { scale: 1, opacity: 1, duration: 0.6, ease: "avx.out" }, t0);
+          tl.fromTo(arc, { drawSVG: "0% 0%" }, { drawSVG: `0% ${d.value}%`, duration: COUNT, ease: "power3.out" }, tc); // in step with the count
+        }
+        if (barFill) {
+          tl.fromTo(barBox, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, ease: "avx.out" }, t0 + 0.2);
+          tl.fromTo(barFill, { scaleX: 0 }, { scaleX: d.value / 100, duration: COUNT, ease: "power3.out" }, tc);
+        }
+        if (variant === "center" && !n) {
+          const rule = h("div", "stat-rule");
+          stage.append(rule);
+          tl.fromTo(rule, { scaleX: 0 }, { scaleX: 1, duration: 0.7, ease: "avx.inOut" }, tc + COUNT * 0.6);
+        }
+        return {
+          exit(t) {
+            const parts = [num, label.m, dotsBox, key.m, src, ringSvg, barBox, ...stage.querySelectorAll(".stat-rule")].filter(Boolean);
+            if (centred) tl.to(parts, { y: -90, opacity: 0, duration: 0.4, ease: "avx.in", stagger: 0.04 }, t);
+            else tl.to(parts, { x: -140, opacity: 0, duration: 0.4, ease: "avx.in", stagger: 0.04 }, t);
+          },
+        };
+      };
+
+      // 3. Timeline: a path draws down through dated nodes as each is named.
+      const ICONS = {
+        wave: "M-22,0 L-14,0 M-8,-14 L-8,14 M0,-22 L0,22 M8,-12 L8,12 M14,0 L22,0",
+        spark: "M0,-24 C2,-6 6,-2 24,0 C6,2 2,6 0,24 C-2,6 -6,2 -24,0 C-6,-2 -2,-6 0,-24 Z",
+        chip: "M-16,-16 H16 V16 H-16 Z M-6,-6 H6 V6 H-6 Z M-8,-16 V-24 M8,-16 V-24 M-8,16 V24 M8,16 V24 M-16,-8 H-24 M-16,8 H-24 M16,-8 H24 M16,8 H24",
+      };
+      BUILD.timeline = function (sc, stage, side, tl) {
+        const d = sc.data;
+        const X = 60, Y0 = 80, STEP = 215;
+        const svg = s("svg", { class: "tl-svg", viewBox: "0 0 936 640" });
+        stage.append(svg);
+        const rail = s("path", { d: `M${X},${Y0 - 40} L${X},${Y0 + STEP * (d.nodes.length - 1) + 150}`, stroke: sc.pal.hair, "stroke-width": 4, fill: "none", "stroke-linecap": "round" });
+        svg.append(rail);
+        const segs = [];
+        const nodes = d.nodes.map((nd, i) => {
+          const y = Y0 + i * STEP;
+          if (i > 0) {
+            const seg = s("path", { d: `M${X},${y - STEP + 52} L${X},${y - 52}`, stroke: sc.pal.accent, "stroke-width": 6, fill: "none", "stroke-linecap": "round" });
+            svg.append(seg);
+            segs.push(seg);
+          }
+          const node = h("div", "tl-node");
+          node.style.left = X + "px";
+          node.style.top = y + "px";
+          const disc = h("div", "tl-disc");
+          const ring = h("div", "tl-ring");
+          const isvg = s("svg", { width: 60, height: 60, viewBox: "-30 -30 60 60" });
+          const icon = s("path", { d: ICONS[nd.icon] || ICONS.spark, fill: "none", stroke: sc.pal.ink, "stroke-width": 4.5, "stroke-linecap": "round", "stroke-linejoin": "round" });
+          isvg.append(icon);
+          disc.append(isvg);
+          node.append(ring, disc);
+          const text = h("div", "tl-text");
+          text.style.left = X + 90 + "px";
+          text.style.top = y - 70 + "px";
+          const year = masked("tl-year mono", nd.year);
+          const title = masked("tl-title", nd.title);
+          text.append(year.m, title.m);
+          stage.append(node, text);
+          shrinkToFit(title.m, 630, 44, () => title.inner.scrollWidth);
+          return { node, disc, ring, icon, year, title, text, y };
+        });
+        let sub = null;
+        if (d.tail) {
+          sub = masked("tl-sub", d.tail.text);
+          nodes[nodes.length - 1].text.append(sub.m);
+        }
+        // "+2 years" bracket between the last two nodes, on the right.
+        let bracket = null, blabel = null;
+        const yA = Number(d.nodes.length >= 2 ? d.nodes[d.nodes.length - 2].year : NaN);
+        const yB = Number(d.nodes.length >= 2 ? d.nodes[d.nodes.length - 1].year : NaN);
+        if (nodes.length >= 2 && /^\d{4}$/.test(String(d.nodes[d.nodes.length - 2].year)) && /^\d{4}$/.test(String(d.nodes[d.nodes.length - 1].year)) && yB > yA) {
+          const a = nodes[nodes.length - 2].y, b = nodes[nodes.length - 1].y;
+          const bx = 880;
+          bracket = s("path", { d: `M${bx - 24},${a} L${bx},${a} L${bx},${b} L${bx - 24},${b}`, stroke: sc.pal.mute, "stroke-width": 3, fill: "none", "stroke-linejoin": "round" });
+          svg.append(bracket);
+          const yrs = yB - yA;
+          blabel = h("div", "tl-bracket-label mono", "+" + yrs + (yrs === 1 ? " yr" : " yrs"));
+          blabel.style.left = bx - 150 + "px";
+          blabel.style.top = (a + b) / 2 - 16 + "px";
+          stage.append(blabel);
+        }
+        tl.fromTo(rail, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 1.0, ease: "avx.inOut" }, sc.start + 0.25);
+        nodes.forEach((n, i) => {
+          const t = Math.max(sc.start + 0.35, at(d.nodes[i], sc.start + 0.4 + i * 1.5) - 0.15);
+          if (i > 0) tl.fromTo(segs[i - 1], { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.45, ease: "avx.inOut" }, t - 0.4);
+          tl.fromTo(n.node, { scale: 0 }, { scale: 1, duration: POP.duration, ease: POP.ease }, t);
+          tl.fromTo(n.icon, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.5, ease: "avx.inOut" }, t + 0.1);
+          tl.fromTo(n.ring, { scale: 1, opacity: 0.9 }, { scale: 1.7, opacity: 0, duration: 0.8, ease: "power2.out" }, t + 0.05);
+          tl.fromTo(n.year.inner, { yPercent: 110 }, { yPercent: 0, duration: 0.6, ease: "avx.out" }, t + 0.05);
+          tl.fromTo(n.title.inner, { yPercent: 110 }, { yPercent: 0, duration: 0.75, ease: "avx.out" }, t + 0.12);
+          // Earlier entries step back so the current one leads.
+          if (i > 0) {
+            const prev = nodes.slice(0, i).map((p) => p.text);
+            tl.to(prev, { opacity: 0.45, duration: 0.4, ease: "power2.out" }, t);
+          }
+        });
+        if (bracket) {
+          const tb = at(d.nodes[d.nodes.length - 1], sc.start + 3) + 0.5;
+          tl.fromTo(bracket, { drawSVG: "50% 50%" }, { drawSVG: "0% 100%", duration: 0.55, ease: "avx.inOut" }, tb);
+          tl.fromTo(blabel, { opacity: 0, x: 16 }, { opacity: 1, x: 0, duration: 0.5, ease: "avx.out" }, tb + 0.25);
+        }
+        if (sub) tl.fromTo(sub.inner, { yPercent: 110 }, { yPercent: 0, duration: 0.7, ease: "avx.out" }, at(d.tail, sc.start + 5) - 0.1);
+        return {
+          exit(t) {
+            tl.to([svg, ...nodes.map((n) => n.node), ...nodes.map((n) => n.text), blabel].filter(Boolean), { y: -120, opacity: 0, duration: 0.42, ease: "avx.in", stagger: 0.03 }, t);
+          },
+        };
+      };
+
+      // 4. Versus: two cards slide in from opposite sides; pace bars fill at
+      //    different speeds; a verdict stamp lands on the cautious side.
+      BUILD.versus = function (sc, stage, side, tl) {
+        const d = sc.data;
+        const mk = (spec, x, hot) => {
+          const card = h("div", "card vs-card");
+          card.style.left = x + "px";
+          const tag = h("div", "vs-tag mono", spec.tag);
+          tag.style.background = hot ? sc.pal.accent : "transparent";
+          tag.style.color = hot ? sc.pal.onAccent : sc.pal.ink;
+          tag.style.border = hot ? "none" : `2px solid ${sc.pal.hair}`;
+          const title = h("div", "vs-title", spec.title);
+          if (spec.tag) card.append(tag);
+          card.append(title);
+          const items = spec.items.map((txt) => {
+            const row = h("div", "vs-item");
+            const b = h("div", "vs-bullet");
+            b.style.background = hot ? sc.pal.accent : sc.pal.mute;
+            row.append(b, h("span", "", txt));
+            card.append(row);
+            return row;
+          });
+          // The pace bars are a claim (who is faster): only drawn when the data names them.
+          let fill = null;
+          if (d.pace) {
+            const pace = h("div", "vs-pace");
+            const pl = h("div", "vs-pace-label mono");
+            pl.append(h("span", "", d.pace.label || ""), h("span", "", (hot ? d.pace.right : d.pace.left) || ""));
+            const track = h("div", "vs-track");
+            fill = h("div", "vs-fill");
+            fill.style.background = hot ? sc.pal.accent : sc.pal.mute;
+            track.append(fill);
+            pace.append(pl, track);
+            card.append(pace);
+          }
+          stage.append(card);
+          shrinkToFit(title, 356, 40);
+          items.forEach((row) => shrinkToFit(row, 356, 24));
+          return { card, items, fill };
+        };
+        const L = mk(d.left, 0, false);
+        const R = mk(d.right, 508, true);
+        const badge = h("div", "vs-badge", "VS");
+        stage.append(badge);
+        const tr = Math.max(sc.start + 0.05, at(d.right, sc.start + 0.2) - 0.15);
+        const tlf = Math.max(tr + 0.6, at(d.left, sc.start + 2) - 0.15);
+        // Anticipation: a small pull back the other way before each slide.
+        tl.fromTo(R.card, { x: 620, rotation: 6, opacity: 1 }, { x: 0, rotation: 0, duration: 0.8, ease: "avx.out" }, tr);
+        tl.fromTo(R.items, { x: 60, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: "avx.out", stagger: 0.12 }, tr + 0.3);
+        if (R.fill) tl.fromTo(R.fill, { scaleX: 0 }, { scaleX: 0.92, duration: 0.7, ease: "power4.out" }, tr + 0.7);
+        tl.fromTo(badge, { scale: 0, rotation: -40 }, { scale: 1, rotation: 0, duration: POP.duration, ease: POP.ease }, tlf - 0.2);
+        tl.fromTo(L.card, { x: -620, rotation: -6 }, { x: 0, rotation: 0, duration: 0.8, ease: "avx.out" }, tlf);
+        tl.fromTo(L.items, { x: -60, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: "avx.out", stagger: 0.12 }, tlf + 0.3);
+        if (L.fill) tl.fromTo(L.fill, { scaleX: 0 }, { scaleX: 0.3, duration: 1.6, ease: "sine.inOut" }, tlf + 0.5);
+        if (d.verdict) {
+          const stamp = h("div", "stamp mono", d.verdict.text);
+          L.card.append(stamp);
+          shrinkToFit(stamp, 380, 18, () => stamp.offsetWidth);
+          const tv = at(d.verdict, tlf + 0.8) - 0.05;
+          tl.fromTo(stamp, { scale: 1.8, rotation: -14, opacity: 0 }, { scale: 1, rotation: -6, opacity: 1, duration: 0.32, ease: "power4.in" }, tv);
+          tl.fromTo(L.card, { y: 0 }, { y: 10, duration: 0.07, ease: "power2.out", yoyo: true, repeat: 1, immediateRender: false }, tv + 0.32);
+          tl.to(R.card, { opacity: 0.55, duration: 0.4, ease: "power2.out" }, tv + 0.1);
+        }
+        return {
+          exit(t) {
+            tl.to(L.card, { x: -700, rotation: -4, duration: 0.45, ease: "avx.in" }, t);
+            tl.to(R.card, { x: 700, rotation: 4, duration: 0.45, ease: "avx.in" }, t);
+            tl.to(badge, { scale: 0, duration: 0.3, ease: "avx.in" }, t);
+          },
+        };
+      };
+
+      // 5. Line chart: gridlines, one or two series draw on, the gap between two
+      //    of them fills and gets bracketed, a callout card answers it.
+      BUILD.chart = function (sc, stage, side, tl) {
+        const d = sc.data;
+        const A = { x: 70, y: 90, w: 680, h: 420 };
+        const all = d.series.flatMap((x) => x.values);
+        const max = Math.max(...all) * 1.12 || 1;
+        const n = d.series[0].values.length;
+        const two = d.series.length > 1;
+        const px = (i) => A.x + (i / (n - 1)) * A.w;
+        const py = (v) => A.y + A.h - (v / max) * A.h;
+        const svg = s("svg", { class: "ch-svg", viewBox: "0 0 936 640" });
+        stage.append(svg);
+        const grid = [];
+        for (let g = 0; g <= 4; g++) {
+          const y = A.y + (A.h * g) / 4;
+          const ln = s("line", { x1: A.x, x2: A.x + A.w, y1: y, y2: y, stroke: sc.pal.hair, "stroke-width": g === 4 ? 3 : 1.5 });
+          svg.append(ln);
+          grid.push(ln);
+        }
+        const defs = s("defs", {});
+        svg.append(defs);
+        const top = d.series[0].values, bot = two ? d.series[1].values : null;
+        // Gap area between the two series (clipped wipe, left → right).
+        let area = null, clipRect = null;
+        if (two) {
+          const areaD = top.map((v, i) => (i ? "L" : "M") + px(i) + "," + py(v)).join(" ") + " " +
+            bot.map((v, i) => "L" + px(n - 1 - i) + "," + py(bot[n - 1 - i])).join(" ") + " Z";
+          const clip = s("clipPath", { id: "gapclip-" + sc.index });
+          clipRect = s("rect", { x: A.x, y: 0, width: A.w, height: 640 });
+          clip.append(clipRect);
+          defs.append(clip);
+          area = s("path", { d: areaD, fill: sc.pal.accent, "fill-opacity": 0.16, "clip-path": `url(#gapclip-${sc.index})` });
+          svg.append(area);
+        }
+        const colours = [sc.pal.accent, sc.pal.ink];
+        const vals = [];
+        const lines = d.series.map((ser, si) => {
+          const dd = ser.values.map((v, i) => (i ? "L" : "M") + px(i) + "," + py(v)).join(" ");
+          const p = s("path", { d: dd, fill: "none", stroke: colours[si], "stroke-width": si ? 5 : 7, "stroke-linecap": "round", "stroke-linejoin": "round" });
+          svg.append(p);
+          const dots = ser.values.map((v, i) => {
+            const c = s("circle", { cx: px(i), cy: py(v), r: si ? 8 : 10, fill: sc.pal.bg, stroke: colours[si], "stroke-width": 4 });
+            svg.append(c);
+            return c;
+          });
+          const end = h("div", "ch-end", ser.name);
+          end.style.color = colours[si];
+          end.style.left = px(n - 1) + 22 + "px";
+          end.style.top = py(ser.values[n - 1]) - 22 + (si ? 4 : -4) + "px";
+          stage.append(end);
+          shrinkToFit(end, 170, 20, () => end.offsetWidth);
+          // Real data shows its numbers: the first and the last value of each series, above their dots.
+          const labels = [];
+          if (d.point_labels) {
+            [0, n - 1].forEach((i) => {
+              const lab = h("div", "ch-val mono", fmt(ser.values[i], Number.isInteger(ser.values[i]) ? 0 : 1));
+              lab.style.left = px(i) - 10 + "px";
+              lab.style.top = py(ser.values[i]) + (si ? 16 : -46) + "px";
+              stage.append(lab);
+              labels.push({ lab, i });
+            });
+          }
+          vals.push(...labels.map((x) => x.lab));
+          return { p, dots, end, labels };
+        });
+        (d.x_labels || []).forEach((t, i) => {
+          const xl = h("div", "ch-axis-label mono", t);
+          xl.style.left = px(i) - 32 + "px";
+          xl.style.top = A.y + A.h + 18 + "px";
+          stage.append(xl);
+          grid.push(xl);
+        });
+        const yl = h("div", "ch-axis-label mono", d.y_label || "");
+        yl.style.left = A.x + "px";
+        yl.style.top = A.y - 56 + "px";
+        stage.append(yl);
+        const note = h("div", "ch-note mono", d.note || "");
+        if (d.note) stage.append(note);
+        // Bracket at the right edge spanning the gap (two series only).
+        const gx = px(n - 1) + 160;
+        const ya = py(top[n - 1]), yb = two ? py(bot[n - 1]) : ya;
+        let br = null, gapLabel = null;
+        if (two) {
+          br = s("path", { d: `M${gx - 18},${ya} Q${gx},${ya} ${gx},${ya + 20} L${gx},${(ya + yb) / 2 - 12} L${gx + 14},${(ya + yb) / 2} L${gx},${(ya + yb) / 2 + 12} L${gx},${yb - 20} Q${gx},${yb} ${gx - 18},${yb}`, fill: "none", stroke: sc.pal.ink, "stroke-width": 4, "stroke-linecap": "round", "stroke-linejoin": "round" });
+          svg.append(br);
+          if (d.gap) {
+            gapLabel = h("div", "ch-gap mono", d.gap.text);
+            gapLabel.style.left = gx - 150 + "px";
+            gapLabel.style.top = (ya + yb) / 2 - 16 + "px";
+            stage.append(gapLabel);
+          }
+        }
+        // Connector from the bracket (or the last point) down into the callout card (side zone).
+        let conn = null, connReveal = null, call = null;
+        if (d.callout) {
+          const sx = two ? gx + 14 : px(n - 1) + 12, sy = two ? (ya + yb) / 2 : ya + 12;
+          conn = s("path", { d: `M${sx},${sy} C${sx + 30},${sy + 160} ${gx - 20},${700} ${gx - 60},${760}`, fill: "none", stroke: sc.pal.accent, "stroke-width": 4, "stroke-linecap": "round", "stroke-dasharray": "2 12" });
+          // dashed: draw with a mask path instead of DrawSVG (dasharray is in use)
+          const connMaskId = "connmask-" + sc.index;
+          const mask = s("mask", { id: connMaskId, maskUnits: "userSpaceOnUse", x: -200, y: -200, width: 1400, height: 1400 });
+          connReveal = s("path", { d: conn.getAttribute("d"), fill: "none", stroke: "#fff", "stroke-width": 14, "stroke-linecap": "round" });
+          mask.append(connReveal);
+          defs.append(mask);
+          conn.setAttribute("mask", `url(#${connMaskId})`);
+          svg.append(conn);
+          call = h("div", "card callout");
+          if (d.callout.kicker) call.append(h("div", "callout-k mono", d.callout.kicker));
+          call.append(h("div", "callout-t", d.callout.text || ""));
+          side.append(call);
+        }
+
+        const t0 = sc.start + 0.05;
+        tl.fromTo(grid, { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.45, ease: "avx.out", stagger: 0.03 }, t0);
+        tl.fromTo([yl, note], { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5, ease: "avx.out" }, t0 + 0.1);
+        let lastDrawn = t0;
+        lines.forEach((ln, si) => {
+          const ts = Math.max(t0 + 0.15, at(d.series[si], t0 + 0.2 + si * 0.4) - 0.1);
+          const DUR = 1.1;
+          tl.fromTo(ln.p, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: DUR, ease: "power2.inOut" }, ts);
+          ln.dots.forEach((c, i) => {
+            const frac = i / (n - 1);
+            tl.fromTo(c, { scale: 0, transformOrigin: "50% 50%" }, { scale: 1, duration: 0.3, ease: "back.out(2.5)" }, ts + frac * DUR * 0.92);
+          });
+          ln.labels.forEach(({ lab, i }) => {
+            tl.fromTo(lab, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.35, ease: "avx.out" }, ts + (i / (n - 1)) * DUR * 0.92 + 0.1);
+          });
+          tl.fromTo(ln.end, { opacity: 0, x: -14 }, { opacity: 1, x: 0, duration: 0.45, ease: "avx.out" }, ts + DUR - 0.1);
+          lastDrawn = Math.max(lastDrawn, ts + DUR);
+        });
+        let tg = lastDrawn;
+        if (two) {
+          tg = at(d.gap, t0 + 1.2) - 0.1;
+          tl.fromTo(clipRect, { attr: { width: 0 } }, { attr: { width: A.w }, duration: 0.7, ease: "avx.inOut" }, tg);
+          tl.fromTo(br, { drawSVG: "50% 50%" }, { drawSVG: "0% 100%", duration: 0.5, ease: "avx.inOut" }, tg + 0.2);
+          if (gapLabel) tl.fromTo(gapLabel, { opacity: 0, x: 12 }, { opacity: 1, x: 0, duration: 0.45, ease: "avx.out" }, tg + 0.4);
+        }
+        if (call) {
+          const tc = Math.max(tg + 0.5, at(d.callout, tg + 1) - 0.45);
+          tl.fromTo(connReveal, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.45, ease: "avx.inOut" }, tc);
+          tl.fromTo(call, { y: 40, opacity: 0, scale: 0.94 }, { y: 0, opacity: 1, scale: 1, duration: SETTLE.duration, ease: SETTLE.ease }, tc + 0.3);
+        }
+        return {
+          exit(t) {
+            tl.to([svg, ...stage.querySelectorAll(".ch-end, .ch-axis-label, .ch-note, .ch-gap, .ch-val")], { opacity: 0, y: -40, duration: 0.38, ease: "avx.in", stagger: 0.01 }, t);
+            if (call) tl.to(call, { x: 120, opacity: 0, duration: 0.38, ease: "avx.in" }, t);
+          },
+        };
+      };
+
+      // 6. Relationship: who pushes whom (chips + a drawn arrow), then the
+      //    mandate as a marker callout whose text inverts as the marker passes.
+      BUILD.relation = function (sc, stage, side, tl) {
+        const d = sc.data;
+        const chip = (p, x, y, hot) => {
+          const el = h("div", "card person" + (hot ? " hot" : ""));
+          el.style.left = x + "px";
+          el.style.top = y + "px";
+          const disc = h("div", "mono-disc", p.initials);
+          const txt = h("div", "");
+          txt.append(h("div", "p-name", p.name), h("div", "p-role mono", p.role));
+          el.append(disc, txt);
+          stage.append(el);
+          return el;
+        };
+        const A = chip(d.from, 0, 10, false);
+        const B = chip(d.to, 250, 250, true);
+        shrinkToFit(A.querySelector(".p-name"), 936, 30, () => A.offsetWidth);
+        shrinkToFit(B.querySelector(".p-name"), 686, 30, () => B.offsetWidth);
+        const svg = s("svg", { class: "rel-svg", viewBox: "0 0 936 640" });
+        stage.insertBefore(svg, A);
+        const arrow = s("path", { d: "M76,160 C70,260 120,300 236,302", fill: "none", stroke: sc.pal.accent, "stroke-width": 6, "stroke-linecap": "round" });
+        const head = s("path", { d: "M214,284 L240,302 L214,320", fill: "none", stroke: sc.pal.accent, "stroke-width": 6, "stroke-linecap": "round", "stroke-linejoin": "round" });
+        svg.append(arrow, head);
+        const verb = h("div", "verb mono", d.verb.text);
+        verb.style.left = "100px";
+        verb.style.top = "196px";
+        stage.append(verb);
+        const wrap = h("div", "hl-wrap");
+        const mark = h("div", "hl-mark");
+        const text = h("div", "hl-text", d.phrase.text);
+        const on = h("div", "hl-on", d.phrase.text);
+        wrap.append(mark, text, on);
+        stage.append(wrap);
+        {
+          let size = 168;
+          while (wrap.offsetWidth > 936 && size > 80) {
+            size -= 4;
+            text.style.fontSize = on.style.fontSize = size + "px";
+          }
+        }
+
+        const ta = Math.max(sc.start + 0.05, at(d.from, sc.start + 0.2) - 0.2);
+        const tv = at(d.verb, ta + 0.4);
+        const tb = Math.max(tv + 0.3, at(d.to, tv + 0.8) - 0.25);
+        const tp = Math.max(tb + 0.4, at(d.phrase, tb + 1) - 0.2);
+        tl.fromTo(A, { x: -80, opacity: 0 }, { x: 0, opacity: 1, duration: 0.7, ease: "avx.out" }, ta);
+        tl.fromTo(arrow, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.55, ease: "avx.inOut" }, tv - 0.1);
+        tl.fromTo(head, { drawSVG: "50% 50%" }, { drawSVG: "0% 100%", duration: 0.25, ease: "avx.out" }, tv + 0.4);
+        tl.fromTo(verb, { scale: 0, rotation: -8 }, { scale: 1, rotation: -3, duration: POP.duration, ease: POP.ease }, tv + 0.1);
+        tl.fromTo(B, { x: 80, opacity: 0 }, { x: 0, opacity: 1, duration: 0.7, ease: "avx.out" }, tb);
+        // B gets nudged by the push (secondary motion), A recedes.
+        tl.fromTo(B, { rotation: 0 }, { rotation: 2, duration: 0.18, ease: "power2.out", yoyo: true, repeat: 1, immediateRender: false }, tb + 0.55);
+        tl.to(A, { opacity: 0.6, duration: 0.4 }, tp);
+        tl.fromTo(wrap, { yPercent: 30, opacity: 0, rotation: 0 }, { yPercent: 0, opacity: 1, rotation: -2, duration: 0.7, ease: "avx.out" }, tp - 0.15);
+        tl.fromTo(mark, { scaleX: 0 }, { scaleX: 1, duration: 0.55, ease: "avx.inOut" }, tp + 0.25);
+        tl.fromTo(on, { clipPath: "inset(0% 100% 0% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: 0.55, ease: "avx.inOut" }, tp + 0.25);
+        return {
+          exit(t) {
+            tl.to([A, B, svg, verb], { y: -100, opacity: 0, duration: 0.4, ease: "avx.in", stagger: 0.03 }, t);
+            tl.to(wrap, { x: 200, opacity: 0, duration: 0.4, ease: "avx.in" }, t + 0.05);
+          },
+        };
+      };
+
+      // 7. Checklist: rows arrive on their word, checks draw, earlier rows dim.
+      BUILD.list = function (sc, stage, side, tl) {
+        const d = sc.data;
+        const title = h("div", "li-title");
+        const words = d.title.split(" ");
+        // the adjective gets the serif accent ("bolder")
+        words.forEach((w, i) => {
+          const sp = h("span", i === 1 ? "serif" : "", w + (i < words.length - 1 ? " " : ""));
+          title.append(sp);
+        });
+        stage.append(title);
+        shrinkToFit(title, 930, 30, () => title.offsetWidth);
+        const rows = d.items.map((it, i) => {
+          const row = h("div", "li-row");
+          row.style.top = 110 + i * 170 + "px";
+          const num = h("div", "li-num mono", String(i + 1).padStart(2, "0"));
+          const svg = s("svg", { class: "li-check", viewBox: "0 0 84 84" });
+          const circle = s("circle", { cx: 42, cy: 42, r: 38, fill: "none", stroke: sc.pal.accent, "stroke-width": 4 });
+          const disc = s("circle", { cx: 42, cy: 42, r: 38, fill: sc.pal.accent });
+          const tick = s("path", { d: "M25,43 L37,55 L60,30", fill: "none", stroke: sc.pal.onAccent, "stroke-width": 7, "stroke-linecap": "round", "stroke-linejoin": "round" });
+          svg.append(disc, circle, tick);
+          const txt = masked("li-text", it.text);
+          const rule = h("div", "li-rule");
+          row.append(num, svg, txt.m, rule);
+          stage.append(row);
+          shrinkToFit(txt.m, 730, 34, () => txt.inner.scrollWidth);
+          return { row, num, circle, disc, tick, txt, rule };
+        });
+        const t0 = sc.start + 0.05;
+        tl.fromTo(title, { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: "avx.out" }, t0);
+        rows.forEach((r, i) => {
+          const t = Math.max(t0 + 0.3 + i * 0.4, at(d.items[i], t0 + 0.8 + i * 1.2) - 0.25);
+          tl.fromTo(r.rule, { scaleX: 0 }, { scaleX: 1, duration: 0.6, ease: "avx.inOut" }, t - 0.1);
+          tl.fromTo(r.num, { opacity: 0 }, { opacity: 1, duration: 0.3 }, t);
+          tl.fromTo(r.circle, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.4, ease: "avx.inOut", rotation: -90, transformOrigin: "50% 50%" }, t);
+          tl.fromTo(r.disc, { scale: 0, transformOrigin: "50% 50%" }, { scale: 1, duration: POP.duration, ease: POP.ease }, t + 0.32);
+          tl.fromTo(r.tick, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.28, ease: "power2.out" }, t + 0.42);
+          tl.fromTo(r.txt.inner, { yPercent: 110 }, { yPercent: 0, duration: 0.7, ease: "avx.out" }, t + 0.1);
+          if (i > 0) tl.to(rows.slice(0, i).map((p) => p.txt.m), { opacity: 0.5, duration: 0.4 }, t + 0.1);
+        });
+        return {
+          exit(t) {
+            tl.to([title, ...rows.map((r) => r.row)], { y: -80, opacity: 0, duration: 0.4, ease: "avx.in", stagger: 0.04 }, t);
+          },
+        };
+      };
+
+      // 8. Outro: the question as kinetic type + a CTA card pointing at the comments.
+      BUILD.outro = function (sc, stage, side, tl) {
+        const ret = BUILD.kinetic(sc, stage, side, tl, { size: 138 });
+        const d = sc.data;
+        if (d.cta) {
+          const card = h("div", "card cta");
+          const icon = h("div", "cta-icon");
+          const isvg = s("svg", { width: 44, height: 44, viewBox: "0 0 44 44" });
+          isvg.append(s("path", { d: "M8,10 H36 V30 H20 L12,37 V30 H8 Z", fill: "none", stroke: sc.pal.onAccent, "stroke-width": 4, "stroke-linejoin": "round" }));
+          icon.append(isvg);
+          card.append(icon, h("div", "cta-t", d.cta.text));
+          const arr = s("svg", { class: "cta-arrow", viewBox: "0 0 70 90" });
+          const ap = s("path", { d: "M35,6 L35,78 M12,56 L35,80 L58,56", fill: "none", stroke: sc.pal.accent, "stroke-width": 7, "stroke-linecap": "round", "stroke-linejoin": "round" });
+          arr.append(ap);
+          side.append(card, arr);
+          const tc = at(d.cta, sc.start + 1.4) - 0.2;
+          tl.fromTo(card, { y: 60, opacity: 0, scale: 0.9 }, { y: 0, opacity: 1, scale: 1, duration: SETTLE.duration, ease: SETTLE.ease }, tc);
+          tl.fromTo(icon, { rotation: -20, scale: 0.6 }, { rotation: 0, scale: 1, duration: POP.duration, ease: POP.ease }, tc + 0.15);
+          tl.fromTo(ap, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.5, ease: "avx.inOut" }, tc + 0.35);
+          const reps = Math.max(1, Math.floor((END - tc - 1) / 0.5));
+          tl.fromTo(arr, { y: 0 }, { y: 14, duration: 0.5, ease: "sine.inOut", yoyo: true, repeat: reps }, tc + 0.85);
+        }
+        return ret;
+      };
+
+      // ---------------------------------------------------------------- layout variants
+      // The same data in another arrangement (avx_builder.VARIANTS picks one per scene, seeded): a day of
+      // videos then doesn't repeat one layout per style. The originals above are the first variant of each.
+      const VARIANT = {};
+
+      // Versus, stacked: two full-width cards, the named-first side on top, items in a row.
+      VARIANT["versus:stacked"] = function (sc, stage, side, tl) {
+        const d = sc.data;
+        const mk = (spec, y, hot) => {
+          const card = h("div", "card vs-row");
+          card.style.top = y + "px";
+          const title = h("div", "vs-title", spec.title);
+          const tag = h("div", "vs-tag mono", spec.tag);
+          tag.style.background = hot ? sc.pal.accent : "transparent";
+          tag.style.color = hot ? sc.pal.onAccent : sc.pal.ink;
+          tag.style.border = hot ? "none" : `2px solid ${sc.pal.hair}`;
+          const row = h("div", "vs-row-items");
+          const items = spec.items.map((txt) => {
+            const it = h("div", "vs-item");
+            const b = h("div", "vs-bullet");
+            b.style.background = hot ? sc.pal.accent : sc.pal.mute;
+            it.append(b, h("span", "", txt));
+            row.append(it);
+            return it;
+          });
+          card.append(title, row);
+          if (spec.tag) card.append(tag);
+          stage.append(card);
+          shrinkToFit(title, spec.tag ? 856 - tag.offsetWidth - 30 : 856, 40, () => textWidth(title));
+          shrinkToFit(row, 856, 22, () => row.scrollWidth);
+          return { card, items };
+        };
+        const R = mk(d.right, 0, true);
+        const L = mk(d.left, 328, false);
+        const badge = h("div", "vs-badge", "VS");
+        badge.style.left = "780px";
+        badge.style.top = "305px";
+        stage.append(badge);
+        const tr = Math.max(sc.start + 0.05, at(d.right, sc.start + 0.2) - 0.15);
+        const tlf = Math.max(tr + 0.6, at(d.left, sc.start + 2) - 0.15);
+        tl.fromTo(R.card, { y: -70, opacity: 0, scale: 0.96 }, { y: 0, opacity: 1, scale: 1, duration: 0.75, ease: "avx.out" }, tr);
+        tl.fromTo(R.items, { x: 50, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: "avx.out", stagger: 0.12 }, tr + 0.3);
+        tl.fromTo(badge, { scale: 0, rotation: 40 }, { scale: 1, rotation: 0, duration: POP.duration, ease: POP.ease }, tlf - 0.2);
+        tl.fromTo(L.card, { y: 70, opacity: 0, scale: 0.96 }, { y: 0, opacity: 1, scale: 1, duration: 0.75, ease: "avx.out" }, tlf);
+        tl.fromTo(L.items, { x: 50, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: "avx.out", stagger: 0.12 }, tlf + 0.3);
+        if (d.verdict) {
+          const stamp = h("div", "stamp mono", d.verdict.text);
+          stamp.style.left = "auto";
+          stamp.style.right = "34px";
+          stamp.style.top = "auto";
+          stamp.style.bottom = "34px";
+          L.card.append(stamp);
+          shrinkToFit(stamp, 420, 18, () => stamp.offsetWidth);
+          const tv = at(d.verdict, tlf + 0.8) - 0.05;
+          tl.fromTo(stamp, { scale: 1.8, rotation: 10, opacity: 0 }, { scale: 1, rotation: 4, opacity: 1, duration: 0.32, ease: "power4.in" }, tv);
+          tl.to(R.card, { opacity: 0.55, duration: 0.4, ease: "power2.out" }, tv + 0.1);
+        }
+        return {
+          exit(t) {
+            tl.to(R.card, { y: -320, opacity: 0, duration: 0.45, ease: "avx.in" }, t);
+            tl.to(L.card, { y: 320, opacity: 0, duration: 0.45, ease: "avx.in" }, t);
+            tl.to(badge, { scale: 0, duration: 0.3, ease: "avx.in" }, t);
+          },
+        };
+      };
+
+      // Lists as chips (pills stepping down and right) or as numbered cards.
+      function listTitle(sc, stage) {
+        const title = h("div", "li-title");
+        const words = sc.data.title.split(" ");
+        words.forEach((w, i) => title.append(h("span", i === 1 ? "serif" : "", w + (i < words.length - 1 ? " " : ""))));
+        stage.append(title);
+        shrinkToFit(title, 930, 30, () => title.offsetWidth);
+        return title;
+      }
+      function check(sc, cls) {
+        const svg = s("svg", { class: cls, viewBox: "0 0 84 84" });
+        const disc = s("circle", { cx: 42, cy: 42, r: 38, fill: sc.pal.accent });
+        const tick = s("path", { d: "M25,43 L37,55 L60,30", fill: "none", stroke: sc.pal.onAccent, "stroke-width": 7, "stroke-linecap": "round", "stroke-linejoin": "round" });
+        svg.append(disc, tick);
+        return { svg, disc, tick };
+      }
+      VARIANT["list:chips"] = function (sc, stage, side, tl) {
+        const d = sc.data;
+        const title = listTitle(sc, stage);
+        const chips = d.items.map((it, i) => {
+          const chip = h("div", "li-chip");
+          chip.style.left = i * 56 + "px";
+          chip.style.top = 118 + i * 168 + "px";
+          const c = check(sc, "");
+          const txt = h("span", "", it.text);
+          chip.append(c.svg, txt);
+          stage.append(chip);
+          shrinkToFit(chip, 936 - i * 56, 30, () => chip.offsetWidth);
+          return { chip, ...c };
+        });
+        const t0 = sc.start + 0.05;
+        tl.fromTo(title, { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: "avx.out" }, t0);
+        chips.forEach((c, i) => {
+          const t = Math.max(t0 + 0.3 + i * 0.4, at(d.items[i], t0 + 0.8 + i * 1.2) - 0.25);
+          tl.fromTo(c.chip, { scale: 0.5, opacity: 0, rotation: -5, transformOrigin: "0% 50%" }, { scale: 1, opacity: 1, rotation: 0, duration: POP.duration, ease: POP.ease }, t);
+          tl.fromTo(c.disc, { scale: 0, transformOrigin: "50% 50%" }, { scale: 1, duration: POP.duration, ease: POP.ease }, t + 0.15);
+          tl.fromTo(c.tick, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.28, ease: "power2.out" }, t + 0.3);
+          if (i > 0) tl.to(chips.slice(0, i).map((p) => p.chip), { opacity: 0.55, duration: 0.4 }, t + 0.1);
+        });
+        return {
+          exit(t) {
+            tl.to([title, ...chips.map((c) => c.chip)], { x: 160, opacity: 0, duration: 0.4, ease: "avx.in", stagger: 0.04 }, t);
+          },
+        };
+      };
+      VARIANT["list:cards"] = function (sc, stage, side, tl) {
+        const d = sc.data;
+        const title = listTitle(sc, stage);
+        const cards = d.items.map((it, i) => {
+          const card = h("div", "card li-card");
+          card.style.top = 104 + i * 172 + "px";
+          const numeral = h("div", "li-numeral serif", String(i + 1));
+          const txt = masked("li-text", it.text);
+          card.append(numeral, txt.m);
+          stage.append(card);
+          shrinkToFit(txt.m, 740, 32, () => txt.inner.scrollWidth);
+          return { card, numeral, txt };
+        });
+        const t0 = sc.start + 0.05;
+        tl.fromTo(title, { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: "avx.out" }, t0);
+        cards.forEach((c, i) => {
+          const t = Math.max(t0 + 0.3 + i * 0.4, at(d.items[i], t0 + 0.8 + i * 1.2) - 0.25);
+          tl.fromTo(c.card, { y: 80, opacity: 0, rotation: i % 2 ? -1.5 : 1.5 }, { y: 0, opacity: 1, rotation: 0, duration: SETTLE.duration, ease: SETTLE.ease }, t);
+          tl.fromTo(c.numeral, { scale: 0.4, opacity: 0 }, { scale: 1, opacity: 1, duration: POP.duration, ease: POP.ease }, t + 0.12);
+          tl.fromTo(c.txt.inner, { yPercent: 110 }, { yPercent: 0, duration: 0.65, ease: "avx.out" }, t + 0.15);
+          if (i > 0) tl.to(cards.slice(0, i).map((p) => p.card), { opacity: 0.6, duration: 0.4 }, t + 0.1);
+        });
+        return {
+          exit(t) {
+            tl.to([title, ...cards.map((c) => c.card)], { y: -80, opacity: 0, duration: 0.4, ease: "avx.in", stagger: 0.04 }, t);
+          },
+        };
+      };
+
+      // Timeline, horizontal: the rail runs left to right, each step's year and title under its node.
+      VARIANT["timeline:horizontal"] = function (sc, stage, side, tl) {
+        const d = sc.data;
+        const n = d.nodes.length, Y = 210, X0 = 120, X1 = 816;
+        const xs = d.nodes.map((_, i) => (n === 1 ? 468 : X0 + (i * (X1 - X0)) / (n - 1)));
+        const W = n >= 3 ? 300 : 400;
+        const svg = s("svg", { class: "tl-svg", viewBox: "0 0 936 640" });
+        stage.append(svg);
+        const rail = s("path", { d: `M20,${Y} L916,${Y}`, stroke: sc.pal.hair, "stroke-width": 4, fill: "none", "stroke-linecap": "round" });
+        svg.append(rail);
+        const segs = [];
+        const nodes = d.nodes.map((nd, i) => {
+          if (i > 0) {
+            const seg = s("path", { d: `M${xs[i - 1] + 52},${Y} L${xs[i] - 52},${Y}`, stroke: sc.pal.accent, "stroke-width": 6, fill: "none", "stroke-linecap": "round" });
+            svg.append(seg);
+            segs.push(seg);
+          }
+          const node = h("div", "tl-node");
+          node.style.left = xs[i] + "px";
+          node.style.top = Y + "px";
+          const disc = h("div", "tl-disc");
+          const ring = h("div", "tl-ring");
+          const isvg = s("svg", { width: 60, height: 60, viewBox: "-30 -30 60 60" });
+          const icon = s("path", { d: ICONS[nd.icon] || ICONS.spark, fill: "none", stroke: sc.pal.ink, "stroke-width": 4.5, "stroke-linecap": "round", "stroke-linejoin": "round" });
+          isvg.append(icon);
+          disc.append(isvg);
+          node.append(ring, disc);
+          const text = h("div", "tl-text-h");
+          text.style.left = Math.max(0, Math.min(936 - W, xs[i] - W / 2)) + "px";
+          text.style.top = Y + 82 + "px";
+          text.style.width = W + "px";
+          const year = masked("tl-year mono", nd.year);
+          const title = masked("tl-title", nd.title);
+          text.append(year.m, title.m);
+          stage.append(node, text);
+          // titles may wrap to two lines; a single word that is still too wide shrinks the type
+          let size = 62;
+          title.inner.style.fontSize = size + "px";
+          while (title.inner.scrollWidth > W + 1 && size > 30) { size -= 2; title.inner.style.fontSize = size + "px"; }
+          while (title.inner.offsetHeight > 140 && size > 30) { size -= 2; title.inner.style.fontSize = size + "px"; }
+          return { node, ring, icon, year, title, text };
+        });
+        let sub = null;
+        if (d.tail) {
+          sub = masked("tl-sub tl-tail-h", d.tail.text);
+          sub.m.style.top = "540px";
+          stage.append(sub.m);
+          shrinkToFit(sub.m, 930, 26, () => textWidth(sub.inner));
+        }
+        tl.fromTo(rail, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 1.0, ease: "avx.inOut" }, sc.start + 0.25);
+        nodes.forEach((nd, i) => {
+          const t = Math.max(sc.start + 0.35, at(d.nodes[i], sc.start + 0.4 + i * 1.5) - 0.15);
+          if (i > 0) tl.fromTo(segs[i - 1], { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.45, ease: "avx.inOut" }, t - 0.4);
+          tl.fromTo(nd.node, { scale: 0 }, { scale: 1, duration: POP.duration, ease: POP.ease }, t);
+          tl.fromTo(nd.icon, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.5, ease: "avx.inOut" }, t + 0.1);
+          tl.fromTo(nd.ring, { scale: 1, opacity: 0.9 }, { scale: 1.7, opacity: 0, duration: 0.8, ease: "power2.out" }, t + 0.05);
+          tl.fromTo(nd.year.inner, { yPercent: 110 }, { yPercent: 0, duration: 0.6, ease: "avx.out" }, t + 0.05);
+          tl.fromTo(nd.title.inner, { yPercent: 110 }, { yPercent: 0, duration: 0.75, ease: "avx.out" }, t + 0.12);
+          if (i > 0) tl.to(nodes.slice(0, i).map((p) => p.text), { opacity: 0.45, duration: 0.4, ease: "power2.out" }, t);
+        });
+        if (sub) tl.fromTo(sub.inner, { yPercent: 110 }, { yPercent: 0, duration: 0.7, ease: "avx.out" }, at(d.tail, sc.start + 5) - 0.1);
+        return {
+          exit(t) {
+            tl.to([svg, ...nodes.map((x) => x.node), ...nodes.map((x) => x.text), sub && sub.m].filter(Boolean), { x: -140, opacity: 0, duration: 0.42, ease: "avx.in", stagger: 0.03 }, t);
+          },
+        };
+      };
+
+      // Chart as bars: the same real series, one group of bars per label, rising on their cue.
+      VARIANT["chart:bars"] = function (sc, stage, side, tl) {
+        const d = sc.data;
+        const A = { x: 40, y: 110, w: 760, h: 400 };
+        const all = d.series.flatMap((x) => x.values);
+        const max = Math.max(...all) * 1.15 || 1;
+        const n = d.series[0].values.length;
+        const two = d.series.length > 1;
+        const gw = A.w / n;
+        const bw = two ? Math.min(64, gw * 0.34) : Math.min(110, gw * 0.56);
+        const gx = (i) => A.x + (i + 0.5) * gw;
+        const svg = s("svg", { class: "ch-svg", viewBox: "0 0 936 640" });
+        stage.append(svg);
+        const grid = [];
+        for (let g = 0; g <= 4; g++) {
+          const y = A.y + (A.h * g) / 4;
+          const ln = s("line", { x1: A.x, x2: A.x + A.w, y1: y, y2: y, stroke: sc.pal.hair, "stroke-width": g === 4 ? 3 : 1.5 });
+          svg.append(ln);
+          grid.push(ln);
+        }
+        const colours = [sc.pal.accent, sc.pal.ink];
+        const labelAll = n * d.series.length <= 8;
+        const bars = d.series.map((ser, si) => ser.values.map((v, i) => {
+          const x = two ? gx(i) + (si ? 4 : -bw - 4) : gx(i) - bw / 2;
+          const hgt = Math.max(2, (v / max) * A.h);
+          const r = s("rect", { x, y: A.y + A.h - hgt, width: bw, height: hgt, rx: 8, fill: colours[si], "fill-opacity": si ? 0.85 : 1 });
+          svg.append(r);
+          let lab = null;
+          if (labelAll || i === 0 || i === n - 1) {
+            lab = h("div", "ch-val mono", fmt(v, Number.isInteger(v) ? 0 : 1));
+            lab.style.left = x + bw / 2 - 40 + "px";
+            lab.style.width = "80px";
+            lab.style.textAlign = "center";
+            lab.style.top = A.y + A.h - hgt - 34 + "px";
+            stage.append(lab);
+          }
+          return { r, lab, x, top: A.y + A.h - hgt };
+        }));
+        (d.x_labels || []).forEach((t, i) => {
+          const xl = h("div", "ch-axis-label mono", t);
+          xl.style.left = gx(i) - 50 + "px";
+          xl.style.width = "100px";
+          xl.style.textAlign = "center";
+          xl.style.top = A.y + A.h + 18 + "px";
+          stage.append(xl);
+          grid.push(xl);
+        });
+        const yl = h("div", "ch-axis-label mono", d.y_label || "");
+        yl.style.left = A.x + "px";
+        yl.style.top = A.y - 70 + "px";
+        stage.append(yl);
+        const legend = h("div", "ch-legend mono");
+        legend.style.top = A.y - 72 + "px";
+        d.series.forEach((ser, si) => {
+          const sw = h("i", "");
+          sw.style.background = colours[si];
+          const it = h("span", "");
+          it.append(sw, document.createTextNode(ser.name));
+          legend.append(it);
+        });
+        stage.append(legend);
+        let call = null;
+        if (d.callout) {
+          call = h("div", "card callout");
+          if (d.callout.kicker) call.append(h("div", "callout-k mono", d.callout.kicker));
+          call.append(h("div", "callout-t", d.callout.text || ""));
+          side.append(call);
+        }
+        const t0 = sc.start + 0.05;
+        tl.fromTo(grid, { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.45, ease: "avx.out", stagger: 0.03 }, t0);
+        tl.fromTo([yl, legend], { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5, ease: "avx.out" }, t0 + 0.1);
+        let last = t0;
+        bars.forEach((row, si) => {
+          const ts = Math.max(t0 + 0.15, at(d.series[si], t0 + 0.2 + si * 0.5) - 0.1);
+          row.forEach((b, i) => {
+            const tb = ts + i * 0.12;
+            tl.fromTo(b.r, { scaleY: 0, transformOrigin: "50% 100%" }, { scaleY: 1, duration: 0.6, ease: "power3.out" }, tb);
+            if (b.lab) tl.fromTo(b.lab, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "avx.out" }, tb + 0.35);
+            last = Math.max(last, tb + 0.6);
+          });
+        });
+        if (call) tl.fromTo(call, { y: 40, opacity: 0, scale: 0.94 }, { y: 0, opacity: 1, scale: 1, duration: SETTLE.duration, ease: SETTLE.ease }, Math.max(last, at(d.callout, last + 0.4) - 0.45));
+        return {
+          exit(t) {
+            tl.to([svg, ...stage.querySelectorAll(".ch-axis-label, .ch-val, .ch-legend")], { opacity: 0, y: 40, duration: 0.38, ease: "avx.in", stagger: 0.01 }, t);
+            if (call) tl.to(call, { x: 120, opacity: 0, duration: 0.38, ease: "avx.in" }, t);
+          },
+        };
+      };
+
+      // Relation, mirrored: the actor top right, the one acted on lower left, the arrow sweeping back.
+      VARIANT["relation:mirror"] = function (sc, stage, side, tl) {
+        const d = sc.data;
+        const chip = (p, hot) => {
+          const el = h("div", "card person" + (hot ? " hot" : ""));
+          const disc = h("div", "mono-disc", p.initials);
+          const txt = h("div", "");
+          txt.append(h("div", "p-name", p.name), h("div", "p-role mono", p.role));
+          el.append(disc, txt);
+          stage.append(el);
+          return el;
+        };
+        const A = chip(d.from, false);
+        const B = chip(d.to, true);
+        shrinkToFit(A.querySelector(".p-name"), 760, 30, () => A.offsetWidth);
+        shrinkToFit(B.querySelector(".p-name"), 700, 30, () => B.offsetWidth);
+        const aw = A.offsetWidth, bw = B.offsetWidth;
+        A.style.left = 936 - aw + "px";
+        A.style.top = "10px";
+        B.style.left = "0px";
+        B.style.top = "262px";
+        const ax = 936 - aw + 74, by = 262 + B.offsetHeight / 2;
+        const svg = s("svg", { class: "rel-svg", viewBox: "0 0 936 640" });
+        stage.insertBefore(svg, A);
+        const ex = bw + 14;
+        const arrow = s("path", { d: `M${ax},160 C${ax},250 ${ax - 60},${by} ${ex + 24},${by}`, fill: "none", stroke: sc.pal.accent, "stroke-width": 6, "stroke-linecap": "round" });
+        const head = s("path", { d: `M${ex + 26},${by - 18} L${ex},${by} L${ex + 26},${by + 18}`, fill: "none", stroke: sc.pal.accent, "stroke-width": 6, "stroke-linecap": "round", "stroke-linejoin": "round" });
+        svg.append(arrow, head);
+        const verb = h("div", "verb mono", d.verb.text);
+        stage.append(verb);
+        verb.style.left = Math.min(936 - verb.offsetWidth, ax + 24) + "px";
+        verb.style.top = "200px";
+        const wrap = h("div", "hl-wrap");
+        const mark = h("div", "hl-mark");
+        const text = h("div", "hl-text", d.phrase.text);
+        const on = h("div", "hl-on", d.phrase.text);
+        wrap.append(mark, text, on);
+        stage.append(wrap);
+        {
+          let size = 168;
+          while (wrap.offsetWidth > 936 && size > 80) {
+            size -= 4;
+            text.style.fontSize = on.style.fontSize = size + "px";
+          }
+        }
+        wrap.style.left = 936 - wrap.offsetWidth + "px";
+        wrap.style.transformOrigin = "right center";
+        const ta = Math.max(sc.start + 0.05, at(d.from, sc.start + 0.2) - 0.2);
+        const tv = at(d.verb, ta + 0.4);
+        const tb = Math.max(tv + 0.3, at(d.to, tv + 0.8) - 0.25);
+        const tp = Math.max(tb + 0.4, at(d.phrase, tb + 1) - 0.2);
+        tl.fromTo(A, { x: 80, opacity: 0 }, { x: 0, opacity: 1, duration: 0.7, ease: "avx.out" }, ta);
+        tl.fromTo(arrow, { drawSVG: "0% 0%" }, { drawSVG: "0% 100%", duration: 0.55, ease: "avx.inOut" }, tv - 0.1);
+        tl.fromTo(head, { drawSVG: "50% 50%" }, { drawSVG: "0% 100%", duration: 0.25, ease: "avx.out" }, tv + 0.4);
+        tl.fromTo(verb, { scale: 0, rotation: 8 }, { scale: 1, rotation: 3, duration: POP.duration, ease: POP.ease }, tv + 0.1);
+        tl.fromTo(B, { x: -80, opacity: 0 }, { x: 0, opacity: 1, duration: 0.7, ease: "avx.out" }, tb);
+        tl.fromTo(B, { rotation: 0 }, { rotation: -2, duration: 0.18, ease: "power2.out", yoyo: true, repeat: 1, immediateRender: false }, tb + 0.55);
+        tl.to(A, { opacity: 0.6, duration: 0.4 }, tp);
+        tl.fromTo(wrap, { yPercent: 30, opacity: 0, rotation: 0 }, { yPercent: 0, opacity: 1, rotation: 2, duration: 0.7, ease: "avx.out" }, tp - 0.15);
+        tl.fromTo(mark, { scaleX: 0 }, { scaleX: 1, duration: 0.55, ease: "avx.inOut" }, tp + 0.25);
+        tl.fromTo(on, { clipPath: "inset(0% 100% 0% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: 0.55, ease: "avx.inOut" }, tp + 0.25);
+        return {
+          exit(t) {
+            tl.to([A, B, svg, verb], { y: -100, opacity: 0, duration: 0.4, ease: "avx.in", stagger: 0.03 }, t);
+            tl.to(wrap, { x: -200, opacity: 0, duration: 0.4, ease: "avx.in" }, t + 0.05);
+          },
+        };
+      };
+
+      // ---------------------------------------------------------------- build
+      function build() {
+        const tl = gsap.timeline({ paused: true });
+        // How a new ground arrives (one per video for the beats, another for the outro: see
+        // avx_builder.TRANSITION_SETS). Every one is a clip on the scene's ground, so the content behind it
+        // waits the same 0.4 s whichever is used. All finish within 0.75 s.
+        const blinds = (p) => {
+          const n = 6, pts = [];
+          for (let k = 0; k < n; k++) {
+            const y0 = (k * 100) / n, y1 = y0 + (p * 100) / n;
+            pts.push(`0% ${y0}%`, `100% ${y0}%`, `100% ${y1}%`, `0% ${y1}%`);
+          }
+          return `polygon(${pts.join(", ")})`;
+        };
+        const WIPES = {
+          // a circle opening from Puck's chest: the colour change comes from him
+          iris: (bg, t) => tl.fromTo(bg, { clipPath: "circle(0px at 250px 1250px)" }, { clipPath: "circle(1600px at 250px 1250px)", duration: 0.75, ease: "avx.inOut" }, t),
+          // the new ground drops from the top like a roller blind
+          shutter: (bg, t) => tl.fromTo(bg, { clipPath: "inset(0% 0% 100% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: 0.7, ease: "avx.inOut" }, t),
+          // a straight sweep from the left edge
+          wipe: (bg, t) => tl.fromTo(bg, { clipPath: "inset(0% 100% 0% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: 0.65, ease: "avx.inOut" }, t),
+          // the ground slides in from the right as a solid sheet
+          slide: (bg, t) => tl.fromTo(bg, { xPercent: 100 }, { xPercent: 0, duration: 0.7, ease: "avx.inOut" }, t),
+          // six horizontal slats open together
+          blinds: (bg, t) => tl.fromTo(bg, { clipPath: blinds(0) }, { clipPath: blinds(1), duration: 0.7, ease: "avx.inOut" }, t),
+          // a slanted edge sweeps across, top corner first
+          diagonal: (bg, t) => tl.fromTo(bg, { clipPath: "polygon(0% 0%, 0% 0%, -40% 100%, -40% 100%)" }, { clipPath: "polygon(0% 0%, 140% 0%, 100% 100%, -40% 100%)", duration: 0.75, ease: "avx.inOut" }, t),
+        };
+        const scenes = story.scenes || [];
+        const ground = document.getElementById("ground");
+        if (scenes.length) {
+          ground.style.background = scenes[0].pal.bg;
+          document.body.style.background = scenes[0].pal.bg;
+        }
+        const built = scenes.map((sc, i) => {
+          const el = h("div", "scene");
+          el.style.zIndex = 10 + i;
+          setPal(el, sc.pal);
+          const bg = h("div", "scene-bg");
+          el.append(bg);
+          const eb = h("div", "eyebrow");
+          const ebm = h("div", "eb-mask");
+          const ebi = h("div", "eb-in");
+          ebi.append(h("div", "eb-sq"), h("span", "eb-num", String(i + 1).padStart(2, "0")), h("span", "", sc.eyebrow || ""));
+          ebm.append(ebi);
+          const rule = h("div", "eb-rule");
+          eb.append(ebm, rule);
+          const stage = h("div", "stage");
+          const side = h("div", "side");
+          el.append(eb, stage, side);
+          scenesRoot.append(el);
+          return { sc, el, bg, ebi, rule, stage, side };
+        });
+        // Builders run after every scene is in the DOM (layout measured once, here).
+        built.forEach((b) => {
+          const fn = VARIANT[b.sc.style + ":" + b.sc.variant] || BUILD[b.sc.style] || BUILD.kinetic;
+          // Behind a wipe, content waits until the new ground has covered the stage.
+          const delay = b.sc.index === 0 ? 0 : b.sc.transition !== "cut" ? 0.4 : 0.18;
+          b.api = fn({ ...b.sc, start: b.sc.start + delay }, b.stage, b.side, tl) || {};
+        });
+
+        built.forEach((b, i) => {
+          const sc = b.sc;
+          const next = built[i + 1];
+          // Entrance: the transition decides how the scene's ground arrives.
+          const tIn = sc.start;
+          if (i === 0 || sc.transition === "cut") {
+            tl.set(b.bg, { opacity: 0 }, 0);
+            tl.set(b.el, { opacity: 1 }, i === 0 ? 0 : tIn);
+          } else {
+            tl.set(b.el, { opacity: 1 }, tIn - 0.15);
+            (WIPES[sc.transition] || WIPES.shutter)(b.bg, tIn - 0.15);
+          }
+          if (i > 0 && sc.transition !== "cut") tl.set(ground, { background: sc.pal.bg }, tIn + 0.65);
+          const tE = tIn + (i === 0 ? 0.05 : sc.transition !== "cut" ? 0.4 : 0.18);
+          tl.fromTo(b.ebi, { yPercent: 110 }, { yPercent: 0, duration: 0.6, ease: "avx.out" }, tE);
+          tl.fromTo(b.rule, { scaleX: 0 }, { scaleX: 1, duration: 0.9, ease: "avx.inOut" }, tE + 0.05);
+          // Exit.
+          if (next) {
+            if (next.sc.transition === "cut") {
+              const tx = next.sc.start - 0.28;
+              if (b.api.exit) b.api.exit(tx);
+              tl.to(b.ebi, { yPercent: -110, duration: 0.3, ease: "avx.in" }, tx);
+              tl.to(b.rule, { scaleX: 0, transformOrigin: "right center", duration: 0.35, ease: "avx.in" }, tx);
+              tl.set(b.el, { opacity: 0 }, next.sc.start + 0.3);
+            } else {
+              tl.set(b.el, { opacity: 0 }, next.sc.start + 0.65); // fully covered by the wipe by then
+            }
+          }
+        });
+
+        // ---- avatar: poses stacked on one canvas, crossfaded at scene changes
+        const av = story.avatar || { poses: ["pose-1.png"], changes: [] };
+        const bob = document.getElementById("character-bob");
+        const poseEls = av.poses.map((src, k) => {
+          const img = h("img", "pose" + (k === 0 ? " base" : ""));
+          img.src = "assets/" + src;
+          img.alt = "";
+          if (av.height) img.style.height = av.height + "px";
+          bob.append(img);
+          return img;
+        });
+        const first = av.first || 0;
+        poseEls.forEach((p, k) => tl.set(p, { opacity: k === first ? 1 : 0 }, 0));
+        let shown = first;
+        (av.changes || []).forEach(({ at: t, pose }) => {
+          if (pose === shown || !poseEls[pose]) return;
+          // Never two half-transparent poses at once (the ground would show through him):
+          // the pose stacked on top fades while the one underneath stays fully opaque.
+          if (pose > shown) {
+            tl.to(poseEls[pose], { opacity: 1, duration: 0.16, ease: "power1.inOut" }, t);
+            tl.set(poseEls[shown], { opacity: 0 }, t + 0.16);
+          } else {
+            tl.set(poseEls[pose], { opacity: 1 }, t);
+            tl.to(poseEls[shown], { opacity: 0, duration: 0.16, ease: "power1.inOut" }, t);
+          }
+          // a small hop sells the change of pose
+          tl.fromTo("#character-wrap", { y: 0 }, { y: -16, duration: 0.14, ease: "power2.out", yoyo: true, repeat: 1, immediateRender: false }, t);
+          shown = pose;
+        });
+        const idleReps = Math.max(1, Math.floor(END / 0.9) - 1);
+        tl.fromTo(bob, { y: 0 }, { y: -7, duration: 0.9, ease: "sine.inOut", yoyo: true, repeat: idleReps }, 0);
+        // Separation from the ground: a soft shadow on light grounds, a thin rim light on dark ones.
+        const wrap = document.getElementById("character-wrap");
+        scenes.forEach((sc, i) => {
+          const f = sc.pal.light
+            ? "drop-shadow(0px 18px 36px rgba(16,17,20,0.20))"
+            : "drop-shadow(0px 0px 1.5px rgba(255,255,255,0.65)) drop-shadow(0px 0px 26px rgba(255,255,255,0.12))";
+          tl.set(wrap, { filter: f }, i === 0 ? 0 : sc.start + (sc.transition === "cut" ? 0 : 0.3));
+        });
+
+        // ---- captions: word by word, current word in the scene's accent
+        const capRoot = document.getElementById("captions");
+        (story.captions || []).forEach((chunk) => {
+          const pal = scenes[chunk.scene].pal;
+          const el = h("div", "cap");
+          el.style.setProperty("--ink", pal.ink);
+          const words = chunk.words.map((w) => {
+            const sp = h("span", "cap-w", w);
+            el.append(sp);
+            return sp;
+          });
+          capRoot.append(el);
+          tl.set(el, { opacity: 1 }, chunk.start);
+          tl.set(el, { opacity: 0 }, chunk.end);
+          chunk.at.forEach((t, k) => {
+            const until = k + 1 < chunk.at.length ? chunk.at[k + 1] : chunk.end;
+            tl.fromTo(words[k], { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: 0.22, ease: "avx.out" }, Math.max(chunk.start, t - 0.04));
+            tl.set(words[k], { color: pal.accent }, t);
+            tl.set(words[k], { color: pal.ink }, until);
+          });
+        });
+
+        // ---- draft-only style tag
+        if (story.draft_labels) {
+          const tag = document.getElementById("tag");
+          tag.style.opacity = 1;
+          scenes.forEach((sc, i) => {
+            const pill = h("div", "tag-pill");
+            const sw = h("div", "tag-sw");
+            sw.style.background = sc.pal.bg;
+            pill.append(h("span", "", `STYLE ${i + 1} · ${sc.label}`), sw, h("span", "", sc.pal.bg.toUpperCase()));
+            tag.append(pill);
+            const shift = (x) => (x && x.transition !== "cut" ? 0.3 : 0);
+            const t1 = i + 1 < scenes.length ? scenes[i + 1].start + shift(scenes[i + 1]) : END;
+            tl.fromTo(pill, { opacity: 0, y: -10 }, { opacity: 1, y: 0, duration: 0.3, ease: "avx.out" }, i === 0 ? 0 : sc.start + shift(sc));
+            if (i + 1 < scenes.length) tl.set(pill, { opacity: 0 }, t1);
+          });
+        }
+
+        tl.set({}, {}, END);
+        window.__timelines["main"] = tl;
+      }
+
+      document.fonts.ready.then(build);
+    </script>
+  </body>
+</html>

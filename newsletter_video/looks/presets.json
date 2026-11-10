@@ -1,0 +1,159 @@
+{
+  "version": 1,
+  "notes": "Look presets for the explainer style. `look` holds the look fields a preset implies (theme; the recipe is derived as look-<id>), `knobs` the style-recipe knobs applied to the middle scenes (styles/vocabulary.py closed sets), `emphasis` the scene types the writer is asked to prefer, `registry` the HyperFrames registry items the look is built with (installed under hf_template_explainer/compositions, adapted inline in index.html), `thumbnail` a path under newsletter_video/ui/static. `colors` holds the look's default background and accent (the template's own values); the panel's swatches and the colour guard live in newsletter_video/colors.py.",
+  "presets": [
+    {
+      "id": "paper",
+      "name": "Clean paper",
+      "description": "The default editorial look: warm paper, one accent colour, serif headlines, dot grid.",
+      "good_for": "Every story. The daily default: clean, readable, no surprises.",
+      "default": true,
+      "look": {},
+      "knobs": {},
+      "emphasis": [],
+      "registry": [],
+      "thumbnail": "looks/paper.jpg",
+      "colors": {
+        "bg": "#f6f4ee",
+        "accent": "#1f49d6",
+        "bg_swatches": [
+          {
+            "name": "Warm paper",
+            "hex": "#f6f4ee"
+          },
+          {
+            "name": "White",
+            "hex": "#ffffff"
+          },
+          {
+            "name": "Cream",
+            "hex": "#fbf3e2"
+          },
+          {
+            "name": "Sage light",
+            "hex": "#e3ecdf"
+          },
+          {
+            "name": "Cool grey",
+            "hex": "#e9edf2"
+          }
+        ],
+        "accent_swatches": [
+          {
+            "name": "Cobalt",
+            "hex": "#1f49d6"
+          },
+          {
+            "name": "Teal",
+            "hex": "#0e8a7d"
+          },
+          {
+            "name": "Forest",
+            "hex": "#1f7a4d"
+          },
+          {
+            "name": "Crimson",
+            "hex": "#c0243c"
+          },
+          {
+            "name": "Amber",
+            "hex": "#b86a00"
+          },
+          {
+            "name": "Violet",
+            "hex": "#6a3fd1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "cinematic-glass",
+      "world": "hero",
+      "name": "Dark glass",
+      "description": "Near-black ground with drifting aurora fields, a grid floor, grain, glass panels and neon 3D objects; scenes dissolve and push in slowly.",
+      "good_for": "Big launches, hardware and AI model news that want drama and depth.",
+      "look": {
+        "theme": "cinematic"
+      },
+      "knobs": {
+        "look": "cinematic",
+        "transition": "fade",
+        "entrance": "fade-up",
+        "hold": "slow-push",
+        "ease": "inOut",
+        "accent": "#ff7a1a",
+        "palette": [
+          "#ff7a1a",
+          "#ff3d8a",
+          "#8b5cff",
+          "#22d3ee"
+        ],
+        "speed": 0.9
+      },
+      "emphasis": [
+        "object3d",
+        "glass",
+        "depth",
+        "kinetic"
+      ],
+      "registry": [
+        "mesh-gradient",
+        "grain-overlay",
+        "aurora-drift"
+      ],
+      "thumbnail": "looks/cinematic-glass.jpg",
+      "colors": {
+        "bg": "#050509",
+        "accent": "#ff7a1a",
+        "bg_swatches": [
+          {
+            "name": "Near-black",
+            "hex": "#050509"
+          },
+          {
+            "name": "Black",
+            "hex": "#000000"
+          },
+          {
+            "name": "Deep navy",
+            "hex": "#0a1233"
+          },
+          {
+            "name": "Deep plum",
+            "hex": "#240a38"
+          },
+          {
+            "name": "Deep green",
+            "hex": "#06281b"
+          }
+        ],
+        "accent_swatches": [
+          {
+            "name": "Orange",
+            "hex": "#ff7a1a"
+          },
+          {
+            "name": "Magenta",
+            "hex": "#ff3d8a"
+          },
+          {
+            "name": "Cyan",
+            "hex": "#22d3ee"
+          },
+          {
+            "name": "Mint",
+            "hex": "#34e5a0"
+          },
+          {
+            "name": "Violet",
+            "hex": "#8b5cff"
+          },
+          {
+            "name": "Gold",
+            "hex": "#ffc233"
+          }
+        ]
+      }
+    }
+  ]
+}

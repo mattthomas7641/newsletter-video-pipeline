@@ -32,8 +32,11 @@ import imageio_ffmpeg
 import numpy as np
 import soundfile
 
+from .runstate import next_index, record_video
 from .script_writer import Script
-from .tts import HYPERFRAMES_VERSION, audio_duration_seconds, base_speed, hyperframes_env, npx_path, speakable, synthesize
+from .supervisor import FatalPipelineError, run_subprocess
+from .tts import (HYPERFRAMES_VERSION, audio_duration_seconds, base_speed, hyperframes_env, npx_path, speakable,
+                  spoken_words, synthesize)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = Path(__file__).resolve().parent / "hf_template"
@@ -45,6 +48,10 @@ MAX_TAIL_SECONDS = 2.0  # cap on the outro hold for scripts too short to reach M
 HOOK_EXIT_SECONDS = 0.25  # hook clears this long before the first card lands
 HIGHLIGHT_MIN_DELAY = 0.3  # let the card land before its highlight sweeps in
 RENDER_ATTEMPTS = 2
+# Wall-clock cap per render attempt (RENDER_TIMEOUT_SECONDS overrides). A
+# render takes a few minutes; a headless Chrome that has hung (memory
+# pressure, a stuck font/CDN fetch) would otherwise block the day forever.
+DEFAULT_RENDER_TIMEOUT_SECONDS = 1200
 RENDER_CRF = "21"  # ~25-35 MB per video; platforms re-encode uploads anyway
 CAPTION_WORDS = 3  # max words per caption chunk
 CAPTION_CHARS = 16  # ...or fewer, if the words are long
@@ -82,8 +89,75 @@ def background_clips() -> list[Path]:
 def character_image() -> Path | None:
     """The static avatar cutout — just one image; the composition handles
     all its motion (a slight idle bob, see hf_template/index.html)."""
+    from .characters import active
+
+    character = active()
+    if character and character.avatar:
+        return character.avatar
     images = sorted(CHARACTER_DIR.glob("*.png")) + sorted(CHARACTER_DIR.glob("*.jpg"))
     return images[0] if images else None
+
+
+def character_poses() -> list[Path]:
+    """The other cutouts of the active character (same canvas as the main one), for swapping mid-video."""
+    from .characters import active
+
+    character = active()
+    return list(character.poses) if character and character.avatar else []
+
+
+POSE_MIN_GAP_SECONDS = 2.0  # never flick between poses faster than this
+
+
+def character_pose_roles() -> list[str]:
+    """The role of each picture of the active character ([main] + poses: "neutral", "point", "shrug"...)."""
+    from .characters import active, default_roles
+
+    character = active()
+    if character and character.avatar:
+        return list(character.pose_roles)
+    return default_roles(1)
+
+
+def pose_changes(n_poses: int, starts: list[float], seed: str, roles: list[str] | None = None,
+                 kinds: list[str] | None = None) -> list[dict]:
+    """When the avatar swaps pose: the main pose (0) for the hook, then a fitting pose at each of `starts`
+    (each beat, then the outro), never the same one twice in a row. The shrug (a picture whose role is
+    "shrug") is kept for the outro, the last start, and used nowhere else; a character without one ends
+    back on the main pose. Deterministic for a given seed, so a re-render of the same video looks the same.
+    `kinds` names each start's moment for a better fit (characters.STYLE_ROLES; default "beat")."""
+    from .characters import SHRUG, default_roles, plan_poses
+
+    if n_poses < 2 or not starts:
+        return []
+    roles = list(roles) if roles and len(roles) == n_poses else default_roles(n_poses)
+    plan = plan_poses(roles, len(starts) + 1, wanted=[0], kinds=["hook"] + list(kinds or []), seed=seed)
+    if SHRUG not in roles:  # no shrug: the outro is back on the main pose
+        plan[-1] = 0
+        if plan[-2] == 0 and len(plan) > 2:
+            plan[-2] = next(k for k in range(1, n_poses) if k != plan[-3]) if n_poses > 2 or plan[-3] != 1 else 1
+    changes, current, last_at = [], plan[0], 0.0
+    for i, (at, pick) in enumerate(zip(starts, plan[1:])):
+        final = i == len(starts) - 1
+        if pick == current or (at - last_at < POSE_MIN_GAP_SECONDS and not final):
+            continue
+        changes.append({"at": round(at, 3), "pose": pick})
+        current, last_at = pick, at
+    return changes
+
+
+AVATAR_MAX_HEIGHT = 980  # px on the 1080x1920 canvas; the composition anchors it bottom-left
+AVATAR_MAX_WIDTH = 600  # keeps wide/square avatars from covering the cards and captions
+
+
+def _avatar_height(image: Path) -> int:
+    """Display height for an avatar: full height for tall cutouts, shrunk for
+    wide ones so their width never exceeds AVATAR_MAX_WIDTH."""
+    from PIL import Image
+
+    with Image.open(image) as img:
+        width, height = img.size
+    return round(min(AVATAR_MAX_HEIGHT, AVATAR_MAX_WIDTH * height / width))
 
 
 def _prepared_clip(source: Path) -> Path:
@@ -215,6 +289,43 @@ def _proportional_word_times(lines: list[str], onset: float, offset: float) -> l
     return per_line
 
 
+FASTER_WHISPER_MODEL = "tiny.en"
+_faster_whisper_model = None
+
+
+def _whisper_backend() -> str:
+    """WHISPER_BACKEND=mlx|faster picks the transcriber; the default is mlx-whisper where it is installed (an
+    Apple-silicon Mac) and faster-whisper (CPU, any Linux/container) everywhere else."""
+    forced = os.environ.get("WHISPER_BACKEND", "auto").strip().lower()
+    if forced in ("mlx", "faster"):
+        return forced
+    import importlib.util
+
+    try:
+        return "mlx" if importlib.util.find_spec("mlx_whisper") else "faster"
+    except ValueError:  # already imported without a spec (a stand-in module): it is there
+        return "mlx"
+
+
+def _transcribe_words(audio_path: Path) -> list[tuple[str, float]]:
+    """[(word, start seconds)] for the clip, from whichever Whisper backend is available."""
+    if _whisper_backend() == "mlx":
+        import mlx_whisper
+
+        result = mlx_whisper.transcribe(str(audio_path), path_or_hf_repo=WHISPER_MODEL, word_timestamps=True)
+        return [(w["word"].strip(), float(w["start"]))
+                for seg in result["segments"] for w in seg.get("words", [])]
+    global _faster_whisper_model
+    from faster_whisper import WhisperModel
+
+    if _faster_whisper_model is None:  # loaded once per process; int8 keeps it fast on a plain CPU
+        _faster_whisper_model = WhisperModel(os.environ.get("FASTER_WHISPER_MODEL", FASTER_WHISPER_MODEL),
+                                             device="cpu", compute_type="int8")
+    segments, _info = _faster_whisper_model.transcribe(str(audio_path), word_timestamps=True, language="en",
+                                                       beam_size=1)
+    return [(w.word.strip(), float(w.start)) for seg in segments for w in (seg.words or [])]
+
+
 def _normalize_token(word: str) -> str:
     return re.sub(r"[^a-z0-9]", "", word.lower())
 
@@ -227,16 +338,7 @@ def _align_script(lines: list[str], audio_path: Path) -> list[list[tuple[str, fl
     spoken time."""
     onset, offset, _ = _speech_span(audio_path)
     try:
-        import mlx_whisper
-
-        result = mlx_whisper.transcribe(
-            str(audio_path), path_or_hf_repo=WHISPER_MODEL, word_timestamps=True
-        )
-        recognized = [
-            (w["word"].strip(), float(w["start"]))
-            for seg in result["segments"]
-            for w in seg.get("words", [])
-        ]
+        recognized = _transcribe_words(audio_path)
         if not recognized:
             raise ValueError("no words recognized")
     except Exception:
@@ -244,7 +346,16 @@ def _align_script(lines: list[str], audio_path: Path) -> list[list[tuple[str, fl
         return _proportional_word_times(lines, onset, offset)
 
     ref = [(i, w) for i, line in enumerate(lines) for w in line.split()]
-    ref_norm = [_normalize_token(w) for _, w in ref]
+    # The voice said the speakable() form ("SaaS" -> "sass", "4x" -> "4 times", "$1.25T" -> "1.25 trillion
+    # dollars"), so the transcript is matched against those spoken words; each original word then takes the
+    # time of its first spoken word. Captions keep the original words and their count.
+    spoken: list[tuple[int, str]] = []  # (index into ref, spoken word)
+    k0 = 0
+    for line in lines:
+        for i, w in spoken_words(line):
+            spoken.append((k0 + i, w))
+        k0 += len(line.split())
+    ref_norm = [_normalize_token(w) for _, w in spoken]
     rec_norm = [_normalize_token(w) for w, _ in recognized]
 
     times: list[float | None] = [None] * len(ref)
@@ -254,7 +365,9 @@ def _align_script(lines: list[str], audio_path: Path) -> list[list[tuple[str, fl
             continue
         n = min(i2 - i1, j2 - j1)
         for k in range(n):
-            times[i1 + k] = recognized[j1 + k][1]
+            orig = spoken[i1 + k][0]
+            if times[orig] is None:  # an original word's time is its first spoken word
+                times[orig] = recognized[j1 + k][1]
 
     # Interpolate any unmatched words from their nearest known neighbors.
     known = [i for i, t in enumerate(times) if t is not None]
@@ -370,6 +483,29 @@ def _prepare_workdir(work_dir: Path) -> None:
 
 def build_short(script: Script, out_path: Path, audio_path: Path, work_dir: Path,
                 kicker: str, background_seed: str) -> Path:
+    """Renders one script. A script carrying a per-video `look` (look.py)
+    is rendered with that look layered over the .env defaults; a script
+    without one renders exactly as the defaults say, so the unattended
+    daily run is unaffected."""
+    from .look import applied, is_empty, resolve_look
+
+    overrides = getattr(script, "look", None)
+    with applied(None if is_empty(overrides) else resolve_look(overrides)):
+        return _build_short(script, out_path, audio_path, work_dir, kicker, background_seed)
+
+
+def _build_short(script: Script, out_path: Path, audio_path: Path, work_dir: Path,
+                 kicker: str, background_seed: str) -> Path:
+    from .explainer_builder import explainer_mode, video_style  # VIDEO_STYLE=explainer: no avatar, no footage
+
+    if video_style() == "avx":  # the avatar explainer: its own template and builder (avx_builder.py)
+        from .avx_builder import build_avx_short
+
+        return build_avx_short(script, out_path, audio_path, kicker, background_seed)
+    if explainer_mode():
+        from .explainer_builder import build_explainer_short
+
+        return build_explainer_short(script, out_path, audio_path, kicker)
     lines = [script.hook] + [b.say for b in script.beats] + [script.outro]
     per_line, speech_duration = _voice_script(lines, audio_path, speed=None)
     # Pace, not content, absorbs length misses: a long script is re-voiced
@@ -400,50 +536,106 @@ def build_short(script: Script, out_path: Path, audio_path: Path, work_dir: Path
     payload["background"] = _cut_background(
         background_clips(), assets / "bg.mp4", payload["duration"], background_seed
     )
-    variables_path.write_text(json.dumps({"story": json.dumps(payload)}))
-
     character = character_image()
     if character is not None:
+        payload["avatar"] = {"height": _avatar_height(character)}
         shutil.copy(character, assets / "character.png")
+        extra = character_poses()
+        if extra:  # several poses: the avatar swaps between them as the beats go by
+            for k, pose in enumerate(extra, start=2):
+                shutil.copy(pose, assets / f"pose-{k}.png")
+            starts = [c["start"] for c in payload["cards"]] + [payload["outro"]["start"]]
+            payload["avatar"]["poses"] = ["character.png"] + [f"pose-{k}.png" for k in range(2, 2 + len(extra))]
+            payload["avatar"]["changes"] = pose_changes(len(extra) + 1, starts, background_seed,
+                                                        roles=character_pose_roles())
+    variables_path.write_text(json.dumps({"story": json.dumps(payload)}))
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    # Render into a side folder and move into place only when complete, so
+    # a kill mid-render never leaves a half-written mp4 where the uploader
+    # (or a re-run's numbering) would take it for a finished video.
+    partial = out_path.parent / ".partial" / out_path.name
+    partial.parent.mkdir(parents=True, exist_ok=True)
+    partial.unlink(missing_ok=True)
     npx = npx_path()
     cmd = [npx, "--yes", f"hyperframes@{HYPERFRAMES_VERSION}", "render", str(work_dir),
-           "--output", str(out_path), "--variables-file", str(variables_path),
+           "--output", str(partial), "--variables-file", str(variables_path),
            "--strict-variables", "--quiet", "--crf", RENDER_CRF]
+    timeout = float(os.environ.get("RENDER_TIMEOUT_SECONDS", DEFAULT_RENDER_TIMEOUT_SECONDS))
     # One retry: under memory pressure the renderer's ffmpeg startup probe
     # has failed transiently and then succeeded on the next attempt.
     for attempt in range(RENDER_ATTEMPTS):
         try:
-            subprocess.run(cmd, check=True, env=hyperframes_env(npx))
+            run_subprocess(cmd, timeout=timeout, env=hyperframes_env(npx))
             break
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            log.warning("Render attempt %d/%d of %s failed: %s", attempt + 1, RENDER_ATTEMPTS, out_path.name,
+                        type(exc).__name__)
             if attempt == RENDER_ATTEMPTS - 1:
+                partial.unlink(missing_ok=True)
                 raise
+    if not partial.exists() or partial.stat().st_size == 0:
+        raise RuntimeError(f"Renderer exited cleanly but wrote no video for {out_path.name}")
+    partial.replace(out_path)
+    from .thumbnails import avatar_title_time, remember
+
+    remember(out_path, lambda: avatar_title_time(payload), "avatar")  # the thumbnail is the hook card
     return out_path
 
 
 def build_shorts(scripts: list[Script], out_dir: Path, audio_dir: Path,
-                 target_date: date | None = None) -> list[Path]:
-    """Numbering continues after any videos already in `out_dir`, so a second
-    run on the same day adds videos instead of overwriting them."""
+                 target_date: date | None = None, on_rendered=None) -> list[Path]:
+    """Renders each script as its own video and returns the paths that
+    succeeded. Numbering continues after the highest number already used in
+    `out_dir` (by any file, not just finished videos), so a re-run on the
+    same day adds videos instead of overwriting or colliding.
+
+    Each video is isolated: a failure (TTS, alignment, ffmpeg, render) is
+    logged and recorded in the day's status.json, and the remaining videos
+    still get made. `on_rendered(script, path)` is called the moment a
+    video is complete — run_pipeline uses it to write the metadata sidecar
+    right away, so a crash later in the day leaves no orphan videos.
+    Raises only if every video failed (or the first failure was fatal for
+    the whole day, e.g. TTS cannot run at all)."""
     target_date = target_date or date.today()
     out_dir.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(out_dir / ".partial", ignore_errors=True)  # leftovers of a killed render
     audio_dir.mkdir(parents=True, exist_ok=True)
     work_dir = audio_dir.parent / "_hf_work"
     _prepare_workdir(work_dir)
 
-    first = len(list(out_dir.glob("*.mp4")))
+    first = next_index(out_dir) - 1
     paths = []
-    for i, script in enumerate(scripts, start=first):
-        slug = re.sub(r"-+", "-", "".join(c if c.isalnum() else "-" for c in script.title.lower()))[:40].strip("-")
-        kicker = f"TLDR · {target_date:%b} {target_date.day}".upper()
-        out_path = out_dir / f"{i + 1:02d}_{slug}.mp4"
-        audio_path = audio_dir / f"{i + 1:02d}.wav"
-        build_short(script, out_path, audio_path, work_dir, kicker,
-                    background_seed=f"{target_date.isoformat()}-{i}")
-        paths.append(out_path)
-    _clean_render_cache(work_dir)
+    errors: list[str] = []
+    try:
+        for i, script in enumerate(scripts, start=first):
+            slug = re.sub(r"-+", "-", "".join(c if c.isalnum() else "-" for c in script.title.lower()))[:40].strip("-")
+            kicker = f"TLDR · {target_date:%b} {target_date.day}".upper()
+            out_path = out_dir / f"{i + 1:02d}_{slug}.mp4"
+            audio_path = audio_dir / f"{i + 1:02d}.wav"
+            try:
+                build_short(script, out_path, audio_path, work_dir, kicker,
+                            background_seed=f"{target_date.isoformat()}-{i}")
+                from .thumbnails import make_for
+
+                make_for(out_path)  # the title page as the thumbnail; never raises, skips when untimed
+                if on_rendered is not None:
+                    on_rendered(script, out_path)
+                record_video(out_dir, out_path.stem, "rendered", title=script.title,
+                             writer=getattr(script, "writer", ""), stories=[s.title for s in script.stories])
+            except Exception as exc:
+                record_video(out_dir, out_path.stem, "failed", title=script.title,
+                             writer=getattr(script, "writer", ""), stories=[s.title for s in script.stories],
+                             error=f"{type(exc).__name__}: {str(exc)[:500]}")
+                if isinstance(exc, FatalPipelineError):
+                    raise
+                log.exception("Video %s failed; continuing with the next one", out_path.name)
+                errors.append(f"{out_path.name}: {type(exc).__name__}: {str(exc)[:200]}")
+                continue
+            paths.append(out_path)
+    finally:
+        _clean_render_cache(work_dir)
+    if scripts and not paths:
+        raise RuntimeError("Every video failed:\n  " + "\n  ".join(errors))
     return paths
 
 

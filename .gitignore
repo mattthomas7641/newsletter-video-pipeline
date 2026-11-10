@@ -8,6 +8,7 @@ __pycache__/
 output/
 assets/background/*
 assets/character/*
+assets/characters/*
 assets/fonts/*
 !assets/**/.gitkeep
 newsletter_video/hf_template/renders/
@@ -16,3 +17,37 @@ newsletter_video/hf_template/.thumbnails/
 newsletter_video/hf_template/assets/
 secrets/
 assets/voice/*
+newsletter_video/hf_template_explainer/renders/
+newsletter_video/hf_template_explainer/snapshots/
+newsletter_video/hf_template_explainer/.thumbnails/
+newsletter_video/hf_template_explainer/assets/
+newsletter_video/hf_template_explainer/.hyperframes/
+
+.pipeline.lock
+venv
+
+# Style library: the owner's reference clips and the recreation renders stay local;
+# analyses, keyframes, recipes and READMEs are committed.
+style_library/inbox/*
+!style_library/inbox/.gitkeep
+style_library/*/reference.*
+style_library/*/recreation/*.mp4
+style_library/*/recreation/round*_analysis/
+style_library/*/recreation/_hf_work_recreate/
+style_library/*/recreation/.partial/
+output/_style_eval/
+# Frames and measurements derived from uploaded reference clips stay local too.
+style_library/*/keyframes/
+style_library/*/contact_sheet.jpg
+style_library/*/analysis.json
+style_library/.partial/
+
+# The standing lineup (lineup.py): the owner's per-batch formats, local like .env
+lineup.json
+
+# Avatar explainer template: per-render work files stay local
+newsletter_video/hf_template_avx/renders/
+newsletter_video/hf_template_avx/snapshots/
+newsletter_video/hf_template_avx/.thumbnails/
+newsletter_video/hf_template_avx/.hyperframes/
+newsletter_video/hf_template_avx/assets/

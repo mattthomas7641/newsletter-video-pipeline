@@ -21,7 +21,9 @@ import os
 import re
 import zlib
 from dataclasses import dataclass, field
+from typing import Any
 
+from .factcheck import EVIDENCE_SCHEMA, SCOPE_NOTE
 from .scraper import Edition, Story
 
 log = logging.getLogger("newsletter_video")
@@ -80,6 +82,19 @@ class Script:
     stories: list[Story] = field(default_factory=list)
     post_caption: str = ""  # text for the YouTube description / TikTok caption
     hashtags: list[str] = field(default_factory=list)
+    writer: str = ""  # "claude" or "heuristic": run_pipeline refuses to publish fallback scripts publicly
+    # Per-video look overrides (see look.py): None or empty means "the
+    # defaults from .env", which is what the unattended daily run always uses.
+    look: dict | None = field(default=None, repr=False)
+    # Where this video came from in the day's lineup (lineup.py): batch, slot, format. None without a lineup.
+    lineup: dict | None = field(default=None, repr=False)
+    # The avatar explainer's scene list (avx_writer.py), as avx_builder.build_avx takes it, without the
+    # per-video colours (the look adds those at render time). None for the other formats; hook, beats and
+    # outro then still hold the same spoken lines, so narration, metadata and uploads work unchanged.
+    avx_scenes: list | None = field(default=None, repr=False)
+    # The fact check's compact record (factcheck.record): verdicts, evidence per line, repairs. Stored in the
+    # sidecar and the plan entry so the owner can see why a video was accepted. None when it never ran.
+    fact_check: dict | None = field(default=None, repr=False)
 
     @property
     def narration(self) -> str:
@@ -340,7 +355,7 @@ def _heuristic_scripts(editions: list[Edition], candidates: list[Story], n_video
         hook = _heuristic_hook(lead)
         outro = _OUTROS[zlib.crc32(lead.title.encode()) % len(_OUTROS)]
         script = Script(title=lead.title, badge=_badge_for(lead.section), hook=hook,
-                        beats=_story_beats(lead, first=True), outro=outro, stories=[lead])
+                        beats=_story_beats(lead, first=True), outro=outro, stories=[lead], writer="heuristic")
         same_edition = [s for s in pool if s.edition == lead.edition]
         for story in same_edition + [s for s in pool if s.edition != lead.edition]:
             if script.word_count >= MIN_WORDS:
@@ -373,7 +388,7 @@ genuinely useful to know. Big launches, real numbers, power moves between compan
 failures, and things that change how people work or live.
 - Do not cover pure science (physics, space, biology, medicine, climate) unless the \
 story is really about a tech product or company.
-- Skip sponsored items, job posts, generic marketing or growth advice, and minor \
+@SCOPE@- Skip sponsored items, job posts, generic marketing or growth advice, and minor \
 product updates unless something about them is genuinely remarkable.
 - One video may cover a single big story, or combine 2-3 stories that share a real \
 thread (a price war, a race between labs, a trend). Combine only when the connection \
@@ -422,6 +437,9 @@ words the way they should sound ("Mathocalypse" → "Math-apocalypse") in `say`,
 keeping the original spelling in `card`.
 """
 
+# The writer's evidence per spoken line (factcheck.EVIDENCE_SCHEMA): line 1 = the hook, then each beat, the outro.
+_EVIDENCE_SCHEMA = EVIDENCE_SCHEMA
+
 _WRITER_SCHEMA = {
     "type": "object",
     "properties": {
@@ -452,9 +470,10 @@ _WRITER_SCHEMA = {
                     "outro": {"type": "string"},
                     "post_caption": {"type": "string"},
                     "hashtags": {"type": "array", "items": {"type": "string"}},
+                    "evidence": _EVIDENCE_SCHEMA,
                 },
                 "required": ["title", "badge", "story_ids", "hook", "beats", "outro",
-                             "post_caption", "hashtags"],
+                             "post_caption", "hashtags", "evidence"],
                 "additionalProperties": False,
             },
         },
@@ -464,7 +483,15 @@ _WRITER_SCHEMA = {
 }
 
 
-LLM_SUMMARY_CHARS = 400  # enough for the key facts; trims a few very long blurbs
+WRITER_SYSTEM = WRITER_SYSTEM.replace("@SCOPE@", SCOPE_NOTE)
+
+# Per-read timeout for the Claude call. Without one, a connection that went
+# stale while the Mac slept hung the whole run for hours (2026-10-16).
+ANTHROPIC_TIMEOUT_SECONDS = 180.0
+LLM_SUMMARY_CHARS = 400  # what Jev sees: enough to judge scope and newsworthiness
+# What the writers see: the whole blurb. Trimmed to 400, a story lost the half that made it a story and the
+# video was stretched (and garbled) from what was left; the fact check judges against the whole blurb too.
+WRITER_SUMMARY_CHARS = 900
 
 
 def _trim(text: str, limit: int) -> str:
@@ -490,6 +517,33 @@ _JEV_IN_SCOPE_INSTRUCTIONS = (
     "generic marketing or growth advice, pure science (physics, space, biology, "
     "medicine, climate) unrelated to a tech product or company, or a minor/routine "
     "update not worth its own video."
+)
+# The second way into scope (owner-approved 2026-11-09): major corporate, legal, regulatory and national-security
+# news about big tech, chip and AI companies and their leaders (a CEO investigation, a lawsuit, export controls,
+# espionage, a board decision). Asked as its own question in the same Jev call, so the general question above is
+# unchanged: widening that wording pushed borderline tech stories out (measured on the 2026-11-06 and 2026-11-09
+# editions), while this narrow question let exactly one more story in (Nvidia's investigation of its CEO, 0.28 on
+# the general question, 0.86 here) and nothing else. A story is in scope when either question clears the threshold.
+_JEV_CORPORATE_INSTRUCTIONS = (
+    "This story is about a major investigation, lawsuit, regulatory or national-security action, export control, "
+    "espionage concern, board decision or leadership change at a big tech company, chip company or AI lab, or about "
+    "the conduct of its leaders, and it matters for the company, its chips, AI or products, or tech policy. It is NOT "
+    "personal gossip with no company impact, a sponsored item, a job posting, marketing or growth advice, or pure science."
+)
+# The third way into scope (2026-11-10), and the ranking signal: "would a well-informed person following AI and tech
+# want to know this today?". Measured on 595 stories (two weeks of all four newsletters, Claude-labelled must-cover /
+# worth-covering / skip): the two questions above let in only 75% of the must-cover stories (Meta's $95B offering,
+# Anthropic's IPO filing, SpaceX's $40B chip debt, GPT-6 Cyber and Mistral's trillion-parameter weights were all
+# below 0.5 on the topic question), because their long list of exclusions pulled the scores of plainly on-topic news
+# down. This question, at 0.4, catches 99% of them and lets in 7% of the skip pile. Added to the union, with the
+# score also added to the ranking, the writer's top-30 pool holds 83 of 83 must-cover stories (it held 61).
+JEV_IMPORTANT_THRESHOLD = 0.4
+_JEV_IMPORTANT_INSTRUCTIONS = (
+    "Would a well-informed person who follows AI and technology want to know this today? Yes for: new frontier "
+    "model or product launches, big money moves (funding, IPO, acquisitions, billion-dollar compute or chip deals), "
+    "major legal, regulatory, security or national-security events, leadership or governance news at major tech or "
+    "AI companies, and genuine AI capability breakthroughs. No for tutorials, opinion essays, growth, marketing or "
+    "fundraising advice, minor features, and routine updates."
 )
 _JEV_NEWSWORTHINESS_INSTRUCTIONS = (
     "How interesting and worth covering this story is for a curious, tech-savvy "
@@ -520,6 +574,8 @@ def _jev_rank_candidates(candidates: list[Story], n_videos: int) -> list[Story] 
 
     questions = {
         "in_scope": ts.Noul(instructions=_JEV_IN_SCOPE_INSTRUCTIONS),
+        "corporate": ts.Noul(instructions=_JEV_CORPORATE_INSTRUCTIONS),
+        "important": ts.Noul(instructions=_JEV_IMPORTANT_INSTRUCTIONS),
         "newsworthiness": ts.Score(
             instructions=_JEV_NEWSWORTHINESS_INSTRUCTIONS,
             criteria=_JEV_NEWSWORTHINESS_LEVELS,
@@ -540,9 +596,9 @@ def _jev_rank_candidates(candidates: list[Story], n_videos: int) -> list[Story] 
                        story.title, type(exc).__name__)
             scored.append((0.0, story))
             continue
-        if response.answers["in_scope"].noul < JEV_IN_SCOPE_THRESHOLD:
+        if not _jev_in_scope(response.answers):
             continue
-        scored.append((response.answers["newsworthiness"].score, story))
+        scored.append((response.answers["newsworthiness"].score + _jev_importance(response.answers), story))
 
     scored.sort(key=lambda pair: pair[0], reverse=True)
     pool_size = max(n_videos * JEV_POOL_MULTIPLIER, JEV_MIN_POOL)
@@ -552,77 +608,262 @@ def _jev_rank_candidates(candidates: list[Story], n_videos: int) -> list[Story] 
     return ranked  # may legitimately be [] if nothing cleared the bar — not the same as Jev being unavailable
 
 
-def _llm_scripts(candidates: list[Story], n_videos: int) -> list[Script] | None:
+def _jev_importance(answers) -> float:
+    """The "would a well-informed person want to know this" probability (0 when the question was not asked)."""
+    important = answers.get("important") if hasattr(answers, "get") else None
+    return float(important.noul) if important is not None else 0.0
+
+
+def _jev_in_scope(answers) -> bool:
+    """In scope by the general question, by the corporate/legal/national-security one, or because a well-informed
+    follower of AI and tech would want to know it."""
+    corporate = answers.get("corporate") if hasattr(answers, "get") else None
+    return (answers["in_scope"].noul >= JEV_IN_SCOPE_THRESHOLD
+            or (corporate is not None and corporate.noul >= JEV_IN_SCOPE_THRESHOLD)
+            or _jev_importance(answers) >= JEV_IMPORTANT_THRESHOLD)
+
+
+class WriterNetworkError(Exception):
+    """The Claude call kept failing on network errors after every retry."""
+
+
+RETRY_DELAYS_SECONDS = (5, 20, 60)
+
+
+def _is_transient(exc: Exception, anthropic) -> bool:
+    """Network-level and server-side failures worth retrying. A dropped or
+    stale connection (e.g. after the Mac slept) can surface mid-stream as a
+    raw httpx error the SDK doesn't wrap or retry."""
+    status_cls = getattr(anthropic, "APIStatusError", ())
+    if status_cls and isinstance(exc, status_cls):
+        return exc.status_code in (408, 409, 429) or exc.status_code >= 500
+    transient = tuple(c for c in (getattr(anthropic, "APIConnectionError", None),
+                                   getattr(anthropic, "APITimeoutError", None)) if c)
+    return isinstance(exc, transient + (OSError, TimeoutError)) or type(exc).__module__.startswith("httpx")
+
+
+def _stream_with_retries(client, anthropic, **kwargs):
+    """One streamed Claude call, retried on transient network errors."""
+    import time
+
+    from . import usage
+
+    try:
+        usage.check()  # the run's Claude budget: a spent budget fails the call, and the writers carry on without it
+    except usage.BudgetExceeded as exc:
+        raise WriterNetworkError(f"Claude budget reached: {exc}") from exc
+    last: Exception | None = None
+    for attempt, delay in enumerate((0,) + RETRY_DELAYS_SECONDS, start=1):
+        if delay:
+            time.sleep(delay)
+        try:
+            with client.beta.messages.stream(**kwargs) as stream:
+                message = stream.get_final_message()
+            usage.record(kwargs.get("model"), getattr(message, "usage", None))
+            return message
+        except Exception as exc:  # noqa: BLE001 - classified below
+            if not _is_transient(exc, anthropic):
+                raise
+            last = exc
+            log.warning("Claude call failed (%s); attempt %d of %d", type(exc).__name__,
+                        attempt, 1 + len(RETRY_DELAYS_SECONDS))
+    raise WriterNetworkError(f"{type(last).__name__}: {last}") from last
+
+
+def _writer_system() -> str:
+    """WRITER_SYSTEM plus the grounding rules and the active character's persona, if it has one."""
+    from .characters import active
+    from .factcheck import GROUNDING_RULES
+
+    base = WRITER_SYSTEM + GROUNDING_RULES
+    character = active()
+    if not (character and character.persona):
+        return base
+    return (
+        base
+        + f"\nNarrator character\n- The narrator is {character.name}: {character.persona.rstrip('. ')}. "
+        "This shapes tone and word choice only. Every fact, number and claim must still come "
+        "from the stories, and the word budget and spoken-text rules above still apply.\n"
+    )
+
+
+def _call_cards_writer(user: str) -> list | None:
+    """One structured-output call of the avatar cards writer: its videos list, or None when Claude is
+    unavailable or the answer is unusable."""
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return None
     try:
         import anthropic
     except ImportError:
         return None
+    try:
+        output_config = {"format": {"type": "json_schema", "schema": _WRITER_SCHEMA}}
+        effort = os.environ.get("WRITER_EFFORT", DEFAULT_WRITER_EFFORT)
+        if effort:
+            output_config["effort"] = effort  # how hard Claude reasons; lower = fewer output tokens
+        client = anthropic.Anthropic(timeout=ANTHROPIC_TIMEOUT_SECONDS, max_retries=2)
+        # Streamed: several scripts can run past the non-streaming output limit
+        # (~3k output tokens per video).
+        response = _stream_with_retries(
+            client, anthropic,
+            model=WRITER_MODEL,
+            max_tokens=64000,
+            system=_writer_system(),
+            messages=[{"role": "user", "content": user}],
+            output_config=output_config,
+            betas=["server-side-fallback-2026-07-01"],
+            # On a safety-classifier decline, re-run on Anthropic's recommended model.
+            extra_body={"fallbacks": "default"},
+        )
+    except (anthropic.APIError, WriterNetworkError) as e:
+        log.warning("Claude script writer failed (%s)", type(e).__name__)
+        return None
+    if response.stop_reason in ("refusal", "max_tokens"):
+        log.warning("Claude script writer stopped with %s", response.stop_reason)
+        return None
+    text = next((b.text for b in response.content if b.type == "text"), "")
+    try:
+        videos = json.loads(text)["videos"]
+        if not isinstance(videos, list):
+            raise TypeError("videos is not a list")
+    except (json.JSONDecodeError, KeyError, TypeError):
+        log.warning("Claude script writer returned unparseable JSON")
+        return None
+    log.info("Claude wrote %d scripts (%d in / %d out tokens)", len(videos),
+             response.usage.input_tokens, response.usage.output_tokens)
+    return videos
+
+
+def _check_cards_video(video: Any, candidates: list[Story]) -> tuple[Script | None, list[str]]:
+    """(script, problems) for one video of the cards writer: its shape, its word count and its evidence."""
+    from . import factcheck
+
+    try:
+        script = _script_from_llm(video, candidates)
+    except (KeyError, TypeError, AttributeError, ValueError) as exc:  # schema violation
+        return None, [f"malformed video ({type(exc).__name__}: {exc})"]
+    if script is None:
+        return None, ["the hook, beats, outro and title are all required"]
+    problems = []
+    if not (MIN_LLM_WORDS <= script.word_count <= MAX_LLM_WORDS):
+        problems.append(f"{script.word_count} spoken words (allowed {MIN_LLM_WORDS}-{MAX_LLM_WORDS})")
+    source = "\n".join(factcheck.story_text(st) for st in script.stories)
+    if source:
+        lines = [script.hook] + [b.say for b in script.beats] + [script.outro]
+        errors, _, _ = factcheck.check_evidence(video.get("evidence"), lines, source)
+        if factcheck.evidence_strict("avatar"):
+            problems += errors
+        elif errors:
+            log.info("Cards writer: %r evidence (not enforced): %s", script.title, "; ".join(errors))
+    elif factcheck.evidence_strict("avatar"):  # a video with no source cannot be checked
+        problems.append("story_ids must name at least one of the stories by its [id]")
+    return (None if problems else script), problems
+
+
+def _cards_candidate(video: dict, script: Script):
+    from . import factcheck
+
+    lines = [script.hook] + [b.say for b in script.beats] + [script.outro]
+    source = "\n".join(factcheck.story_text(st) for st in script.stories)
+    _, warnings, mapping = factcheck.check_evidence(video.get("evidence"), lines, source)
+    return factcheck.Candidate(title=script.title, stories=list(script.stories),
+                               items=factcheck.items_for_script(script), key=(video, script),
+                               evidence=mapping, evidence_warnings=warnings)
+
+
+def _llm_scripts(candidates: list[Story], n_videos: int) -> list[Script] | None:
+    """The avatar cards writer: one call for the day, one repair of videos that fail the checks (word count,
+    evidence), then the fact check (factcheck.gate). None when Claude could not be used at all; a list (maybe
+    empty) when it ran."""
+    from . import factcheck
 
     stories = "\n\n".join(
-        f"[{i}] ({s.edition} / {s.section}) {s.title}\n{_trim(s.summary, LLM_SUMMARY_CHARS)}"
+        f"[{i}] ({s.edition} / {s.section}) {s.title}{_site(s)}\n{_trim(s.summary, WRITER_SUMMARY_CHARS)}"
         for i, s in enumerate(candidates)
     )
     user = (
         f"Write exactly {n_videos} videos from today's stories below. Order them with "
         f"the strongest video first. Reference stories by their [id].\n\n{stories}"
     )
-    try:
-        output_config = {"format": {"type": "json_schema", "schema": _WRITER_SCHEMA}}
-        effort = os.environ.get("WRITER_EFFORT", DEFAULT_WRITER_EFFORT)
-        if effort:
-            output_config["effort"] = effort  # how hard Claude reasons; lower = fewer output tokens
-        client = anthropic.Anthropic()
-        # Streamed: several scripts can run past the non-streaming output limit
-        # (~3k output tokens per video).
-        with client.beta.messages.stream(
-            model=WRITER_MODEL,
-            max_tokens=64000,
-            system=WRITER_SYSTEM,
-            messages=[{"role": "user", "content": user}],
-            output_config=output_config,
-            betas=["server-side-fallback-2026-07-01"],
-            # On a safety-classifier decline, re-run on Anthropic's recommended model.
-            extra_body={"fallbacks": "default"},
-        ) as stream:
-            response = stream.get_final_message()
-    except anthropic.APIError as e:
-        log.warning("Claude script writer failed (%s); using rule-based scripts", type(e).__name__)
+    videos = _call_cards_writer(user)
+    if videos is None:
         return None
-    if response.stop_reason in ("refusal", "max_tokens"):
-        log.warning("Claude script writer stopped with %s; using rule-based scripts", response.stop_reason)
-        return None
-    text = next((b.text for b in response.content if b.type == "text"), "")
-    try:
-        videos = json.loads(text)["videos"]
-    except (json.JSONDecodeError, KeyError):
-        log.warning("Claude script writer returned unparseable JSON; using rule-based scripts")
-        return None
-    log.info("Claude wrote %d scripts (%d in / %d out tokens)", len(videos),
-             response.usage.input_tokens, response.usage.output_tokens)
-
-    scripts = []
+    results = []
     for video in videos[:n_videos]:
-        beats = []
-        for raw in video["beats"]:
-            highlight = raw["highlight"] if raw["highlight"] and raw["highlight"] in raw["card"] else None
-            is_stat = raw["kind"] == "stat" and raw["stat"].strip()
-            beats.append(Beat(say=raw["say"], card=raw["card"], highlight=highlight,
-                              kind="stat" if is_stat else "fact", stat=raw["stat"].strip() if is_stat else ""))
-        if not beats:
+        script, problems = _check_cards_video(video, candidates)
+        results.append((video, script, problems))
+    rejected = [i for i, (_, sc, _) in enumerate(results) if sc is None]
+    if rejected:
+        notes = "\n".join(f"- video {i + 1}:\n  " + "\n  ".join(results[i][2]) for i in rejected)
+        log.info("Cards writer: %d of %d videos rejected, asking Claude to fix them once:\n%s", len(rejected),
+                 len(results), notes)
+        again = _call_cards_writer(user + "\n\nYour previous answer is below. The automatic checks rejected these "
+                                   "videos:\n" + notes + "\n\nReturn all videos again: keep the accepted ones exactly "
+                                   "as they were and rewrite the rejected ones so they pass.\n\nPrevious answer:\n"
+                                   + json.dumps({"videos": videos}))
+        for i in rejected:
+            if again is not None and i < len(again):
+                script, problems = _check_cards_video(again[i], candidates)
+                results[i] = (again[i], script, problems)
+    accepted = []
+    for video, script, problems in results:
+        if script is None:
+            title = str(video.get("title", "") if isinstance(video, dict) else "") or "Untitled"
+            ids = video.get("story_ids") if isinstance(video, dict) else []
+            factcheck.note_drop("avatar", "validator", title,
+                                [candidates[i] for i in ids or [] if isinstance(i, int) and 0 <= i < len(candidates)],
+                                problems)
             continue
-        scripts.append(Script(
-            title=video["title"],
-            badge=video["badge"].upper()[:14],
-            hook=video["hook"],
-            beats=beats,
-            outro=video["outro"],
-            stories=[candidates[i] for i in video["story_ids"] if 0 <= i < len(candidates)],
-            post_caption=video["post_caption"].strip(),
-            hashtags=[re.sub(r"[^\w]", "", h).lower() for h in video["hashtags"] if h.strip()][:5],
-        ))
-    return scripts or None
+        accepted.append((video, script))
+
+    def rewrite(pairs):
+        prompt = (user + "\n\n" + factcheck.repair_prompt(
+            f"Return exactly {len(pairs)} videos, in the order listed, each with the same story_ids.", pairs)
+            + "\n\nThe videos as you wrote them:\n" + json.dumps([c.key[0] for c, _ in pairs]))
+
+        def check(v):
+            script, problems = _check_cards_video(v, candidates)
+            return (_cards_candidate(v, script) if script is not None else None), problems
+
+        return factcheck.checked_rewrites([c.key[0] for c, _ in pairs], list(_call_cards_writer(prompt) or []), check,
+                                          lambda tail: _call_cards_writer(prompt + tail))
+
+    result = factcheck.gate("avatar", [_cards_candidate(v, sc) for v, sc in accepted], rewrite)
+    scripts = []
+    for cand, rec in result.accepted:
+        script = cand.key[1]
+        script.fact_check = rec
+        scripts.append(script)
+    return scripts
+
+
+# Hard bounds on what the writer may hand to the voice: the pace adjustment in
+# video_builder covers small misses (it aims for 100-110 words); far outside
+# that, the video would run past a minute or be a few seconds of nothing.
+MIN_LLM_WORDS = 50
+MAX_LLM_WORDS = 170
+
+
+def _script_from_llm(video: dict, candidates: list[Story]) -> Script | None:
+    beats = []
+    for raw in video["beats"]:
+        highlight = raw["highlight"] if raw["highlight"] and raw["highlight"] in raw["card"] else None
+        is_stat = raw["kind"] == "stat" and raw["stat"].strip()
+        beats.append(Beat(say=raw["say"], card=raw["card"], highlight=highlight,
+                          kind="stat" if is_stat else "fact", stat=raw["stat"].strip() if is_stat else ""))
+    if not beats or not str(video["hook"]).strip() or not str(video["outro"]).strip() or not str(video["title"]).strip():
+        return None
+    return Script(
+        title=video["title"],
+        badge=video["badge"].upper()[:14],
+        hook=video["hook"],
+        beats=beats,
+        outro=video["outro"],
+        stories=[candidates[i] for i in video["story_ids"] if 0 <= i < len(candidates)],
+        post_caption=video["post_caption"].strip(),
+        hashtags=[re.sub(r"[^\w]", "", h).lower() for h in video["hashtags"] if h.strip()][:5],
+        writer="claude",
+    )
 
 
 def _is_covered(title: str, covered_norm: list[str]) -> bool:
@@ -665,12 +906,71 @@ def build_scripts(editions: list[Edition], n_videos: int | None = None,
     jev_filtered = _jev_rank_candidates(llm_candidates, n_videos)
     if jev_filtered is not None:
         llm_candidates = jev_filtered
+    from .explainer_builder import explainer_mode, video_style  # VIDEO_STYLE=explainer: scene plans, see explainer_writer
+
+    if video_style() == "avx":  # the avatar explainer: scene lists, see avx_writer
+        from .avx_writer import heuristic_avx_scripts, llm_avx_scripts, middle_sequence
+
+        def write_avx(pool, n, done):
+            return llm_avx_scripts(pool, n, avoid_shapes=tuple(middle_sequence(s.avx_scenes) for s in done
+                                                                if getattr(s, "avx_scenes", None)))
+
+        scripts = with_refill("avx", write_avx, llm_candidates, n_videos) if llm_candidates else None
+        if scripts is not None:  # Claude ran; an empty list means every plan was rejected, not a fallback
+            return scripts
+        return heuristic_avx_scripts(_heuristic_scripts(editions, candidates, n_videos))
+    if explainer_mode():
+        from .explainer_writer import llm_explainer_scripts, structural_explainer_scripts
+
+        scripts = with_refill("explainer", lambda pool, n, done: llm_explainer_scripts(pool, n),
+                              llm_candidates, n_videos) if llm_candidates else None
+        if scripts is not None:  # Claude ran; an empty list means every plan was rejected, not a fallback
+            return scripts
+        return structural_explainer_scripts(_heuristic_scripts(editions, candidates, n_videos))
     if llm_candidates:
-        scripts = _llm_scripts(llm_candidates, n_videos)
+        scripts = with_refill("avatar", lambda pool, n, done: _llm_scripts(pool, n), llm_candidates, n_videos)
         if scripts:
             return scripts
+        # As before: nothing usable from Claude means rule-based scripts, tagged "heuristic", which
+        # run_pipeline's FALLBACK_UPLOAD policy keeps off the channel by default.
     return _heuristic_scripts(editions, candidates, n_videos)
 
+
+def with_refill(fmt: str, write, candidates: list[Story], n_videos: int) -> list[Script] | None:
+    """Writes the day's videos, then replaces dropped ones: when the writer's checks (validator, editor, fact
+    check) leave fewer than `n_videos`, the writer is asked again for the shortfall from the stories nobody has
+    used yet (not the dropped videos' stories either), at most FACTCHECK_REFILL_ROUNDS extra rounds. Never
+    ships a failing video to hit the count: a day can still end short. `write(pool, n, done)` returns a list,
+    or None when Claude could not be used (only meaningful on the first round)."""
+    from . import factcheck
+
+    mark = factcheck.drop_mark()
+    scripts = write(candidates, n_videos, [])
+    if scripts is None:
+        return None
+    scripts = list(scripts)[:n_videos]
+    rounds = 0
+    while len(scripts) < n_videos and rounds < factcheck.refill_rounds():
+        used = {st.title for sc in scripts for st in sc.stories}
+        used |= {t for d in factcheck.drops_since(mark) for t in d["stories"]}
+        pool = [s for s in candidates if s.title not in used]
+        if not pool:
+            log.warning("Refill (%s): no unused stories left; the day has %d of %d videos", fmt, len(scripts), n_videos)
+            break
+        rounds += 1
+        want = n_videos - len(scripts)
+        log.info("Refill (%s) round %d: %d video(s) short, asking for %d more from %d unused stories", fmt, rounds,
+                 want, want, len(pool))
+        more = write(pool, want, list(scripts))
+        if more is None:
+            log.warning("Refill (%s): the writer was unavailable; keeping %d of %d videos", fmt, len(scripts), n_videos)
+            break
+        scripts += list(more)[:want]
+    drops = factcheck.drops_since(mark)
+    if drops or rounds:
+        log.info("Day (%s): %d of %d videos after %d refill round(s); %d dropped: %s", fmt, len(scripts), n_videos,
+                 rounds, len(drops), "; ".join(f"{d['title'][:50]!r} ({d['stage']})" for d in drops))
+    return scripts
 
 if __name__ == "__main__":
     from datetime import date
@@ -683,3 +983,11 @@ if __name__ == "__main__":
         for beat in script.beats:
             print(f"  - say: {beat.say}\n    card: {beat.card!r} (highlight={beat.highlight!r}, {beat.kind} {beat.stat})")
         print(f"  outro: {script.outro}")
+
+
+def _site(story) -> str:
+    """" [link: nytimes.com]": who published the linked article, so an allegation can be attributed to it."""
+    from .factcheck import publisher
+
+    site = publisher(getattr(story, "url", ""))
+    return f" [link: {site}]" if site else ""
