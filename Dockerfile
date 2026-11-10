@@ -12,7 +12,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # ffmpeg for audio/video, and the shared libraries headless Chrome needs.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ffmpeg curl ca-certificates fontconfig fonts-liberation \
+        ffmpeg curl unzip ca-certificates fontconfig fonts-liberation \
         libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
         libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 libpango-1.0-0 libcairo2 libx11-6 libxext6 \
         libxshmfence1 libglib2.0-0 libdbus-1-3 \
