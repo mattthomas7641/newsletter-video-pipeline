@@ -31,7 +31,7 @@ RUN pip install -r requirements-cloud.txt
 # Everything the run downloads on a first start is baked in, so a job never waits on (or breaks over) the network:
 # the HyperFrames CLI and its Chrome, the Kokoro voice, and the Whisper model that times the captions.
 ARG HYPERFRAMES_VERSION=0.8.141
-RUN npx --yes hyperframes@${HYPERFRAMES_VERSION} browser ensure
+RUN timeout 900 npx --yes hyperframes@${HYPERFRAMES_VERSION} browser ensure
 RUN mkdir -p /root/.cache/hyperframes/tts/models /root/.cache/hyperframes/tts/voices \
     && curl -fL -o /root/.cache/hyperframes/tts/models/kokoro-v1.0.onnx \
         https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx \
