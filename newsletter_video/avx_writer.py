@@ -871,9 +871,9 @@ the moment that element should appear. A list item, a timeline step or a versus 
 that names it. Write each `say` so the elements are named early enough to be seen: never cue the last \
 word of the line.
 - On-screen text is short and punchy and respects every character cap above; text over a cap is rejected \
-and the video is dropped. The check is exact: ONE character over drops the whole video. Count the characters \
-(spaces included) of every label, tag, item, line and card before you answer, and aim for two under the cap. \
-When a phrase will not fit, use a shorter word, never a longer one.
+and the video is dropped, except that a program automatically trims any text that is only a little over. \
+So do not spend effort counting characters: write short (two or three words for a label, tag or item), pick the \
+shorter word, and put your effort into the content and the clarity.
 - `title`: a post title under 70 characters, usually 4-10 words that read like speech: the specific news first \
 (company, number, what changed) in plain words, promising exactly what the video delivers; no all caps, no \
 clickbait, no emoji, no jargon. \
@@ -1119,6 +1119,20 @@ DRAFT_MODEL_DEFAULT = ""  # "" = the writer model (Sonnet) for everything; AVX_D
 HAIKU_MAX_TOKENS = 32000  # a Haiku call that reasons without end stops here instead of at 64,000
 
 
+SHORTEN_MODEL_DEFAULT = "claude-haiku-5-5"  # shortening a label is a job for the cheap model, thinking off
+DEFAULT_REPAIR_ROUNDS = 1
+DRAFT_MODEL_REPAIR_ROUNDS = 4
+
+
+def repair_rounds() -> int:
+    """How many rewrite rounds a rejected video gets (AVX_REPAIR_ROUNDS): 1 on the writer model, 4 when a cheap draft
+    model is set."""
+    raw = os.environ.get("AVX_REPAIR_ROUNDS", "").strip()
+    if raw.isdigit() and int(raw) >= 1:
+        return int(raw)
+    return DRAFT_MODEL_REPAIR_ROUNDS if draft_model() else DEFAULT_REPAIR_ROUNDS
+
+
 def draft_model() -> str:
     """The model for the day's drafts, repairs and shortening (AVX_DRAFT_MODEL), or "" for the writer model. The editor
     and the fact check always use the writer model. Measured 2026-11-10: Haiku 5.5 with its thinking off wrote two
@@ -1138,7 +1152,10 @@ def _claude_json(system: str, user: str, schema: dict, what: str, key: str) -> d
         return None
     try:
         output_config = {"format": {"type": "json_schema", "schema": schema}}
-        model = draft_model() if what in ("writer", "shortener") and draft_model() else WRITER_MODEL
+        if what == "shortener":
+            model = os.environ.get("AVX_SHORTEN_MODEL", SHORTEN_MODEL_DEFAULT).strip() or WRITER_MODEL
+        else:
+            model = draft_model() if what == "writer" and draft_model() else WRITER_MODEL
         extra: dict = {}
         max_tokens = 64000
         if model.startswith("claude-haiku"):
@@ -1320,6 +1337,28 @@ SHORTEN_SYSTEM = (
     "Prefer a shorter word to dropping a word. Answer only with the JSON.")
 
 
+_FILLER = {"the", "a", "an", "of", "to", "in", "on", "for", "and", "or", "is", "are", "just", "very", "really", "its", "it"}
+
+
+def trim_to(text: str, cap: int) -> str:
+    """`text` cut to at most `cap` characters by code, for when the model cannot do it: trailing punctuation goes, then
+    filler words (not the first word), then words from the end, always whole words. "" when even the first word does
+    not fit. Only ever shortens; the editor still reads the result."""
+    t = re.sub(r"[\s?!.,:;]+$", "", text.strip())
+    words = t.split()
+    for i in range(len(words) - 1, 0, -1):
+        if len(" ".join(words)) <= cap:
+            break
+        if words[i].lower().strip(",.") in _FILLER:
+            del words[i]
+    while len(" ".join(words)) > cap and len(words) > 1 and words[0].lower() in _FILLER:
+        del words[0]  # a leading "or" / "the" goes before real words do
+    while len(" ".join(words)) > cap and len(words) > 1:
+        words.pop()
+    out = " ".join(words)
+    return out if 0 < len(out) <= cap else ""
+
+
 def _replace_text(node: Any, old: str, new: str) -> Any:
     """`node` (a scene dict) with every string exactly equal to `old` replaced by `new`."""
     if isinstance(node, dict):
@@ -1371,6 +1410,8 @@ def _shorten_over_cap(results: list, candidates: list[Story], rounds: int = 3) -
             changed = 0
             for k, (vi, n, old, cap, _) in enumerate(jobs):
                 new = shorter.get(k, "")
+                if vi == i and not (new and len(new) < len(old)):
+                    new = trim_to(old, cap)  # the model could not (or did not) shorten it: code does
                 if vi == i and new and len(new) < len(old):  # only progress counts
                     video["scenes"][n] = _replace_text(video["scenes"][n], old, new)
                     changed += 1
@@ -1409,13 +1450,19 @@ def _validated_videos(user: str, n_videos: int, candidates: list[Story],
             results.append((video, None, exc.errors))
     for i, why in _clashes(results, avoid_shapes).items():
         results[i] = (results[i][0], None, [why])
-    _shorten_over_cap(results, candidates)
-    rejected = [(i, v, errs) for i, (v, s, errs) in enumerate(results) if s is None]
-    if rejected:
+    # Repair rounds. On the writer model (Sonnet) one round is enough and a rewrite costs real money; on a cheap
+    # drafting model (AVX_DRAFT_MODEL) a rewrite costs under a cent, so each rejected video gets several rounds, each
+    # told the exact errors that remain (a model that cannot count characters converges when told the counts).
+    rounds = repair_rounds()
+    for round_no in range(1, rounds + 1):
+        _shorten_over_cap(results, candidates)
+        rejected = [(i, v, errs) for i, (v, s, errs) in enumerate(results) if s is None]
+        if not rejected:
+            break
         notes = "\n".join(f"- video {i + 1} ({str(v.get('title', '') if isinstance(v, dict) else '')[:60]!r}):\n  "
                           + "\n  ".join(errs) for i, v, errs in rejected)
-        log.info("Avatar explainer: %d of %d scene lists rejected, asking Claude to fix them once:\n%s",
-                 len(rejected), len(results), notes)
+        log.info("Avatar explainer: %d of %d scene lists rejected, asking Claude to fix them (round %d of %d):\n%s",
+                 len(rejected), len(results), round_no, rounds, notes)
         # Only the rejected videos are rewritten: returning a whole day of scene lists again would run past the
         # output limit (one avx video is ~5k output tokens).
         keep = [middle_sequence(sc) for _, sc, _ in results if sc] + [tuple(x) for x in avoid_shapes]
@@ -1447,6 +1494,7 @@ def _validated_videos(user: str, n_videos: int, candidates: list[Story],
                 results[i] = (videos2[0], None, exc.errors)
         for i, why in _clashes(results, avoid_shapes).items():
             results[i] = (results[i][0], None, [why])
+    _shorten_over_cap(results, candidates)  # the last rewrite may be one shortening away from passing
     accepted = []
     for video, scenes, notes in results:
         title = str(video.get("title", "") if isinstance(video, dict) else "").strip() or "Untitled"
