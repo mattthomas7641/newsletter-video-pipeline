@@ -1,7 +1,18 @@
 # ByteSize News (Newsletter-to-Video Pipeline)
 
+[![tests](https://github.com/mattthomas7641/newsletter-video-pipeline/actions/workflows/tests.yml/badge.svg)](https://github.com/mattthomas7641/newsletter-video-pipeline/actions/workflows/tests.yml)
+
 An unattended daily pipeline that turns the [TLDR](https://tldr.tech) newsletters into
 40–45 second vertical (1080×1920) tech-news explainers and uploads them to YouTube Shorts.
+Live channel: [Byte Sized AI News](https://www.youtube.com/@byte-sized-ai-news-11).
+
+| | |
+|---|---|
+| **Runs** | Cloud Scheduler starts a Cloud Run job at 12:00 noon ET. No laptop involved ([docs/cloud.md](docs/cloud.md)). |
+| **Output** | Up to 10 Shorts a day. A fact check and an editor pass drop any video that fails them, so a day can finish with fewer: on 2026-11-11 it posted 7, dropped 12 drafts, and took 33 minutes. |
+| **Cost** | Claude about $0.14 to $0.22 per finished video depending on the writer prompt, plus about $0.35 a day for Cloud Run (an estimate, not yet seen on a bill). Details in [Cost](#cost). |
+| **Guardrails** | A hard per-run Claude budget and deadline, a fact check and an editor on every script, a duplicate-upload guard, least-privilege service accounts, secrets in Secret Manager, a private bucket with a 7-day lifecycle, budget alerts, and a phone alert after every run. |
+| **Also** | A second channel can remake the first channel's best videos with another narrator and voice, with no Claude calls ([docs/second-channel.md](docs/second-channel.md)). |
 
 ```
 tldr.tech (4 editions) ──▶ scrape ──▶ Jev screens ──▶ Claude writes ──▶ voice each line ──▶ HyperFrames ──▶ MP4s ──▶ YouTube
@@ -17,9 +28,10 @@ a topic badge, one punchy card per spoken beat that slides, drops, zooms or flip
 and a narrator character at the bottom of the frame. An outro card
 asks viewers to comment.
 
-- **Runs itself:** a macOS `launchd` job writes, voices, renders and uploads the day's
-  videos on a schedule (the time is in the launchd plist), logging every stage. With a locally cloned voice, 10 videos take about
-  85 minutes on a laptop. Or, in approval mode (`DAILY_MODE=plan`), it only writes the
+- **Runs itself, in the cloud or on a Mac:** the same code writes, voices, renders and uploads the day's
+  videos on a schedule, logging every stage. In the cloud, videos upload as each one finishes (the run takes about
+  5 minutes a video). On a Mac, a `launchd` job does it (the time is in the plist), and with a locally cloned voice
+  10 videos take about 85 minutes. Or, in approval mode (`DAILY_MODE=plan`), it only writes the
   day's plan and notifies you; you review it in the control panel and press Render.
 - **Two-stage story selection:** with a TypeSafe API key, Jev screens every candidate for
   scope and newsworthiness first, so Claude only sees the shortlist (see
