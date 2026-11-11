@@ -188,6 +188,37 @@ def build_payload(scenes: list[dict], per_line: list[list[tuple[str, float]]], s
     return payload
 
 
+# --- background: plain colour grounds, or gameplay footage behind the same animations -----------------
+
+GAMEPLAY_GROUND = "#0d0f14"  # the dark ground the type and cards are coloured against when footage is behind them
+
+
+def background_clips() -> list[Path]:
+    from .video_builder import BACKGROUND_DIR
+
+    return sorted(BACKGROUND_DIR.glob("*.mp4"))
+
+
+def gameplay_background() -> bool:
+    """AVX_BACKGROUND=gameplay puts a muted stretch of the footage in assets/background/ (Minecraft parkour) behind
+    the animations: the same scenes and graphics, with no colour ground. Anything else (unset, "plain") keeps the
+    colour backgrounds. Read here, not at import, so a value from .env takes effect. Without any clip it stays
+    plain, never half-and-half."""
+    return os.environ.get("AVX_BACKGROUND", "").strip().lower() == "gameplay" and bool(background_clips())
+
+
+def _place_background(assets: Path, duration: float, seed: str, gameplay: bool) -> bool:
+    """Writes assets/bg.mp4, which the composition's static <video> needs even when it is not shown: a cut of
+    footage `duration` long (seeded, so a re-run of the same video is identical) in gameplay mode, a blank clip
+    otherwise. Returns whether footage is behind the video."""
+    from .video_builder import _blank_background, _cut_background
+
+    if gameplay and _cut_background(background_clips(), assets / "bg.mp4", duration, seed):
+        return True
+    _blank_background(assets / "bg.mp4", duration)
+    return False
+
+
 # --- render -------------------------------------------------------------------
 
 def _prepare_workdir(work_dir: Path) -> None:
@@ -335,7 +366,7 @@ def render(work_dir: Path, variables: Path, out_path: Path, log_path: Path, crf:
 
 def build_avx(scenes: list[dict], out_path: Path, work_dir: Path, *, draft_labels: bool = False,
               speed: float | None = None, seed: str = "avx", render_video: bool = True, crf: str = DRAFT_CRF,
-              audio_out: Path | None = None, log_path: Path | None = None) -> dict:
+              audio_out: Path | None = None, log_path: Path | None = None, gameplay: bool = False) -> dict:
     """Voices the scenes (one TTS call per scene), aligns words, writes the payload and
     renders. Returns timing info. render_video=False stops after the payload (for
     snapshots). `audio_out` keeps a copy of the narration (the pipeline's _audio/<date>/NN.wav)."""
@@ -365,6 +396,7 @@ def build_avx(scenes: list[dict], out_path: Path, work_dir: Path, *, draft_label
     avatar = _avatar_assets(assets, seed, [s["start"] for s in payload_probe["scenes"]],
                             [s.get("pose") for s in scenes], [s["style"] for s in scenes])
     payload = build_payload(scenes, per_line, speech_end, draft_labels, avatar)
+    payload["gameplay"] = _place_background(assets, payload["duration"], seed, gameplay)
     _pad_audio(raw, assets / "voice.wav", max(0.0, payload["duration"] - length))
     variables = work_dir / "story.json"
     variables.write_text(json.dumps({"story": json.dumps(payload)}))
@@ -552,7 +584,10 @@ def build_avx_short(script, out_path: Path, audio_path: Path, kicker: str = "", 
     environment (look.applied): CHARACTER narrates, LOOK_BG / LOOK_ACCENT colour the scenes."""
     from .avx_writer import scenes_for
 
-    scenes = apply_look(scenes_for(script), os.environ.get("LOOK_BG", ""), os.environ.get("LOOK_ACCENT", ""), seed=seed)
+    gameplay = gameplay_background()
+    # With footage behind, every scene shares one dark ground (so no colour wipes) and the type is coloured for it.
+    scenes = apply_look(scenes_for(script), GAMEPLAY_GROUND if gameplay else os.environ.get("LOOK_BG", ""),
+                        os.environ.get("LOOK_ACCENT", ""), seed=seed)
     work_dir = audio_path.parent.parent / "_hf_work_avx"
     from .video_builder import RENDER_CRF
 
@@ -562,7 +597,7 @@ def build_avx_short(script, out_path: Path, audio_path: Path, kicker: str = "", 
              f"background {scenes[0]['bg']}" if len({s['bg'] for s in scenes}) == 1
              else f"{variety['family']} family, {variety['rhythm']} rhythm, {'+'.join(variety['transitions'])}")
     info = build_avx(scenes, out_path, work_dir, seed=seed, crf=RENDER_CRF, audio_out=audio_path,
-                     log_path=audio_path.with_suffix(".render.log"))
+                     log_path=audio_path.with_suffix(".render.log"), gameplay=gameplay)
     from .thumbnails import avx_title_time, remember
 
     remember(out_path, lambda: avx_title_time(info["payload"]), "avx")  # the thumbnail is the hook, fully typed
