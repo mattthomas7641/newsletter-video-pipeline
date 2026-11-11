@@ -61,7 +61,9 @@ asks viewers to comment.
   Short stories are expanded from their linked article, or bundled into a quick-hits video.
 - **Clearer, honest writing:** the writer is told to open on the news in plain words, explain every unfamiliar name,
   and report a story as it is. Code checks reject question openers, fragments, jargon in the hook and dramatic words
-  the story does not use (`jargon.py`, `avx_writer.py`).
+  the story does not use (`jargon.py`, `avx_writer.py`). This is the newer, clearer writer: it is in the code and
+  tested, but it costs about $0.22 a video against $0.14, so the daily cloud job currently runs the earlier writer to
+  stay under its daily budget. Deploying it is a rebuild and a job update ([docs/cloud.md](docs/cloud.md)).
 - **Cost controls:** a per-run Claude budget, a cost line in every run summary, a cheap shortening step for text over
   its character cap, and measured numbers in [Cost](#cost).
 
