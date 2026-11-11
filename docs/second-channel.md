@@ -47,3 +47,27 @@ clone only runs on a Mac with the Voicebox app (slow and prone to stalls on 8 GB
 - `gameplay`: muted footage from `assets/background/*.mp4` behind **the same animations**. The scenes and graphics are
   unchanged; each scene's colour ground goes transparent, a dark shade sits over the footage, and the type and cards
   use a light palette. With no clip in `assets/background/` it stays plain.
+
+## More poses for a narrator
+
+A narrator with several pictures swaps between them scene by scene (a neutral one, one pointing, one thinking...).
+`python -m newsletter_video.characters add-pose <narrator> <image> --role present|think|point|shrug` adds one and lines
+it up with the others. It cuts the background out itself, which works for a flat background but can fail on an image
+that is already transparent or has a white background around a white shirt. In that case cut the image out first
+(flood-fill the background from the edges, so the white shirt, ringed by its outline, stays) and add the finished
+transparent PNG. Look at the result before rendering: a bad cutout shows up as a missing shirt or a floating shadow.
+
+## Scheduling it (macOS launchd)
+
+Copy `~/Library/LaunchAgents/com.tldrbrainrot.daily.plist` as a template, point `ProgramArguments` at this copy's
+`run_mirror.sh`, and set `StartCalendarInterval` to a time after the first channel's cloud run has finished
+(about 5 minutes per video; ten videos take about an hour). Two things launchd needs that a terminal does not:
+
+- `EnvironmentVariables` with `CLOUDSDK_PYTHON` set to a Python 3.10 or newer, and `PATH` including the Cloud SDK's
+  `bin`. launchd starts with a bare environment, `gsutil` then falls back to the system Python 3.9 and crashes, and
+  the run finds no source videos. Test it with `env -i HOME="$HOME" PATH=/usr/bin:/bin CLOUDSDK_PYTHON=... gsutil ls <source>`.
+- The Mac awake and on power. A sleeping Mac runs the job on wake.
+
+Load it with `launchctl bootstrap gui/$(id -u) <plist>`. The second channel makes no Claude calls: its only metered use
+is Jev's ranking (well under a cent a month). Its uploads count against the same YouTube API quota as the first
+channel's, because both sign in through the same Google Cloud project.
