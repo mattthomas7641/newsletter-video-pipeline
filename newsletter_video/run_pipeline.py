@@ -20,7 +20,7 @@ import signal
 import socket
 import sys
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -36,7 +36,8 @@ from .supervisor import (
 )
 from .video_builder import build_shorts
 from .youtube_upload import (
-    TOKEN, YouTubeAuthError, days_with_pending_uploads, pending_videos, refresh_thumbnails, upload_recent,
+    TOKEN, YouTubeAuthError, days_with_pending_uploads, finish_day_thumbnails, pending_videos, refresh_thumbnails,
+    same_day_thumbnail_wait, upload_recent,
     write_metadata,
 )
 
@@ -204,6 +205,42 @@ def _refresh_thumbnails(target_date: date, out_dir: Path) -> None:
         update_run(out_dir, thumbnail_refresh=result)
 
 
+_sleep = time.sleep  # the same-day thumbnail wait; a name of its own so tests can skip the wait
+
+
+def _finish_thumbnails(target_date: date, out_dir: Path) -> None:
+    """Re-sets the title-page thumbnails of the videos this run uploaded (youtube_upload.finish_day_thumbnails),
+    a few minutes after the last upload: the one set right after each upload doesn't stick on the Shorts tab,
+    and the next day's pass would leave a day of auto-picked frames. Last step of the run; never stops it. If
+    the wait would run into the watchdog's deadline the pass is left to tomorrow's run. The outcome goes to
+    status.json (run.thumbnail_same_day) and the run summary."""
+    try:
+        wait = same_day_thumbnail_wait(target_date)
+        if wait is None:
+            return
+        if wait:
+            deadline_min = int(os.environ.get("RUN_DEADLINE_MINUTES", DEFAULT_RUN_DEADLINE_MINUTES)
+                               or DEFAULT_RUN_DEADLINE_MINUTES)
+            started = load_state(out_dir)["run"].get("started")
+            left = (deadline_min * 60 - (datetime.now().astimezone() - datetime.fromisoformat(started)).total_seconds()
+                    if started else wait + 300)
+            if wait + 300 > left:  # keep 5 minutes for the thumbnails themselves and the final save
+                log.info("Same-day thumbnails left to tomorrow's run: the %.0f min wait would pass the run deadline",
+                         wait / 60)
+                update_run(out_dir, thumbnail_same_day={"day": target_date.isoformat(), "postponed": True})
+                return
+            log.info("Waiting %.0f min before re-setting today's thumbnails (YouTube ignores them on a Short "
+                     "that was just uploaded)", wait / 60)
+            _sleep(wait)
+        result = finish_day_thumbnails(target_date)
+    except YouTubeAuthError as exc:
+        result = {"error": str(exc)[:300]}
+    except Exception as exc:  # noqa: BLE001 - a thumbnail problem must never cost the day's videos
+        log.exception("Same-day thumbnails failed; tomorrow's run tries them again")
+        result = {"error": f"{type(exc).__name__}: {exc}"[:300]}
+    update_run(out_dir, thumbnail_same_day=result)
+
+
 def run(target_date: date | None = None) -> list[Path]:
     load_dotenv(PROJECT_ROOT / ".env")
     target_date = target_date or date.today()
@@ -328,6 +365,7 @@ def run(target_date: date | None = None) -> list[Path]:
         still_pending = sum(len(pending_videos(OUTPUT_DIR / d.isoformat()))
                             for d in days_with_pending_uploads(target_date))
         update_run(out_dir, pending_uploads=still_pending)
+        _finish_thumbnails(target_date, out_dir)
 
     clean_old_outputs(target_date)
     return paths
@@ -367,6 +405,14 @@ def run_summary(out_dir: Path, minutes: float) -> str:
         if refresh.get("skipped"):
             bits.append(f"{refresh['skipped']} skipped (no title page)")
         parts.append(f"earlier days' thumbnails: {', '.join(bits)}")
+    same_day = state["run"].get("thumbnail_same_day") or {}
+    if same_day.get("error"):
+        parts.append(f"today's thumbnails not re-set ({same_day['error'][:80]})")
+    elif same_day.get("postponed"):
+        parts.append("today's thumbnails left to tomorrow's run")
+    elif same_day.get("set") or same_day.get("failed"):
+        parts.append(f"today's thumbnails: {same_day.get('set', 0)} re-set"
+                     + (f", {same_day['failed']} failed" if same_day.get("failed") else ""))
     return "; ".join(parts)
 
 

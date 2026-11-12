@@ -3,14 +3,16 @@ from __future__ import annotations
 
 import json
 import subprocess
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 from PIL import Image, ImageDraw
 
 from newsletter_video import thumbnails, youtube_upload
 from newsletter_video.runstate import load_state
-from newsletter_video.youtube_upload import refresh_thumbnails, set_day_thumbnails, upload_day
+from newsletter_video.youtube_upload import (
+    finish_day_thumbnails, refresh_thumbnails, same_day_thumbnail_wait, set_day_thumbnails, upload_day,
+)
 from tests.test_youtube_upload import DAY, FakeHttpError, _day_folder, fake_youtube  # noqa: F401 (fixture)
 
 
@@ -328,3 +330,28 @@ def test_the_uploaded_thumbnail_is_the_vertical_title_page(tmp_path):
     media_bytes = media.getbytes(0, media.size())
     img = Image.open(__import__("io").BytesIO(media_bytes))
     assert img.size == (1080, 1920) and media.mimetype() == "image/jpeg" and media.size() < 2_000_000
+
+
+def test_same_day_wait_counts_from_the_newest_upload(fake_youtube, isolated_env):
+    folder = _uploaded_day(fake_youtube, isolated_env)
+    record = json.loads((folder / "uploads.json").read_text())
+    newest = max(datetime.fromisoformat(info["uploaded_at"]) for info in record.values())  # recorded at upload
+    assert same_day_thumbnail_wait(DAY, minutes=15, now=newest + timedelta(minutes=5)) == 600
+    assert same_day_thumbnail_wait(DAY, minutes=15, now=newest + timedelta(minutes=40)) == 0  # long enough ago
+    assert same_day_thumbnail_wait(DAY, minutes=0) is None  # the pass is off
+    assert same_day_thumbnail_wait(DAY + timedelta(days=1), minutes=15) is None  # nothing uploaded that day
+
+
+def test_same_day_pass_finishes_the_day_so_tomorrow_skips_it(fake_youtube, isolated_env):
+    _uploaded_day(fake_youtube, isolated_env)
+    calls = _thumbs_api(fake_youtube)
+    assert finish_day_thumbnails(DAY) == {"day": DAY.isoformat(), "set": 2, "failed": 0, "skipped": 0}
+    assert calls == ["vid1", "vid2"]
+    assert same_day_thumbnail_wait(DAY, minutes=15) is None  # a rerun today has nothing to wait for
+    assert refresh_thumbnails(DAY + timedelta(days=1))["set"] == 0 and len(calls) == 2  # nor has tomorrow's run
+
+
+@pytest.mark.parametrize("raw, expected", [("", 15), ("5", 5), ("0", 0), ("off", 0), ("soon", 15), ("-3", 0)])
+def test_same_day_minutes_setting(monkeypatch, raw, expected):
+    monkeypatch.setenv("THUMBNAIL_SAME_DAY_MINUTES", raw)
+    assert youtube_upload.thumbnail_same_day_minutes() == expected

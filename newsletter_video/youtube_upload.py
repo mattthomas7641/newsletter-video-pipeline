@@ -385,7 +385,8 @@ def upload_day(day: date, dry_run: bool = False) -> list[str]:
             record_video(folder, video.stem, "upload_failed", error=f"{type(exc).__name__}: {exc}"[:300])
             continue
         video_id = response["id"]
-        record[video.name] = {"id": video_id, "privacy": privacy, "publishAt": at, **_format_record(video)}
+        record[video.name] = {"id": video_id, "privacy": privacy, "publishAt": at, "uploaded_at": now_iso(),
+                              **_format_record(video)}
         write_json_atomic(record_path, record)
         record_video(folder, video.stem, "uploaded", youtube_id=video_id, privacy=privacy)
         uploaded.append(video_id)
@@ -464,7 +465,8 @@ def set_day_thumbnails(day: date, youtube=None, final: bool = False) -> dict[str
     name: outcome}. Stops at the first 403/429 (the rest would fail too; they stay to do for the next try).
 
     final=False (the `--thumbnails` backfill): videos whose `thumbnail` is not already "ok".
-    final=True (the next-day pass, refresh_thumbnails): videos whose `thumbnail_final` is not "ok", whatever
+    final=True (finish_day_thumbnails at the end of the run, else the next day's refresh_thumbnails): videos
+    whose `thumbnail_final` is not "ok", whatever
     `thumbnail` says. YouTube ignores a thumbnail set seconds after the upload, while the Short is still
     processing (thumbnails.set says ok, the Shorts tab keeps an auto-picked frame); setting it again once
     processing is done sticks. Only the vertical title page is used here: without it the result is
@@ -544,6 +546,63 @@ def refresh_thumbnails(today: date, days_back: int | None = None) -> dict:
     if summary["set"] or summary["failed"] or summary["skipped"]:
         log.info("YouTube: final thumbnails for %s: %d set, %d failed, %d skipped", ", ".join(summary["days"]),
                  summary["set"], summary["failed"], summary["skipped"])
+    return summary
+
+
+DEFAULT_THUMBNAIL_SAME_DAY_MINUTES = 15
+
+
+def thumbnail_same_day_minutes() -> int:
+    """THUMBNAIL_SAME_DAY_MINUTES: how long after the day's last upload the run re-sets that day's thumbnails
+    (default 15; 0 or "off" leaves them to the next day's run, refresh_thumbnails)."""
+    raw = os.environ.get("THUMBNAIL_SAME_DAY_MINUTES", "").strip().lower()
+    if raw in ("off", "none", "never", "no"):
+        return 0
+    try:
+        return max(0, int(raw)) if raw else DEFAULT_THUMBNAIL_SAME_DAY_MINUTES
+    except ValueError:
+        return DEFAULT_THUMBNAIL_SAME_DAY_MINUTES
+
+
+def same_day_thumbnail_wait(day: date, minutes: int | None = None, now: datetime | None = None) -> float | None:
+    """Seconds still to wait before `day`'s thumbnails can be re-set: `minutes` after its newest upload that
+    has no final thumbnail yet (0.0 when that time has passed, or when no upload time was recorded). None when
+    the pass is off or no video of the day needs it."""
+    minutes = thumbnail_same_day_minutes() if minutes is None else minutes
+    if minutes <= 0:
+        return None
+    record = read_json(OUTPUT_DIR / day.isoformat() / "uploads.json", default={}) or {}
+    due = [info for info in record.values()
+           if isinstance(info, dict) and info.get("id") and info.get("thumbnail_final") != "ok"]
+    if not due:
+        return None
+    now = now or datetime.now().astimezone()
+    newest = None
+    for info in due:
+        try:
+            at = datetime.fromisoformat(info.get("uploaded_at") or "")
+        except ValueError:
+            continue
+        at = at if at.tzinfo else at.astimezone()
+        newest = at if newest is None or at > newest else newest
+    if newest is None:
+        return 0.0
+    return max(0.0, (newest + timedelta(minutes=minutes) - now).total_seconds())
+
+
+def finish_day_thumbnails(day: date) -> dict:
+    """The same-day thumbnail pass: set_day_thumbnails(final=True) for `day` itself, for the end of the run
+    that uploaded it (the caller waits same_day_thumbnail_wait first). Without it the day's Shorts show an
+    auto-picked frame until the next day's run. Videos done here are `thumbnail_final` "ok", so
+    refresh_thumbnails leaves them alone tomorrow; anything missed is still picked up there. Returns
+    {"day", "set", "failed", "skipped"}. Raises YouTubeAuthError when the sign-in is missing."""
+    done = set_day_thumbnails(day, final=True)
+    summary = {"day": day.isoformat(),
+               "set": sum(1 for o in done.values() if o == "ok"),
+               "failed": sum(1 for o in done.values() if o.startswith("failed")),
+               "skipped": sum(1 for o in done.values() if o.startswith("skipped"))}
+    log.info("YouTube: same-day thumbnails for %s: %d set, %d failed, %d skipped", day, summary["set"],
+             summary["failed"], summary["skipped"])
     return summary
 
 

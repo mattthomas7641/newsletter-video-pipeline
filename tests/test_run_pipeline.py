@@ -73,6 +73,18 @@ def stubbed_pipeline(monkeypatch, isolated_env):
         return ctl["refresh_result"]
 
     monkeypatch.setattr(run_pipeline, "refresh_thumbnails", fake_refresh)
+    ctl.update(same_day_wait=None, same_day_result={"day": DAY.isoformat(), "set": 0, "failed": 0, "skipped": 0},
+               finishes=[], slept=[])
+    monkeypatch.setattr(run_pipeline, "same_day_thumbnail_wait", lambda day: ctl["same_day_wait"])
+    monkeypatch.setattr(run_pipeline, "_sleep", lambda s: ctl["slept"].append(s))
+
+    def fake_finish(day):
+        ctl["finishes"].append(day)
+        if isinstance(ctl["same_day_result"], Exception):
+            raise ctl["same_day_result"]
+        return ctl["same_day_result"]
+
+    monkeypatch.setattr(run_pipeline, "finish_day_thumbnails", fake_finish)
     return ctl
 
 
@@ -390,3 +402,38 @@ def test_summary_flags_uploads_whose_thumbnail_failed(tmp_path):
     assert "1 without a custom thumbnail" in run_pipeline.run_summary(tmp_path, 5)
     record_video(tmp_path, "02_b", "uploaded", thumbnail="ok")
     assert "thumbnail" not in run_pipeline.run_summary(tmp_path, 5)
+
+
+def test_daily_run_re_sets_todays_thumbnails_after_a_wait(stubbed_pipeline, isolated_env, notifications,
+                                                          monkeypatch):
+    monkeypatch.setenv("YOUTUBE_UPLOAD", "1")
+    stubbed_pipeline["same_day_wait"] = 600.0
+    stubbed_pipeline["same_day_result"] = {"day": DAY.isoformat(), "set": 3, "failed": 0, "skipped": 0}
+    assert run_pipeline.main([DAY.isoformat()]) == 0
+    assert stubbed_pipeline["slept"] == [600.0] and stubbed_pipeline["finishes"] == [DAY]
+    assert stubbed_pipeline["uploads"] == [DAY]  # the wait comes after the uploads
+    assert load_state(isolated_env / DAY.isoformat())["run"]["thumbnail_same_day"]["set"] == 3
+    assert "today's thumbnails: 3 re-set" in notifications[-1][1]
+
+
+def test_same_day_thumbnails_never_fail_or_overrun_the_run(stubbed_pipeline, isolated_env, notifications,
+                                                           monkeypatch):
+    monkeypatch.setenv("YOUTUBE_UPLOAD", "1")
+    stubbed_pipeline["same_day_wait"] = 0.0
+    stubbed_pipeline["same_day_result"] = RuntimeError("thumbnails API down")
+    assert run_pipeline.main([DAY.isoformat()]) == 0  # the videos are up; the run still succeeds
+    assert stubbed_pipeline["slept"] == []
+    assert "today's thumbnails not re-set (RuntimeError: thumbnails API down)" in notifications[-1][1]
+
+    stubbed_pipeline["same_day_wait"] = 900.0
+    monkeypatch.setenv("RUN_DEADLINE_MINUTES", "10")  # a 15 min wait would pass the watchdog's deadline
+    finishes = len(stubbed_pipeline["finishes"])
+    assert run_pipeline.main([DAY.isoformat()]) == 0
+    assert stubbed_pipeline["slept"] == [] and len(stubbed_pipeline["finishes"]) == finishes
+    assert "today's thumbnails left to tomorrow's run" in notifications[-1][1]
+
+
+def test_no_same_day_pass_without_uploading(stubbed_pipeline, isolated_env):
+    stubbed_pipeline["same_day_wait"] = 0.0
+    assert run_pipeline.main([DAY.isoformat()]) == 0
+    assert stubbed_pipeline["finishes"] == []
