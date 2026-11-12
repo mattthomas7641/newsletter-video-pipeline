@@ -5,6 +5,7 @@
 #   ./scripts/cloud_secrets.sh
 #
 # Safe to run again: it adds a new version of each secret instead of making a second one.
+# The job is pinned to a version number per secret, so after a re-run point the job at the new versions (printed below).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -43,6 +44,10 @@ for entry in "${SECRETS[@]}"; do
   printf '%s' "$(value_of "$spec")" | "$GCLOUD" secrets versions add "$name" --project="$PROJECT" --data-file=- --quiet >/dev/null 2>&1
   "$GCLOUD" secrets add-iam-policy-binding "$name" --project="$PROJECT" \
     --member="serviceAccount:${JOB_SA}" --role="roles/secretmanager.secretAccessor" --quiet >/dev/null 2>&1
-  echo "OK    $name"
+  version="$("$GCLOUD" secrets versions list "$name" --project="$PROJECT" --limit=1 --format='value(name)' 2>/dev/null || true)"
+  echo "OK    $name  (now at version ${version:-?})"
 done
 echo "Done. Each secret can be read only by $JOB_SA."
+# The job reads a fixed version of each secret, not "latest", so a new version changes nothing until you say so.
+echo "The job is pinned to version numbers. To use a new version:"
+echo "  gcloud run jobs update <job> --region <region> --update-secrets ENV_NAME=<secret-name>:<version>"
