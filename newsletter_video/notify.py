@@ -22,7 +22,7 @@ import urllib.request
 log = logging.getLogger("newsletter_video")
 
 WEBHOOK_TIMEOUT_SECONDS = 15
-APP_NAME = "ByteSize News"
+APP_NAME = "Byte Sized AI News"
 
 
 def _macos_notification(title: str, message: str) -> None:

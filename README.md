@@ -1,4 +1,4 @@
-# ByteSize News (Newsletter-to-Video Pipeline)
+# Byte Sized AI News (Newsletter-to-Video Pipeline)
 
 [![tests](https://github.com/mattthomas7641/newsletter-video-pipeline/actions/workflows/tests.yml/badge.svg)](https://github.com/mattthomas7641/newsletter-video-pipeline/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -9,18 +9,19 @@ An unattended daily pipeline that turns the [TLDR](https://tldr.tech) newsletter
 
 **Live channel:** [Byte Sized AI News](https://www.youtube.com/@byte-sized-ai-news-11)
 
-![Frames from one rendered Short: hook, layered diagram, orbit diagram, bar chart and outro](docs/screenshots/rich-scenes/filmstrip-draft.jpg)
-*Frames from one rendered Short, in order: the hook, three animated diagrams, a chart and the closing question.*
+![Six frames from one Short: an animated narrator beside a hook, a diagram, a timeline, a comparison, a checklist and a closing question](docs/screenshots/avx/filmstrip-puck.jpg)
+*Frames from one published Short in the avatar-explainer (`avx`) format, in order: the hook, a diagram, a timeline, a
+comparison, a checklist and the closing question.*
 
 ## At a glance
 
 | | |
 |---|---|
-| **Runs** | Cloud Scheduler starts a Cloud Run job at 12:00 noon ET. No laptop involved ([docs/cloud.md](docs/cloud.md)). |
-| **Output** | Up to 10 Shorts a day. A fact check and an editor pass drop any video that fails them, so a day can finish with fewer: on 2026-11-11 it posted 7, dropped 12 drafts, and took 33 minutes. |
-| **Cost** | Claude about $0.14 to $0.22 per finished video depending on the writer prompt, plus about $0.35 a day for Cloud Run (an estimate, not yet seen on a bill). Details in [docs/cost.md](docs/cost.md). |
-| **Guardrails** | A hard per-run Claude budget and deadline, a fact check on every explainer and avx script, an editor pass on avx scripts, a duplicate-upload guard, least-privilege service accounts, secrets in Secret Manager, a private bucket with a 7-day lifecycle, budget alerts, and a phone alert after every run. |
-| **Tests** | 700 tests, including an offline fault-injection suite (a fake voice server that wedges, stubbed Claude and YouTube clients, stubbed renders). CI runs them on every push to `main` and every pull request. |
+| **Runs** | Every day at noon ET as a Cloud Run job started by Cloud Scheduler. No laptop involved ([docs/cloud.md](docs/cloud.md)). |
+| **Output** | Up to 10 Shorts a day. Videos that fail the fact check or the editor are dropped: on 2026-11-11 it posted 7 and dropped 12 drafts in 33 minutes. |
+| **Cost** | About $0.14 to $0.22 of Claude usage per finished video, plus an estimated $0.35 a day for Cloud Run ([docs/cost.md](docs/cost.md)). |
+| **Guardrails** | A spending cap and a deadline on every run, a fact check, a duplicate-upload guard, least-privilege cloud accounts, and a phone alert after every run. |
+| **Tests** | 700 tests that run offline, in CI on every push to `main` and every pull request. |
 
 ## How it works
 
@@ -31,23 +32,20 @@ tldr.tech (4 editions) ──▶ scrape ──▶ Jev screens ──▶ Claude w
                                        (optional)        cards, outro
 ```
 
-1. **Scrape** (`scraper.py`): reads `tldr.tech/{edition}/{date}` (public, no login) for the configured editions.
-2. **Select** (`script_writer.py`): dedupes stories across editions, skips anything covered on an earlier day, and has
-   Jev, a decision model from TypeSafe AI, screen and rank the rest so Claude only sees the shortlist
-   ([docs/story-selection.md](docs/story-selection.md)).
-3. **Write** (`script_writer.py`, `explainer_writer.py`, `avx_writer.py`): Claude Sonnet 5.5 picks the most
-   interesting stories, combines related ones, and writes each script with its title, caption and hashtags. Without
-   an API key, a rule-based writer takes over.
-4. **Check** (`factcheck.py`): every spoken line must quote the story verbatim, an independent fact check judges every
-   claim, and dropped videos are replaced from unused stories. On by default for the explainer and avx formats
-   ([docs/accuracy.md](docs/accuracy.md)).
-5. **Voice** (`tts.py`): the avx format voices each line as its own clip, so cards and captions start exactly on
-   sentence boundaries (average caption error 0.21 s, down from 0.70 s when timing was estimated across the whole
-   narration). The other formats voice the whole script and align words with Whisper when it is installed.
-6. **Render** (`video_builder.py`, `explainer_builder.py`, `avx_builder.py`): times every card, caption and highlight
-   to the audio and renders an HTML
-   composition with [HyperFrames](https://github.com/heygen-com/hyperframes).
-7. **Upload** (`youtube_upload.py`): each upload is recorded the moment it succeeds, so re-runs never post twice.
+1. **Scrape** the day's four TLDR editions (public pages, no login).
+2. **Select.** Remove duplicates and stories already covered, then have Jev, a decision model from TypeSafe AI, score
+   what is left so Claude only sees a shortlist ([docs/story-selection.md](docs/story-selection.md)).
+3. **Write.** Claude Sonnet 5.5 picks the most interesting stories and writes each script with its title, caption and
+   hashtags. Without an API key, a rule-based writer takes over.
+4. **Check.** For the explainer and avx formats, every spoken line must quote the story and a separate fact check
+   judges every claim. A video that fails is dropped and replaced ([docs/accuracy.md](docs/accuracy.md)).
+5. **Voice.** Each script is turned into speech with an open or cloned voice, and captions are timed to the audio
+   (average error 0.21 s in the avx format).
+6. **Render.** Each video is an HTML composition rendered with [HyperFrames](https://github.com/heygen-com/hyperframes).
+7. **Upload** to YouTube. Each upload is recorded as it succeeds, so a re-run never posts twice.
+
+The code for each step is in `newsletter_video/`: `scraper.py`, `script_writer.py`, `factcheck.py`, `tts.py`,
+`video_builder.py` and `youtube_upload.py`.
 
 ## Quick start
 
