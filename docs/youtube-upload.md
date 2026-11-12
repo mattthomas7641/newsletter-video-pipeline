@@ -23,7 +23,7 @@ One-time setup (Google account, about 10 minutes):
 5. Set `YOUTUBE_UPLOAD=1` in `.env`.
 
 Limits: some guides claim YouTube forces API uploads from unaudited projects to stay private
-until the project passes Google's free YouTube API Services audit — in practice, setting
+until the project passes Google's free YouTube API Services audit. In practice, setting
 `YOUTUBE_PRIVACY=public` here posted videos as public directly, no audit involved, so that
 claim didn't hold for this project. If it does for yours, `--publish` (or YouTube Studio) flips
 already-uploaded videos public. While the consent screen is in "Testing", the sign-in expires
@@ -32,5 +32,5 @@ every 7 days; rerun `--auth`. Moving the OAuth app to "In production" (it needs 
 `YOUTUBE_PRIVACY=public` with no `YOUTUBE_SCHEDULE` publishes each video the moment it is uploaded, and the daily run
 uploads each video while the next one renders (`STREAM_UPLOADS=0` goes back to uploading at the end);
 `YOUTUBE_SCHEDULE=asap` publishes five minutes after each upload instead. "~6 uploads/day" on the default quota is a commonly cited estimate,
-not a confirmed or enforced limit — 16 uploads succeeded in one day here with no quota errors;
+not a confirmed or enforced limit: 16 uploads succeeded in one day here with no quota errors;
 check Google Cloud Console → APIs & Services → YouTube Data API v3 → Quotas for the real number.

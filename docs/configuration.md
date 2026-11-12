@@ -8,7 +8,7 @@ Copy `.env.example` to `.env`. Everything is optional:
 |---|---|
 | `ANTHROPIC_API_KEY` | Claude writes the scripts (much more engaging than the rule-based fallback) |
 | `WRITER_EFFORT` | How hard Claude reasons (default `medium`: same script quality as the model default at about 4x fewer output tokens) |
-| `VIDEOS_PER_DAY` | Videos per run (default 3; "~6 uploads/day" is a commonly cited quota estimate, not a confirmed or enforced limit — 16 uploads succeeded in one day during testing with no quota errors) |
+| `VIDEOS_PER_DAY` | Videos per run (default 3; "~6 uploads/day" is a commonly cited quota estimate, not a confirmed or enforced limit: 16 uploads succeeded in one day during testing with no quota errors) |
 | `TYPESAFE_API_KEY` | Jev screens and ranks stories before Claude sees them (see [Story selection with Jev](story-selection.md)) |
 | `TTS_PROVIDER` | `kokoro` (default), `voicebox` (local cloned voice), `elevenlabs` (cloud cloned voice) or `say` (macOS) |
 | `KOKORO_VOICE`, `KOKORO_SPEED` | Kokoro voice and pace (`npx hyperframes tts --list` for voices) |
