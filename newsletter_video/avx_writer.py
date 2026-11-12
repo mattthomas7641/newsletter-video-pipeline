@@ -1398,7 +1398,10 @@ def select_stories(candidates: list[Story], n_videos: int) -> list[Story]:
     """The stories rich enough for an avatar explainer, in their original order: every story whose summary has
     at least MIN_SUMMARY_WORDS words. When that leaves fewer than POOL_PER_VIDEO per requested video, the
     fullest of the thinner ones (down to THIN_FLOOR_WORDS) are added back so the day still gets its count."""
-    rich = [s for s in candidates if _words(s.summary) >= MIN_SUMMARY_WORDS]
+    from . import must_cover
+
+    must = set(must_cover.must_titles())
+    rich = [s for s in candidates if _words(s.summary) >= MIN_SUMMARY_WORDS or s.title in must]  # must-cover always stays
     want = POOL_PER_VIDEO * n_videos
     chosen = {id(s) for s in rich}
     if len(rich) < want:
@@ -1416,6 +1419,32 @@ def select_stories(candidates: list[Story], n_videos: int) -> list[Story]:
     return out or list(candidates)
 
 
+def _drop_duplicate_news(accepted: list[tuple[dict, list[dict]]], candidates: list[Story],
+                         taken: set[str] = frozenset()) -> list[tuple[dict, list[dict]]]:
+    """Drops (before the editor and fact check spend anything on it) a video that covers news an earlier video
+    covers: today's videos so far (`taken`) or an earlier one in this batch. 2026-11-11 wrote Anthropic's IPO twice
+    from two editions' titles for it."""
+    from . import must_cover
+
+    if not must_cover.active():  # no must-cover day (Jev off or MUST_COVER_COUNT=0): behave as before
+        return accepted
+    already = set()
+    for t in taken:
+        already |= must_cover.mates_of(t)
+    stories = [[st.title for st in _video_stories(v, candidates)] for v, _ in accepted]
+    dupes = must_cover.duplicate_events(stories)
+    out = []
+    for k, (pair, titles) in enumerate(zip(accepted, stories)):
+        reason = dupes.get(k) or ("covers news an earlier video today already covers"
+                                  if titles and all(t in already for t in titles) else None)
+        if reason:
+            factcheck.note_drop("avx", "duplicate", str(pair[0].get("title", "")), _video_stories(pair[0], candidates),
+                                [reason])
+            continue
+        out.append(pair)
+    return out
+
+
 AVX_VIDEOS_PER_CALL = 4  # one avx video is ~5k output tokens: ten in one call ran into the 64k output limit
 
 
@@ -1424,22 +1453,30 @@ def _story_lines(candidates: list[Story], ids: list[int]) -> str:
                        f"\n{_trim(candidates[i].summary, AVX_SUMMARY_CHARS)}" for i in ids)
 
 
-def _first_drafts(candidates: list[Story], n_videos: int, avoid: str) -> dict | None:
+def _first_drafts(candidates: list[Story], n_videos: int, avoid: str, notes: dict | None = None) -> dict | None:
     """A day's first drafts written in parallel calls of at most AVX_VIDEOS_PER_CALL videos, each from its own
     share of the stories (dealt round-robin, so every share gets strong ones; ids stay global). None only when
     every call failed; a failed call just means fewer drafts (the refill rounds make up the count)."""
     from concurrent.futures import ThreadPoolExecutor
 
+    from . import must_cover
+
     k = -(-n_videos // AVX_VIDEOS_PER_CALL)
     counts = [n_videos // k + (1 if g < n_videos % k else 0) for g in range(k)]
-    shares = [[i for i in range(len(candidates)) if i % k == g] for g in range(k)]
+    # Dealt round-robin by news event, so two titles for the same announcement land in the same call (one video).
+    shares: list[list[int]] = [[] for _ in range(k)]
+    index = {id(s): i for i, s in enumerate(candidates)}
+    for n, group in enumerate(must_cover.event_groups(candidates)):
+        shares[n % k].extend(index[id(s)] for s in group)
+    shares = [sorted(sh) for sh in shares]
 
     def write(g: int) -> dict | None:
         return _call_writer(
             f"Write exactly {counts[g]} videos from the stories below, each as an avatar explainer scene list. Order "
             f"them with the strongest video first. Reference stories by their [id]. Give each video its own shape: no "
             f"two videos may use the same sequence of middle scene styles, and vary the scene count (other writers "
-            f"cover today's other stories in parallel, so prefer less common shapes).{avoid}\n\n"
+            f"cover today's other stories in parallel, so prefer less common shapes).{avoid}"
+            + must_cover.writer_hint(candidates, notes, only=shares[g]) + "\n\n"
             + _story_lines(candidates, shares[g]))
 
     with ThreadPoolExecutor(max_workers=min(3, k)) as pool:
@@ -1452,11 +1489,16 @@ def _first_drafts(candidates: list[Story], n_videos: int, avoid: str) -> dict | 
     return {"videos": videos}
 
 
-def llm_avx_scripts(candidates: list[Story], n_videos: int, avoid_shapes: tuple = ()) -> list[Script] | None:
+def llm_avx_scripts(candidates: list[Story], n_videos: int, avoid_shapes: tuple = (), taken: set[str] = frozenset(),
+                    notes: dict[str, list[str]] | None = None) -> list[Script] | None:
     """The avatar explainer counterpart of script_writer._llm_scripts: one call for the day's videos, the
     validator (with one repair), then the editor (with one rewrite). Videos that fail either are skipped with
     a logged reason (an empty list means every one was rejected: no video rather than a broken one); None
-    means Claude could not be used at all."""
+    means Claude could not be used at all. `taken`: story titles today's earlier videos already cover (a second
+    video on the same news is dropped before the editor sees it); `notes`: why a retried story's earlier video
+    was dropped (must_cover.writer_hint)."""
+    from . import must_cover
+
     candidates = select_stories(candidates, n_videos)
     stories = "\n\n".join(
         f"[{i}] ({s.edition} / {s.section}) {s.title}{_site(s)}\n{_trim(s.summary, AVX_SUMMARY_CHARS)}"
@@ -1467,13 +1509,14 @@ def llm_avx_scripts(candidates: list[Story], n_videos: int, avoid_shapes: tuple 
     user = (f"Write exactly {n_videos} videos from today's stories below, each as an avatar explainer scene list. "
             f"Order them with the strongest video first. Reference stories by their [id]. Give each video its own "
             f"shape: no two videos may use the same sequence of middle scene styles, and vary the scene count.{avoid}"
-            f"\n\n{stories}")
-    first = _first_drafts(candidates, n_videos, avoid) if n_videos > AVX_VIDEOS_PER_CALL else None
+            f"{must_cover.writer_hint(candidates, notes)}\n\n{stories}")
+    first = _first_drafts(candidates, n_videos, avoid, notes) if n_videos > AVX_VIDEOS_PER_CALL else None
     if n_videos > AVX_VIDEOS_PER_CALL and first is None:
         return None
     accepted = _validated_videos(user, n_videos, candidates, avoid_shapes, first=first)
     if accepted is None:
         return None
+    accepted = _drop_duplicate_news(accepted, candidates, taken)
     if accepted and os.environ.get("AVX_EDITOR", "1").strip().lower() not in ("0", "off", "false", "no"):
         accepted = _critic_pass(user, accepted, candidates)
     checked = _fact_check_pass(user, accepted, candidates, avoid_shapes) if accepted else []

@@ -530,6 +530,21 @@ _JEV_CORPORATE_INSTRUCTIONS = (
     "the conduct of its leaders, and it matters for the company, its chips, AI or products, or tech policy. It is NOT "
     "personal gossip with no company impact, a sponsored item, a job posting, marketing or growth advice, or pure science."
 )
+# The third way into scope (2026-11-10), and the ranking signal: "would a well-informed person following AI and tech
+# want to know this today?". Measured on 595 stories (two weeks of all four newsletters, Claude-labelled must-cover /
+# worth-covering / skip): the two questions above let in only 75% of the must-cover stories (Meta's $95B offering,
+# Anthropic's IPO filing, SpaceX's $40B chip debt, GPT-6 Cyber and Mistral's trillion-parameter weights were all
+# below 0.5 on the topic question), because their long list of exclusions pulled the scores of plainly on-topic news
+# down. This question, at 0.4, catches 99% of them and lets in 7% of the skip pile. Added to the union, with the
+# score also added to the ranking, the writer's top-30 pool holds 83 of 83 must-cover stories (it held 61).
+JEV_IMPORTANT_THRESHOLD = 0.4
+_JEV_IMPORTANT_INSTRUCTIONS = (
+    "Would a well-informed person who follows AI and technology want to know this today? Yes for: new frontier "
+    "model or product launches, big money moves (funding, IPO, acquisitions, billion-dollar compute or chip deals), "
+    "major legal, regulatory, security or national-security events, leadership or governance news at major tech or "
+    "AI companies, and genuine AI capability breakthroughs. No for tutorials, opinion essays, growth, marketing or "
+    "fundraising advice, minor features, and routine updates."
+)
 _JEV_NEWSWORTHINESS_INSTRUCTIONS = (
     "How interesting and worth covering this story is for a curious, tech-savvy "
     "audience that scrolls fast and leaves the moment something feels boring or "
@@ -560,6 +575,7 @@ def _jev_rank_candidates(candidates: list[Story], n_videos: int) -> list[Story] 
     questions = {
         "in_scope": ts.Noul(instructions=_JEV_IN_SCOPE_INSTRUCTIONS),
         "corporate": ts.Noul(instructions=_JEV_CORPORATE_INSTRUCTIONS),
+        "important": ts.Noul(instructions=_JEV_IMPORTANT_INSTRUCTIONS),
         "newsworthiness": ts.Score(
             instructions=_JEV_NEWSWORTHINESS_INSTRUCTIONS,
             criteria=_JEV_NEWSWORTHINESS_LEVELS,
@@ -582,7 +598,8 @@ def _jev_rank_candidates(candidates: list[Story], n_videos: int) -> list[Story] 
             continue
         if not _jev_in_scope(response.answers):
             continue
-        scored.append((response.answers["newsworthiness"].score, story))
+        JEV_IMPORTANCE[story.title] = _jev_importance(response.answers)
+        scored.append((response.answers["newsworthiness"].score + _jev_importance(response.answers), story))
 
     scored.sort(key=lambda pair: pair[0], reverse=True)
     pool_size = max(n_videos * JEV_POOL_MULTIPLIER, JEV_MIN_POOL)
@@ -592,11 +609,22 @@ def _jev_rank_candidates(candidates: list[Story], n_videos: int) -> list[Story] 
     return ranked  # may legitimately be [] if nothing cleared the bar — not the same as Jev being unavailable
 
 
+JEV_IMPORTANCE: dict[str, float] = {}  # this run's "would a well-informed person want to know this" per story title
+
+
+def _jev_importance(answers) -> float:
+    """The "would a well-informed person want to know this" probability (0 when the question was not asked)."""
+    important = answers.get("important") if hasattr(answers, "get") else None
+    return float(important.noul) if important is not None else 0.0
+
+
 def _jev_in_scope(answers) -> bool:
-    """In scope by the general question, or by the corporate/legal/national-security one."""
+    """In scope by the general question, by the corporate/legal/national-security one, or because a well-informed
+    follower of AI and tech would want to know it."""
     corporate = answers.get("corporate") if hasattr(answers, "get") else None
-    return answers["in_scope"].noul >= JEV_IN_SCOPE_THRESHOLD or (
-        corporate is not None and corporate.noul >= JEV_IN_SCOPE_THRESHOLD)
+    return (answers["in_scope"].noul >= JEV_IN_SCOPE_THRESHOLD
+            or (corporate is not None and corporate.noul >= JEV_IN_SCOPE_THRESHOLD)
+            or _jev_importance(answers) >= JEV_IMPORTANT_THRESHOLD)
 
 
 class WriterNetworkError(Exception):
@@ -874,14 +902,20 @@ def build_scripts(editions: list[Edition], n_videos: int | None = None,
     jev_filtered = _jev_rank_candidates(llm_candidates, n_videos)
     if jev_filtered is not None:
         llm_candidates = jev_filtered
+        # Jev's best stories, one per news event, must reach the viewer even if a video about one fails
+        # (must_cover.py): the writer covers them first and refill retries them before minor stories.
+        from . import must_cover
+
+        must_cover.set_day(llm_candidates, n_videos, importance=JEV_IMPORTANCE)
     from .explainer_builder import explainer_mode, video_style  # VIDEO_STYLE=explainer: scene plans, see explainer_writer
 
     if video_style() == "avx":  # the avatar explainer: scene lists, see avx_writer
         from .avx_writer import heuristic_avx_scripts, llm_avx_scripts, middle_sequence
 
-        def write_avx(pool, n, done):
+        def write_avx(pool, n, done, notes=None):
             return llm_avx_scripts(pool, n, avoid_shapes=tuple(middle_sequence(s.avx_scenes) for s in done
-                                                                if getattr(s, "avx_scenes", None)))
+                                                                if getattr(s, "avx_scenes", None)),
+                                   taken={st.title for sc in done for st in sc.stories}, notes=notes)
 
         scripts = with_refill("avx", write_avx, llm_candidates, n_videos) if llm_candidates else None
         if scripts is not None:  # Claude ran; an empty list means every plan was rejected, not a fallback
@@ -890,13 +924,14 @@ def build_scripts(editions: list[Edition], n_videos: int | None = None,
     if explainer_mode():
         from .explainer_writer import llm_explainer_scripts, structural_explainer_scripts
 
-        scripts = with_refill("explainer", lambda pool, n, done: llm_explainer_scripts(pool, n),
+        scripts = with_refill("explainer", lambda pool, n, done, notes=None: llm_explainer_scripts(pool, n),
                               llm_candidates, n_videos) if llm_candidates else None
         if scripts is not None:  # Claude ran; an empty list means every plan was rejected, not a fallback
             return scripts
         return structural_explainer_scripts(_heuristic_scripts(editions, candidates, n_videos))
     if llm_candidates:
-        scripts = with_refill("avatar", lambda pool, n, done: _llm_scripts(pool, n), llm_candidates, n_videos)
+        scripts = with_refill("avatar", lambda pool, n, done, notes=None: _llm_scripts(pool, n), llm_candidates,
+                              n_videos)
         if scripts:
             return scripts
         # As before: nothing usable from Claude means rule-based scripts, tagged "heuristic", which
@@ -906,11 +941,16 @@ def build_scripts(editions: list[Edition], n_videos: int | None = None,
 
 def with_refill(fmt: str, write, candidates: list[Story], n_videos: int) -> list[Script] | None:
     """Writes the day's videos, then replaces dropped ones: when the writer's checks (validator, editor, fact
-    check) leave fewer than `n_videos`, the writer is asked again for the shortfall from the stories nobody has
-    used yet (not the dropped videos' stories either), at most FACTCHECK_REFILL_ROUNDS extra rounds. Never
-    ships a failing video to hit the count: a day can still end short. `write(pool, n, done)` returns a list,
-    or None when Claude could not be used (only meaningful on the first round)."""
-    from . import factcheck
+    check) leave fewer than `n_videos`, the writer is asked again for the shortfall, at most
+    FACTCHECK_REFILL_ROUNDS extra rounds. Never ships a failing video to hit the count: a day can still end short.
+
+    Must-cover stories (must_cover.py) come first: a must-cover story whose video was dropped gets one more try,
+    with the reasons it was dropped, before refill reaches for any minor story, and while a must-cover story is
+    still missing refill may write up to MUST_COVER_EXTRA videos past the count. Other dropped stories are not
+    retried, and a story is never written twice under two titles (same-news mates count as used).
+    `write(pool, n, done, notes)` returns a list, or None when Claude could not be used (only meaningful on the
+    first round); `notes` maps a retried story's title to the reasons its earlier video was dropped."""
+    from . import factcheck, must_cover
 
     mark = factcheck.drop_mark()
     scripts = write(candidates, n_videos, [])
@@ -918,18 +958,38 @@ def with_refill(fmt: str, write, candidates: list[Story], n_videos: int) -> list
         return None
     scripts = list(scripts)[:n_videos]
     rounds = 0
-    while len(scripts) < n_videos and rounds < factcheck.refill_rounds():
-        used = {st.title for sc in scripts for st in sc.stories}
-        used |= {t for d in factcheck.drops_since(mark) for t in d["stories"]}
-        pool = [s for s in candidates if s.title not in used]
+    cap = n_videos + must_cover.extra_videos()
+    while rounds < factcheck.refill_rounds():
+        drops = [d for d in factcheck.drops_since(mark) if d["stage"] != "duplicate"]
+        tries: dict[str, int] = {}
+        why: dict[str, list[str]] = {}
+        for d in drops:
+            for t in d["stories"]:
+                for m in must_cover.mates_of(t):
+                    tries[m] = tries.get(m, 0) + 1
+                    why.setdefault(m, []).extend(r for r in d["reasons"] if not r.startswith("still flagged"))
+        retry = [s for s in must_cover.missing(scripts) if tries.get(s.title, 0) <= 1
+                 and any(c.title in must_cover.mates_of(s.title) for c in candidates)]
+        want = n_videos - len(scripts)
+        if retry:
+            want = max(want, min(len(retry), cap - len(scripts)))
+        if want <= 0:
+            break
+        used = {st.title for sc in scripts for st in sc.stories} | must_cover.covered_titles(scripts)
+        used |= {t for t, k in tries.items() if k >= 1}
+        retry_titles = set().union(*(must_cover.mates_of(s.title) for s in retry)) if retry else set()
+        used -= retry_titles
+        must = set(must_cover.must_titles())
+        pool = sorted((s for s in candidates if s.title not in used),
+                      key=lambda s: 0 if s.title in retry_titles else 1 if s.title in must else 2)
         if not pool:
             log.warning("Refill (%s): no unused stories left; the day has %d of %d videos", fmt, len(scripts), n_videos)
             break
         rounds += 1
-        want = n_videos - len(scripts)
-        log.info("Refill (%s) round %d: %d video(s) short, asking for %d more from %d unused stories", fmt, rounds,
-                 want, want, len(pool))
-        more = write(pool, want, list(scripts))
+        notes = {t: why[t][:4] for t in retry_titles if why.get(t)}
+        log.info("Refill (%s) round %d: asking for %d more from %d stories (%d must-cover to retry: %s)", fmt, rounds,
+                 want, len(pool), len(retry), "; ".join(repr(s.title[:50]) for s in retry) or "none")
+        more = write(pool, want, list(scripts), notes) if notes else write(pool, want, list(scripts))
         if more is None:
             log.warning("Refill (%s): the writer was unavailable; keeping %d of %d videos", fmt, len(scripts), n_videos)
             break

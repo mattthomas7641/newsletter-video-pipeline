@@ -341,6 +341,26 @@ Failure handling:
 - A later single call fails: that story is kept at the bottom of the ranking rather than
   silently dropped.
 
+### Must-cover stories
+
+The day's most important news must reach you even when a video about it fails (`newsletter_video/must_cover.py`).
+After Jev ranks the stories, the top `MUST_COVER_COUNT` (default: the day's video count; `0` switches this off) by
+Jev's "would a well-informed person want to know this today?" score, one per news event, are the must-cover list.
+Two newsletters often carry the same announcement under different titles; those count as one story, the writer is told
+to cover them in one video, and a second video on the same news is dropped before the editor spends anything on it.
+
+- The writer is told which stories are must-cover and covers them first.
+- A must-cover story whose video is dropped (validator, editor or fact check) gets **one** more try, with the reasons
+  it was dropped, before refill reaches for any minor story. A story dropped twice is not tried again.
+- While a must-cover story is still missing, refill may write up to `MUST_COVER_EXTRA` (default 2) videos past the
+  day's count.
+- `status.json` (`must_cover`) records which must-cover stories got a video.
+
+On 2026-11-11 only 1 of that day's 12 must-cover stories was posted (Anthropic's IPO, Gemini 4 Carbon, Claude Sheets and
+ChatGPT business agents were all dropped by the editor and replaced with minor stories). The editor also now ships a
+video whose only remaining notes after its one rewrite are clarity notes (unclear, repetitive, weak hook); accuracy
+notes still drop it.
+
 ### Accuracy: evidence, fact check and refill
 Every video goes through three accuracy layers (`newsletter_video/factcheck.py`, shared by all three writers):
 

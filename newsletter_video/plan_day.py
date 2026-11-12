@@ -55,6 +55,9 @@ def plan(target_date: date, out_dir: Path, n_videos: int, kind: str = "day",
         from . import factcheck
 
         mark = factcheck.drop_mark()
+        from . import must_cover
+
+        must_cover.clear()
         log.info("Selecting top stories and building scripts")
         if lineup_slots is not None:  # the standing lineup (lineup.py): formats per slot, one writer call per format
             from .lineup import write_scripts
@@ -71,6 +74,11 @@ def plan(target_date: date, out_dir: Path, n_videos: int, kind: str = "day",
     drops = factcheck.drops_since(mark)
     if drops:  # the videos the checks refused (validator, editor, fact check), with their reasons
         data["dropped"] = drops
+    from . import must_cover
+
+    must_rows = must_cover.report(scripts)
+    if must_rows:  # which of the day's must-cover stories got a video
+        data["must_cover"] = must_rows
     if lineup_slots is not None:  # each planned video keeps its own slot's look and record
         for entry, script in zip(data["videos"], scripts):
             entry["look"] = pm.looks.compact(pm.looks.validate_look(script.look or {}))

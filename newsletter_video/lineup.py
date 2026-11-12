@@ -420,7 +420,13 @@ def write_scripts(slots: list[dict], day: date, total: int, editions: list, cove
         wanted = {"style": key[0], **({"preset": key[1]} if len(key) > 1 else {})}
         with applied(wanted):
             scripts = build(editions, n_videos=len(group), exclude_titles=taken)
-        for slot, script in zip(group, scripts):
+        extra = 0
+        for k, script in enumerate(scripts):
+            if k < len(group):
+                slot = group[k]
+            else:  # a must-cover video written past the lineup's count (MUST_COVER_EXTRA): the group's last look
+                extra += 1
+                slot = {**group[-1], "slot": total + extra}
             script.look = dict(slot["look"])
             script.lineup = lineup_info(slot, day, total)
             produced.append((slot["slot"], script))

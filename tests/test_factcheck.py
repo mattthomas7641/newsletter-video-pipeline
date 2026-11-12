@@ -456,7 +456,7 @@ def test_jev_lets_in_corporate_and_national_security_stories_by_the_second_quest
                Story("ai", "Launches", "A model launch", "x", "")]
     ranked = sw._jev_rank_candidates(stories, 1)
     assert [s.title for s in ranked] == ["Nvidia's investigation of its CEO", "A model launch"]
-    assert seen[0] == ["corporate", "in_scope", "newsworthiness"]
+    assert seen[0] == ["corporate", "important", "in_scope", "newsworthiness"]
     assert "espionage" in sw._JEV_CORPORATE_INSTRUCTIONS and "NOT personal gossip" in sw._JEV_CORPORATE_INSTRUCTIONS
 
 

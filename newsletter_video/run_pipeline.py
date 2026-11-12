@@ -247,6 +247,9 @@ def run(target_date: date | None = None) -> list[Path]:
         from . import factcheck
 
         mark = factcheck.drop_mark()
+        from . import must_cover
+
+        must_cover.clear()
         if lineup_slots is not None:
             from .lineup import write_scripts
 
@@ -256,6 +259,9 @@ def run(target_date: date | None = None) -> list[Path]:
         drops = factcheck.drops_since(mark)
         if drops:  # status.json keeps why each refused video was refused (titles, stage, reasons)
             update_run(out_dir, dropped=[{k: d[k] for k in ("title", "format", "stage", "reasons")} for d in drops])
+        must_rows = must_cover.report(scripts)
+        if must_rows:  # which of the day's must-cover stories got a video
+            update_run(out_dir, must_cover=must_rows)
         for script in scripts:
             log.info("Script %r (%s): %d beats, %d words, stories %s", script.title, script.writer or "?",
                      len(script.beats), script.word_count, [s.title for s in script.stories])
