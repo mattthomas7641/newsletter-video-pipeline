@@ -51,3 +51,7 @@ newsletter_video/hf_template_avx/snapshots/
 newsletter_video/hf_template_avx/.thumbnails/
 newsletter_video/hf_template_avx/.hyperframes/
 newsletter_video/hf_template_avx/assets/
+
+# Local agent instruction files
+AGENTS.md
+CLAUDE.md
