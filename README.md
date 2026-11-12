@@ -147,6 +147,7 @@ Copy `.env.example` to `.env`. Everything is optional:
 | `DAILY_MODE` | What the scheduled run does: `full` (default) plans, renders and uploads in one go; `plan` only writes the day's plan and notifies you (see [Approval mode](#approval-mode)) |
 | `YOUTUBE_UPLOAD` | `1` uploads each day's videos after rendering |
 | `YOUTUBE_PRIVACY`, `YOUTUBE_SCHEDULE` | Visibility and timed publishing (once your API project is audited) |
+| `THUMBNAIL_REFRESH_DAYS` | How many earlier days' uploads each run sets the thumbnail of again once YouTube has processed them (default `2`; `0` off; see [Uploading](#uploading-to-youtube-shorts)) |
 | `FALLBACK_UPLOAD` | What to do with rule-based fallback scripts when uploads are on: `skip` (default: make none, notify), `private` or `public` |
 | `NOTIFY_WEBHOOK_URL`, `NOTIFY_WEBHOOK_FORMAT`, `NOTIFY_MACOS` | Where run notifications go (see [When things fail](#when-things-fail)) |
 | `RUN_DEADLINE_MINUTES`, `RENDER_TIMEOUT_SECONDS`, `VOICEBOX_GENERATION_TIMEOUT` | Wall-clock limits: whole run (default 240), one render attempt (1200), one Voicebox clip (420) |
@@ -417,7 +418,23 @@ With `YOUTUBE_UPLOAD=1`, the daily run uploads each video with its title, descri
 ./venv/bin/python -m newsletter_video.youtube_upload YYYY-MM-DD            # upload/retry a day
 ./venv/bin/python -m newsletter_video.youtube_upload YYYY-MM-DD --dry-run  # preview posts
 ./venv/bin/python -m newsletter_video.youtube_upload YYYY-MM-DD --publish  # make them public
+./venv/bin/python -m newsletter_video.youtube_upload --thumbnails YYYY-MM-DD          # set missing thumbnails
+./venv/bin/python -m newsletter_video.youtube_upload --thumbnails YYYY-MM-DD --final  # re-set them after processing
 ```
+
+**Thumbnails.** Each video's thumbnail is its vertical title page (`<video>.title.png`), set with
+`thumbnails.set` right after the upload. YouTube often ignores that first one on the Shorts tab:
+the video is still processing, the call says "ok", and the tab keeps an auto-picked mid-video
+frame. So each daily run (with `YOUTUBE_UPLOAD=1`) starts by setting the title page again on the
+previous `THUMBNAIL_REFRESH_DAYS` days' uploads (default `2`, yesterday and the day before; `0`
+turns this off). By then the videos have finished processing, so the thumbnail sticks. Each video
+gets this second pass once, recorded in `uploads.json` as `thumbnail_final` (`ok`,
+`failed:<reason>` or `skipped:no title page`) with `thumbnail_final_at`. A failure is retried by
+the next run while the day is still in range. The pass stops at the first 403/429 (quota used up),
+leaving the rest for the next run. It costs 50 quota units per video, about 600 a day at 12
+uploads a day. The run's `status.json` (`run.thumbnail_refresh`) and the end-of-run notification
+report how many were re-set or failed. Uploads of older days (for example catch-up renders of a
+past day) are outside that range: run `--thumbnails DAY --final` for them by hand.
 
 One-time setup (Google account, about 10 minutes):
 1. In [Google Cloud Console](https://console.cloud.google.com), create a project and enable

@@ -11,6 +11,7 @@ Manual use:
     ./venv/bin/python -m newsletter_video.youtube_upload 2026-10-08 --dry-run  # show what would upload
     ./venv/bin/python -m newsletter_video.youtube_upload 2026-10-08 --publish  # make a day's uploads public
     ./venv/bin/python -m newsletter_video.youtube_upload --thumbnails 2026-10-08  # set thumbnails of a day's uploads
+    ./venv/bin/python -m newsletter_video.youtube_upload --thumbnails 2026-10-08 --final  # re-set them after processing
 
 Each video's title/description/tags come from the `<video>.json` sidecar the
 pipeline writes next to it. Uploaded video IDs are recorded in
@@ -453,32 +454,97 @@ def set_thumbnail(youtube, video_id: str, video: Path) -> str | None:
     return "ok"
 
 
-def set_day_thumbnails(day: date, youtube=None) -> dict[str, str]:
-    """Backfill: sets the thumbnail of every video of `day` that uploads.json records as uploaded and whose
-    thumbnail is not already "ok". Returns {video file name: outcome}."""
+def _stops_thumbnails(outcome: str | None) -> bool:
+    """A 403/429 from thumbnails.set (quota used up, or an unverified channel) fails every later call too."""
+    return bool(outcome) and outcome.startswith(("failed:HTTP 403", "failed:HTTP 429"))
+
+
+def set_day_thumbnails(day: date, youtube=None, final: bool = False) -> dict[str, str]:
+    """Sets the thumbnail of every video of `day` that uploads.json records as uploaded. Returns {video file
+    name: outcome}. Stops at the first 403/429 (the rest would fail too; they stay to do for the next try).
+
+    final=False (the `--thumbnails` backfill): videos whose `thumbnail` is not already "ok".
+    final=True (the next-day pass, refresh_thumbnails): videos whose `thumbnail_final` is not "ok", whatever
+    `thumbnail` says. YouTube ignores a thumbnail set seconds after the upload, while the Short is still
+    processing (thumbnails.set says ok, the Shorts tab keeps an auto-picked frame); setting it again once
+    processing is done sticks. Only the vertical title page is used here: without it the result is
+    "skipped:no title page" (the 16:9 fallback would be worse than what YouTube shows)."""
+    from .thumbnails import title_png_path
+
+    field = "thumbnail_final" if final else "thumbnail"
     folder = OUTPUT_DIR / day.isoformat()
     record_path = folder / "uploads.json"
     record = read_json(record_path, default={}) or {}
     todo = [(name, info) for name, info in record.items()
-            if isinstance(info, dict) and info.get("id") and info.get("thumbnail") != "ok"]
+            if isinstance(info, dict) and info.get("id") and info.get(field) != "ok"]
     if not todo:
-        log.info("YouTube: no uploaded videos without a thumbnail for %s", day)
+        log.info("YouTube: no uploaded videos of %s need a %sthumbnail", day, "final " if final else "")
         return {}
-    if youtube is None:
-        creds = _credentials(interactive=False)
-        if creds is None:
-            raise YouTubeAuthError("YouTube sign-in missing or expired — run `python -m newsletter_video.youtube_upload --auth`")
-        youtube = _youtube_client(creds)
     results = {}
     for name, info in todo:
-        outcome = set_thumbnail(youtube, info["id"], folder / name)
+        video = folder / name
+        if final and not title_png_path(video).exists():
+            outcome = "skipped:no title page"
+            log.info("YouTube: %s has no title page left; final thumbnail skipped", name)
+        else:
+            if youtube is None:  # signed in only when there is something to send
+                creds = _credentials(interactive=False)
+                if creds is None:
+                    raise YouTubeAuthError("YouTube sign-in missing or expired — run "
+                                           "`python -m newsletter_video.youtube_upload --auth`")
+                youtube = _youtube_client(creds)
+            outcome = set_thumbnail(youtube, info["id"], video)
         if outcome is None:
             log.info("YouTube: %s has no thumbnail file; skipped", name)
             continue
-        info["thumbnail"] = outcome
+        info[field] = outcome
+        if final:
+            info["thumbnail_final_at"] = now_iso()
         results[name] = outcome
         write_json_atomic(record_path, record)
+        record_video(folder, video.stem, "uploaded", **{field: outcome})
+        if _stops_thumbnails(outcome):
+            log.warning("YouTube: thumbnails stopped for now (%s); the rest are tried again next time", outcome)
+            break
     return results
+
+
+DEFAULT_THUMBNAIL_REFRESH_DAYS = 2
+
+
+def thumbnail_refresh_days() -> int:
+    """THUMBNAIL_REFRESH_DAYS: how many earlier days' uploads the daily run re-sets the thumbnail of (default
+    2: yesterday and the day before; 0 or "off" turns the pass off)."""
+    raw = os.environ.get("THUMBNAIL_REFRESH_DAYS", "").strip().lower()
+    if raw in ("off", "none", "never", "no"):
+        return 0
+    try:
+        return max(0, int(raw)) if raw else DEFAULT_THUMBNAIL_REFRESH_DAYS
+    except ValueError:
+        return DEFAULT_THUMBNAIL_REFRESH_DAYS
+
+
+def refresh_thumbnails(today: date, days_back: int | None = None) -> dict:
+    """The next-day thumbnail pass of the daily run: set_day_thumbnails(final=True) for each of the
+    `days_back` days before `today` (oldest first). By then YouTube has long finished processing those
+    Shorts, so the title page sticks on the Shorts tab. Each video is done once (its `thumbnail_final` is
+    "ok" afterwards); a failure is tried again by the next run while the day is in range. Costs 50 quota units
+    per video. Returns {"days", "set", "failed", "skipped"} (counts) for status.json and the run summary.
+    Raises YouTubeAuthError when the sign-in is missing; anything else is per video and never raises."""
+    days_back = thumbnail_refresh_days() if days_back is None else days_back
+    days = [today - timedelta(days=k) for k in range(days_back, 0, -1)]
+    summary = {"days": [d.isoformat() for d in days], "set": 0, "failed": 0, "skipped": 0}
+    for day in days:
+        done = set_day_thumbnails(day, final=True)
+        summary["set"] += sum(1 for o in done.values() if o == "ok")
+        summary["failed"] += sum(1 for o in done.values() if o.startswith("failed"))
+        summary["skipped"] += sum(1 for o in done.values() if o.startswith("skipped"))
+        if any(_stops_thumbnails(o) for o in done.values()):
+            break
+    if summary["set"] or summary["failed"] or summary["skipped"]:
+        log.info("YouTube: final thumbnails for %s: %d set, %d failed, %d skipped", ", ".join(summary["days"]),
+                 summary["set"], summary["failed"], summary["skipped"])
+    return summary
 
 
 def days_with_pending_uploads(today: date) -> list[date]:
@@ -592,7 +658,8 @@ if __name__ == "__main__":
     else:
         try:
             if "--thumbnails" in sys.argv:
-                done = set_day_thumbnails(date.fromisoformat(args[0]) if args else date.today())
+                done = set_day_thumbnails(date.fromisoformat(args[0]) if args else date.today(),
+                                          final="--final" in sys.argv)
                 for name, outcome in done.items():
                     print(f"{name}: {outcome}")
             elif "--publish" in sys.argv:

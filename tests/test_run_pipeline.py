@@ -26,6 +26,8 @@ def stubbed_pipeline(monkeypatch, isolated_env):
         "built": [],
         "uploads": [],
         "upload_error": None,
+        "refreshes": [],
+        "refresh_result": {"days": ["2026-10-12", "2026-10-13"], "set": 0, "failed": 0, "skipped": 0},
     }
     monkeypatch.setattr(run_pipeline, "_wait_for_network", lambda: True)
     monkeypatch.setattr(run_pipeline, "validate_config", lambda *a: None)
@@ -63,6 +65,14 @@ def stubbed_pipeline(monkeypatch, isolated_env):
 
     monkeypatch.setattr(run_pipeline, "upload_recent", fake_upload_recent)
     monkeypatch.setattr(run_pipeline, "days_with_pending_uploads", lambda today: [])
+
+    def fake_refresh(today):
+        ctl["refreshes"].append(today)
+        if isinstance(ctl["refresh_result"], Exception):
+            raise ctl["refresh_result"]
+        return ctl["refresh_result"]
+
+    monkeypatch.setattr(run_pipeline, "refresh_thumbnails", fake_refresh)
     return ctl
 
 
@@ -330,6 +340,46 @@ def test_without_a_lineup_file_the_daily_run_is_exactly_as_before(stubbed_pipeli
     folder = isolated_env / DAY.isoformat()
     assert len(list(folder.glob("0*.json"))) == 3
     assert all("lineup" not in json.loads(p.read_text()) for p in folder.glob("0*.json"))
+
+
+def test_daily_run_re_sets_earlier_thumbnails_first_and_reports_it(stubbed_pipeline, isolated_env,
+                                                                    notifications, monkeypatch):
+    monkeypatch.setenv("YOUTUBE_UPLOAD", "1")
+    stubbed_pipeline["refresh_result"] = {"days": ["2026-10-12", "2026-10-13"], "set": 5, "failed": 1, "skipped": 0}
+    assert run_pipeline.main([DAY.isoformat()]) == 0
+    assert stubbed_pipeline["refreshes"] == [DAY]
+    state = load_state(isolated_env / DAY.isoformat())
+    assert state["run"]["thumbnail_refresh"]["set"] == 5
+    assert "earlier days' thumbnails: 5 re-set, 1 failed" in notifications[-1][1]
+    stubbed_pipeline["refresh_result"] = {"days": ["2026-10-12", "2026-10-13"], "set": 0, "failed": 0, "skipped": 0}
+    assert run_pipeline.main([DAY.isoformat()]) == 0  # a same-day rerun has nothing left to re-set
+    assert load_state(isolated_env / DAY.isoformat())["run"]["thumbnail_refresh"]["set"] == 5  # report kept
+
+
+def test_no_thumbnail_pass_without_uploads(stubbed_pipeline, isolated_env):
+    assert run_pipeline.main([DAY.isoformat()]) == 0
+    assert stubbed_pipeline["refreshes"] == []
+    assert "thumbnail_refresh" not in load_state(isolated_env / DAY.isoformat())["run"]
+
+
+@pytest.mark.parametrize("error", [YouTubeAuthError("sign-in expired"), RuntimeError("boom")])
+def test_a_thumbnail_pass_error_never_stops_the_run(stubbed_pipeline, isolated_env, notifications, monkeypatch,
+                                                    error):
+    monkeypatch.setenv("YOUTUBE_UPLOAD", "1")
+    stubbed_pipeline["refresh_result"] = error
+    assert run_pipeline.main([DAY.isoformat()]) == 0
+    assert len(stubbed_pipeline["built"]) == 3 and stubbed_pipeline["uploads"] == [DAY]
+    assert load_state(isolated_env / DAY.isoformat())["run"]["thumbnail_refresh"]["error"]
+    assert "earlier thumbnails not re-set" in notifications[-1][1]
+
+
+def test_summary_is_quiet_when_the_thumbnail_pass_had_nothing_to_do(tmp_path):
+    from newsletter_video.runstate import update_run
+
+    update_run(tmp_path, thumbnail_refresh={"days": ["2026-10-13"], "set": 0, "failed": 0, "skipped": 0})
+    assert "thumbnail" not in run_pipeline.run_summary(tmp_path, 5)
+    update_run(tmp_path, thumbnail_refresh={"days": ["2026-10-13"], "set": 0, "failed": 0, "skipped": 2})
+    assert "earlier days' thumbnails: 0 re-set, 2 skipped (no title page)" in run_pipeline.run_summary(tmp_path, 5)
 
 
 def test_summary_flags_uploads_whose_thumbnail_failed(tmp_path):

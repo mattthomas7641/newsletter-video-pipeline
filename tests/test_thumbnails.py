@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import timedelta
 
 import pytest
 from PIL import Image, ImageDraw
 
 from newsletter_video import thumbnails, youtube_upload
-from newsletter_video.youtube_upload import set_day_thumbnails, upload_day
+from newsletter_video.runstate import load_state
+from newsletter_video.youtube_upload import refresh_thumbnails, set_day_thumbnails, upload_day
 from tests.test_youtube_upload import DAY, FakeHttpError, _day_folder, fake_youtube  # noqa: F401 (fixture)
 
 
@@ -83,6 +85,101 @@ def test_backfill_sets_only_the_missing_ones(fake_youtube, isolated_env):
     assert set_day_thumbnails(DAY) == {"01_story-1.mp4": "ok", "03_story-3.mp4": "ok"}
     assert calls == ["vid1", "vid3"]
     assert set_day_thumbnails(DAY) == {}  # idempotent
+
+
+# --- the next-day pass (final thumbnails) -----------------------------------------------------------------
+
+def _with_title_pages(folder):
+    for video in folder.glob("*.mp4"):
+        Image.new("RGB", (1080, 1920), (20, 40, 200)).save(thumbnails.title_png_path(video))
+
+
+def _uploaded_day(fake, out, day=DAY, n=2):
+    """A day uploaded with its title pages, so each video's first thumbnail already says "ok"."""
+    folder = _day_folder(out, day=day, n=n)
+    _with_title_pages(folder)
+    _thumbs_api(fake)
+    upload_day(day)
+    return folder
+
+
+def test_final_pass_re_sets_thumbnails_already_ok_once(fake_youtube, isolated_env):
+    folder = _uploaded_day(fake_youtube, isolated_env)
+    record = json.loads((folder / "uploads.json").read_text())
+    assert record["01_story-1.mp4"]["thumbnail"] == "ok"  # the at-upload "ok" that YouTube ignored
+    calls = _thumbs_api(fake_youtube)
+    assert set_day_thumbnails(DAY, final=True) == {"01_story-1.mp4": "ok", "02_story-2.mp4": "ok"}
+    assert calls == ["vid1", "vid2"]
+    record = json.loads((folder / "uploads.json").read_text())
+    assert record["01_story-1.mp4"]["thumbnail_final"] == "ok" and record["01_story-1.mp4"]["thumbnail_final_at"]
+    assert load_state(folder)["videos"]["01_story-1"]["thumbnail_final"] == "ok"
+    assert load_state(folder)["videos"]["01_story-1"]["status"] == "uploaded"
+    assert set_day_thumbnails(DAY, final=True) == {} and calls == ["vid1", "vid2"]  # once per video
+    assert set_day_thumbnails(DAY) == {}  # the plain backfill still sees them as done
+
+
+def test_final_pass_uses_only_the_vertical_title_page(fake_youtube, isolated_env):
+    folder = _day_folder(isolated_env)
+    _with_thumbs(folder)  # only the 16:9 .thumb.jpg, e.g. after the title pages were cleaned up
+    _thumbs_api(fake_youtube)
+    upload_day(DAY)
+    calls = _thumbs_api(fake_youtube)
+    assert set_day_thumbnails(DAY, final=True) == {"01_story-1.mp4": "skipped:no title page",
+                                                    "02_story-2.mp4": "skipped:no title page"}
+    assert calls == []
+
+
+def test_final_pass_stops_at_a_quota_error_and_retries_later(fake_youtube, isolated_env):
+    folder = _uploaded_day(fake_youtube, isolated_env, n=3)
+    calls = _thumbs_api(fake_youtube, fail=FakeHttpError(403, "quotaExceeded"))
+    done = set_day_thumbnails(DAY, final=True)
+    assert list(done) == ["01_story-1.mp4"] and done["01_story-1.mp4"].startswith("failed:HTTP 403")
+    assert calls == ["vid1"]  # the rest would fail too: not tried
+    record = json.loads((folder / "uploads.json").read_text())
+    assert "thumbnail_final" not in record["02_story-2.mp4"]
+    calls = _thumbs_api(fake_youtube)
+    assert set_day_thumbnails(DAY, final=True) == {f"0{i}_story-{i}.mp4": "ok" for i in (1, 2, 3)}
+
+
+def test_final_pass_needs_no_sign_in_when_nothing_is_due(monkeypatch, isolated_env):
+    monkeypatch.setattr(youtube_upload, "_credentials", lambda interactive: pytest.fail("no sign-in needed"))
+    assert set_day_thumbnails(DAY, final=True) == {}  # no uploads.json at all
+
+
+def test_refresh_covers_the_previous_days_only(fake_youtube, isolated_env):
+    today = DAY + timedelta(days=3)
+    for k in (0, 1, 2, 3):  # today, yesterday, the day before, three days ago
+        _uploaded_day(fake_youtube, isolated_env, day=today - timedelta(days=k), n=1)
+    calls = _thumbs_api(fake_youtube)
+    summary = refresh_thumbnails(today)
+    assert summary == {"days": [(today - timedelta(days=2)).isoformat(), (today - timedelta(days=1)).isoformat()],
+                       "set": 2, "failed": 0, "skipped": 0}
+    assert len(calls) == 2
+    assert refresh_thumbnails(today)["set"] == 0 and len(calls) == 2  # tomorrow's run won't redo them
+    assert "thumbnail_final" not in json.loads((isolated_env / today.isoformat() / "uploads.json").read_text())[
+        "01_story-1.mp4"]
+
+
+def test_refresh_counts_failures_and_stops_on_quota(fake_youtube, isolated_env):
+    today = DAY + timedelta(days=2)
+    for k in (1, 2):
+        _uploaded_day(fake_youtube, isolated_env, day=today - timedelta(days=k), n=2)
+    calls = _thumbs_api(fake_youtube, fail=FakeHttpError(429, "rateLimitExceeded"))
+    assert refresh_thumbnails(today) == {"days": [DAY.isoformat(), (DAY + timedelta(days=1)).isoformat()],
+                                         "set": 0, "failed": 1, "skipped": 0}
+    assert len(calls) == 1  # neither the rest of that day nor the next day is tried
+
+
+@pytest.mark.parametrize("raw,expected", [("", 2), ("1", 1), ("0", 0), ("off", 0), ("junk", 2), ("-3", 0)])
+def test_refresh_days_setting(monkeypatch, raw, expected):
+    monkeypatch.setenv("THUMBNAIL_REFRESH_DAYS", raw)
+    assert youtube_upload.thumbnail_refresh_days() == expected
+
+
+def test_refresh_off_does_nothing(monkeypatch, isolated_env):
+    monkeypatch.setenv("THUMBNAIL_REFRESH_DAYS", "off")
+    monkeypatch.setattr(youtube_upload, "set_day_thumbnails", lambda *a, **k: pytest.fail("pass is off"))
+    assert refresh_thumbnails(DAY) == {"days": [], "set": 0, "failed": 0, "skipped": 0}
 
 
 def test_metadata_names_the_thumbnail_when_there_is_one(isolated_env):

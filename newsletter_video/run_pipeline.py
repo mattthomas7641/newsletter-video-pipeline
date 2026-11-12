@@ -36,7 +36,8 @@ from .supervisor import (
 )
 from .video_builder import build_shorts
 from .youtube_upload import (
-    TOKEN, YouTubeAuthError, days_with_pending_uploads, pending_videos, upload_recent, write_metadata,
+    TOKEN, YouTubeAuthError, days_with_pending_uploads, pending_videos, refresh_thumbnails, upload_recent,
+    write_metadata,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -185,6 +186,24 @@ def plan_only(target_date: date, out_dir: Path, wanted: int, slots: list[dict] |
     return []
 
 
+def _refresh_thumbnails(target_date: date, out_dir: Path) -> None:
+    """Re-sets the title-page thumbnails of the previous days' uploads (youtube_upload.refresh_thumbnails):
+    the one set right after each upload often doesn't stick on the Shorts tab because the video was still
+    processing. Runs first, before anything can fail or time out, and never stops the run; the outcome goes
+    to status.json (run.thumbnail_refresh) and the run summary."""
+    try:
+        result = refresh_thumbnails(target_date)
+    except YouTubeAuthError as exc:  # the upload step notifies about the sign-in; just record it here
+        result = {"error": str(exc)[:300]}
+    except Exception as exc:  # noqa: BLE001 - a thumbnail problem must never cost the day's videos
+        log.exception("Thumbnail refresh failed; carrying on")
+        result = {"error": f"{type(exc).__name__}: {exc}"[:300]}
+    did = result.get("error") or result.get("set") or result.get("failed") or result.get("skipped")
+    # A same-day rerun (nothing left to do) keeps the first run's report.
+    if did or (result.get("days") and "thumbnail_refresh" not in load_state(out_dir)["run"]):
+        update_run(out_dir, thumbnail_refresh=result)
+
+
 def run(target_date: date | None = None) -> list[Path]:
     load_dotenv(PROJECT_ROOT / ".env")
     target_date = target_date or date.today()
@@ -197,6 +216,8 @@ def run(target_date: date | None = None) -> list[Path]:
     out_dir = OUTPUT_DIR / target_date.isoformat()
     uploading = os.environ.get("YOUTUBE_UPLOAD") == "1"
     update_run(out_dir, started=now_iso(), finished=None, error=None, mode=mode)
+    if uploading:
+        _refresh_thumbnails(target_date, out_dir)
 
     # Resume rather than redo: a re-run on the same day (after a crash, a
     # watchdog kill or a manual retry) only makes the videos still missing.
@@ -336,6 +357,16 @@ def run_summary(out_dir: Path, minutes: float) -> str:
                    if v.get("status") == "uploaded" and str(v.get("thumbnail") or "").startswith("failed"))
     if no_thumb:
         parts.append(f"{no_thumb} without a custom thumbnail")
+    refresh = state["run"].get("thumbnail_refresh") or {}
+    if refresh.get("error"):
+        parts.append(f"earlier thumbnails not re-set ({refresh['error'][:80]})")
+    elif refresh.get("set") or refresh.get("failed") or refresh.get("skipped"):
+        bits = [f"{refresh.get('set', 0)} re-set"]
+        if refresh.get("failed"):
+            bits.append(f"{refresh['failed']} failed")
+        if refresh.get("skipped"):
+            bits.append(f"{refresh['skipped']} skipped (no title page)")
+        parts.append(f"earlier days' thumbnails: {', '.join(bits)}")
     return "; ".join(parts)
 
 
