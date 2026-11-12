@@ -217,3 +217,20 @@ def test_jevs_need_to_know_score_picks_the_list_when_it_is_there(day):
     ranked = [ADS_SEARCH, LEADS, IPO, GEMINI]  # ranked by "surprising" first
     must = mc.set_day(ranked, 2, importance={IPO.title: 0.95, GEMINI.title: 0.9, ADS_SEARCH.title: 0.2, LEADS.title: 0.1})
     assert [s.title for s in must] == [IPO.title, GEMINI.title]
+
+
+def test_a_dropped_video_that_used_both_titles_of_one_story_still_gets_its_retry(day):
+    # 2026-11-11 catch-up: the IPO video used both IPO titles, was counted as two tries and never retried
+    stories = [IPO, ROADSHOW, SHEETS]
+    mc.set_day(stories, 2)
+    pools = []
+
+    def write(pool, n, done, notes=None):
+        pools.append([s.title for s in pool])
+        if len(pools) == 1:
+            fc.note_drop("avx", "editor", "IPO", [IPO, ROADSHOW], ["still flagged by the editor:", "scene 2 (x): y"])
+            return [_script("sheets", SHEETS)]
+        return [_script("ipo again", IPO)]
+
+    scripts = sw.with_refill("avx", write, stories, 2)
+    assert IPO.title in pools[1] and [s.title for s in scripts] == ["sheets", "ipo again"]

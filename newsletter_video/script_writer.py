@@ -963,11 +963,11 @@ def with_refill(fmt: str, write, candidates: list[Story], n_videos: int) -> list
         drops = [d for d in factcheck.drops_since(mark) if d["stage"] != "duplicate"]
         tries: dict[str, int] = {}
         why: dict[str, list[str]] = {}
-        for d in drops:
-            for t in d["stories"]:
-                for m in must_cover.mates_of(t):
-                    tries[m] = tries.get(m, 0) + 1
-                    why.setdefault(m, []).extend(r for r in d["reasons"] if not r.startswith("still flagged"))
+        for d in drops:  # one dropped video is one try for each story it covered (and their same-news mates)
+            hit = set().union(*(must_cover.mates_of(t) for t in d["stories"])) if d["stories"] else set()
+            for m in hit:
+                tries[m] = tries.get(m, 0) + 1
+                why.setdefault(m, []).extend(r for r in d["reasons"] if not r.startswith("still flagged"))
         retry = [s for s in must_cover.missing(scripts) if tries.get(s.title, 0) <= 1
                  and any(c.title in must_cover.mates_of(s.title) for c in candidates)]
         want = n_videos - len(scripts)

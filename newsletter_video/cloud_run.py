@@ -1,6 +1,7 @@
 """The container's entry point: the daily run, wrapped in "load state, run, save state".
 
     python -m newsletter_video.cloud_run [YYYY-MM-DD]
+    python -m newsletter_video.cloud_run render-plan YYYY-MM-DD --final   # render (and upload) a saved plan
 
 1. Secrets that arrive as environment variables (Secret Manager -> env) are written to the files the
    pipeline expects under secrets/.
@@ -94,6 +95,10 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         stop = state.start_periodic_push()
     try:
+        if argv and argv[0] == "render-plan":  # render a plan already in the bucket (e.g. catch-up videos)
+            from . import render_plan
+
+            return render_plan.main(argv[1:])
         return run_pipeline.main(argv)
     finally:
         if stop is not None:

@@ -211,3 +211,15 @@ def test_clean_env_strips_newlines_and_quotes_from_secret_variables():
                    "NOTIFY_WEBHOOK_URL": "https://ntfy.sh/t", "OTHER": "keep \n"}
     assert cloud_run.clean_env(env) == []  # already clean: nothing to do
     assert cloud_run.clean_env({}) == []
+
+
+def test_render_plan_mode_renders_a_saved_plan_instead_of_the_daily_run(monkeypatch):
+    from newsletter_video import render_plan, run_pipeline
+
+    calls = []
+    monkeypatch.delenv("STATE_BUCKET", raising=False)
+    monkeypatch.setattr(render_plan, "main", lambda argv: calls.append(("render", argv)) or 0)
+    monkeypatch.setattr(run_pipeline, "main", lambda argv: calls.append(("daily", argv)) or 0)
+    assert cloud_run.main(["render-plan", "2026-11-11", "--final"]) == 0
+    assert cloud_run.main(["2026-11-12"]) == 0
+    assert calls == [("render", ["2026-11-11", "--final"]), ("daily", ["2026-11-12"])]
