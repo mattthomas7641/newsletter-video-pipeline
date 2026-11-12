@@ -198,7 +198,7 @@ def test_the_daily_run_reads_the_lineup(monkeypatch, tmp_path, isolated_env):
 def test_avatar_batches_choose_a_minecraft_or_regular_background():
     doc = lu.validate({"version": 1, "total": 5, "batches": [
         {"count": 2, "style": "avatar", "character": "puck", "background": "none"},
-        {"count": 3, "style": "avatar", "character": "peter-griffin"}]})
+        {"count": 3, "style": "avatar", "character": "narrator-two"}]})
     assert [b["background"] for b in doc["batches"]] == ["none", "gameplay"]  # unset means Minecraft, as before
     slots = lu.expand({k: doc[k] for k in ("total", "order", "batches", "slots")}, date(2026, 11, 10))
     assert [s["look"].get("background") for s in slots] == ["none", "gameplay", "none", "gameplay", "gameplay"]

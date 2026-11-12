@@ -2,10 +2,10 @@
 cloned Voicebox voice and a short writing persona, stored in
 assets/characters/<slug>/ with a character.json manifest.
 
-    python -m newsletter_video.characters add "SpongeBob" --avatar sb.png --voice-audio sb.mp3 --use
+    python -m newsletter_video.characters add "Robo" --avatar robo.png --voice-audio robo.mp3 --use
     python -m newsletter_video.characters list
-    python -m newsletter_video.characters say spongebob "Testing one two three"
-    python -m newsletter_video.characters use spongebob     # or: use none
+    python -m newsletter_video.characters say robo "Testing one two three"
+    python -m newsletter_video.characters use robo     # or: use none
     python -m newsletter_video.characters poses puck neutral.png point.png think.png shrug.png \
         --roles neutral,point,think,shrug
     python -m newsletter_video.characters add-pose puck present.png --role present

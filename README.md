@@ -6,6 +6,9 @@ An unattended daily pipeline that turns the [TLDR](https://tldr.tech) newsletter
 40–45 second vertical (1080×1920) tech-news explainers and uploads them to YouTube Shorts.
 Live channel: [Byte Sized AI News](https://www.youtube.com/@byte-sized-ai-news-11).
 
+![Frames from one rendered Short: hook, layered diagram, orbit diagram, bar chart and outro](docs/screenshots/rich-scenes/filmstrip-draft.jpg)
+*Frames from one rendered Short, in order: the hook, three animated diagrams, a chart and the closing question.*
+
 | | |
 |---|---|
 | **Runs** | Cloud Scheduler starts a Cloud Run job at 12:00 noon ET. No laptop involved ([docs/cloud.md](docs/cloud.md)). |
@@ -81,7 +84,10 @@ before posting publicly:
 ## Quick start
 
 ```bash
+git clone https://github.com/mattthomas7641/newsletter-video-pipeline.git
 cd newsletter-video-pipeline
+conda create -p ./venv python=3.11 ffmpeg -c conda-forge       # Python env with ffmpeg
+./venv/bin/python -m pip install -r requirements.txt
 ./venv/bin/python -m newsletter_video.run_pipeline             # today's videos
 ./venv/bin/python -m newsletter_video.run_pipeline 2026-09-22  # a specific date
 ```
@@ -95,12 +101,7 @@ Rendering uses the [HyperFrames](https://github.com/heygen-com/hyperframes) CLI 
 account.
 
 The Python environment (`venv/`) is a self-contained conda env with ffmpeg already
-installed. It was built with:
-
-```bash
-conda create -p ./venv python=3.11 ffmpeg -c conda-forge
-./venv/bin/python -m pip install -r requirements.txt
-```
+installed.
 
 ## Control panel
 

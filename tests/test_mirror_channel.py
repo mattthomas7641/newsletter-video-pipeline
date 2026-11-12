@@ -65,11 +65,11 @@ def test_stories_this_channel_already_made_are_skipped_before_choosing():
 
 def test_the_plan_carries_the_other_narrators_look_and_the_stored_scenes_so_no_writer_call_is_needed(tmp_path):
     chosen = [(sidecar("A"), 1.0), (sidecar("B"), 0.5)]
-    path = mc.build_plan(DAY, chosen, {"style": "avx", "character": "peter-griffin"}, tmp_path / "out")
+    path = mc.build_plan(DAY, chosen, {"style": "avx", "character": "narrator-two"}, tmp_path / "out")
     data = json.loads(path.read_text())
     assert [v["title"] for v in data["videos"]] == ["A", "B"]
     for v in data["videos"]:
-        assert v["look"]["character"] == "peter-griffin" and v["look"]["style"] == "avx"  # not the source's puck
+        assert v["look"]["character"] == "narrator-two" and v["look"]["style"] == "avx"  # not the source's puck
         assert v["scene_plan"]["style"] == "avx" and len(v["scene_plan"]["scenes"]) >= 5
         assert v["status"] == "planned"
     scripts = [pm.script_from_entry(v) for v in data["videos"]]
@@ -80,8 +80,8 @@ def test_channel_look_needs_a_character(monkeypatch):
     monkeypatch.delenv("CHARACTER", raising=False)
     with pytest.raises(SystemExit):
         mc.channel_look()
-    monkeypatch.setenv("CHARACTER", "peter-griffin")
-    assert mc.channel_look() == {"style": "avx", "character": "peter-griffin"}
+    monkeypatch.setenv("CHARACTER", "narrator-two")
+    assert mc.channel_look() == {"style": "avx", "character": "narrator-two"}
 
 
 def test_jev_scores_are_none_without_a_key(monkeypatch):

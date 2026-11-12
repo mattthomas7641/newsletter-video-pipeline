@@ -14,7 +14,7 @@ Fallback: macOS's built-in `say` command (TTS_PROVIDER=say) — robotic, but
 always available on this machine.
 
 Optional: ElevenLabs (TTS_PROVIDER=elevenlabs), for a custom/cloned voice —
-e.g. a Peter-Griffin-style voice you've added to your own ElevenLabs Voice
+e.g. a voice you've recorded and added to your own ElevenLabs Voice
 Library. Requires ELEVENLABS_API_KEY and VOICE_ID in your .env. This script
 does not source, scrape, or download any third-party voice model for you —
 bring your own account and voice.

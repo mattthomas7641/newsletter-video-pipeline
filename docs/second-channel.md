@@ -23,7 +23,7 @@ so the second channel adds no Claude cost; it only needs the first channel's vid
 The cleanest isolation is a second clone of the project in its own folder, sharing the first one's `venv`:
 
 ```bash
-git clone <this repo> "<project> Peter" && cd "<project> Peter"
+git clone <this repo> "<project> second" && cd "<project> second"
 ln -s "<first project>/venv" venv
 mkdir -p assets/characters secrets output
 cp -R "<first project>/assets/characters/<narrator>" assets/characters/
