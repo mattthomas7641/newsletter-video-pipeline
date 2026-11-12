@@ -13,6 +13,21 @@ Cloud Scheduler (noon, your time zone)
         alerts  : an ntfy topic (phone) and Cloud Monitoring (email)
 ```
 
+## What is running now
+
+As of November 2026 the live job runs the
+[`deploy/must-cover`](https://github.com/mattthomas7641/newsletter-video-pipeline/tree/deploy/must-cover) branch, not
+`main`. The job is pinned to an image digest built from that branch.
+
+What that branch does differently from `main`:
+
+- It keeps the original writer prompt, which costs about $0.14 a video instead of $0.22.
+- Stories that Jev marks as need-to-know are written first, and a dropped one is retried once.
+- Each run sets the thumbnail again on the last two days' Shorts, once YouTube has finished processing them.
+- The container runs as a non-root user.
+
+On the live job, each secret is pinned to a version number, and the image repository keeps only the 5 newest images.
+
 ## What was made portable
 
 | Mac-only piece | Cloud replacement |
