@@ -19,9 +19,8 @@ As of November 2026 the live job runs the
 [`deploy/must-cover`](https://github.com/mattthomas7641/newsletter-video-pipeline/tree/deploy/must-cover) branch, not
 `main`. The job is pinned to an image digest built from that branch.
 
-What that branch does differently from `main`:
+Since 18 November 2026 it has the same writer as `main`. What that branch does differently from `main`:
 
-- It keeps the original writer prompt, which costs about $0.14 a video instead of $0.22.
 - Stories that Jev marks as need-to-know are written first, and a dropped one is retried once.
 - Each run sets the thumbnails again about 15 minutes after its last upload, because YouTube ignores one set on a Short
   that was just uploaded. The next day's run retries any that were missed.
