@@ -2095,7 +2095,7 @@
           const wordEls = words(display, s.headline, "word");
           hero.append(display);
           const foot = el("div", "foot");
-          foot.append(el("div", "el label", "ByteSize News · daily tech, under a minute"));
+          foot.append(el("div", "el label", "Byte Sized AI News · daily tech, under a minute"));
           root.append(el("div", "head"), hero, foot);
           root.querySelector(".head").append(label);
           return { root, hero, parts: [{ node: label, at: 0.1 }, { node: foot, at: 0.9 }], wordEls, ic };
@@ -2669,7 +2669,7 @@
           cta.append(pill);
           hero.append(ic, h1, typing, cta);
           const foot = el("div", "foot");
-          foot.append(el("div", "el label", "ByteSize News \u00B7 every morning"));
+          foot.append(el("div", "el label", "Byte Sized AI News \u00B7 every morning"));
           root.append(hd, hero, foot);
           return { root, hero, parts: [{ node: label, at: 0.1 }, { node: typing, at: 0.9 }, { node: foot, at: 0.6 }], ic, wordEls, dots, cta, pill, arrow };
         },

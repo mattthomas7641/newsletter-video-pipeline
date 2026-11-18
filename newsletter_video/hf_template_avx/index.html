@@ -78,6 +78,23 @@
         inset: 0;
         background: #f3efe6;
       }
+      /* gameplay mode (story.gameplay): footage behind the same animations, a dark shade over it, no colour ground */
+      #gp {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        opacity: 0;
+      }
+      #shade {
+        position: absolute;
+        inset: 0;
+        background: rgba(6, 8, 12, 0.46);
+        opacity: 0;
+      }
+      .gp #ground { display: none; }
+      .gp .scene-bg { background: transparent; }
       #vignette {
         position: absolute;
         inset: 0;
@@ -947,6 +964,8 @@
   </head>
   <body>
     <div id="root" data-composition-id="main" data-start="0" data-width="1080" data-height="1920">
+      <video id="gp" src="assets/bg.mp4" muted playsinline data-start="0" data-track-index="0"></video>
+      <div id="shade"></div>
       <div id="ground"></div>
       <div id="scenes"></div>
       <div id="vignette"></div>
@@ -983,6 +1002,11 @@
       const story = JSON.parse(window.__hyperframes.getVariables().story);
       const scenesRoot = document.getElementById("scenes");
       const END = story.duration;
+      if (story.gameplay) {
+        document.getElementById("root").classList.add("gp");
+        document.getElementById("gp").style.opacity = "1";
+        document.getElementById("shade").style.opacity = "1";
+      }
 
       function h(tag, cls, text) {
         const el = document.createElement(tag);

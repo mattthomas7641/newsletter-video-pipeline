@@ -101,7 +101,7 @@ def test_guard_unit_constant_time_compare_handles_odd_input():
 # --- names ---
 
 def test_slug_and_name_cleaning():
-    assert security.is_slug("spongebob") and security.is_slug("a-1")
+    assert security.is_slug("robo") and security.is_slug("a-1")
     for bad in ("", "../x", "A", "a/b", "a b", "-a", "a" * 70):
         assert not security.is_slug(bad)
     assert security.clean_display_name("  <b>Sponge\nBob</b>\t") == "b Sponge Bob /b"

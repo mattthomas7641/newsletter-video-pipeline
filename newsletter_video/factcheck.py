@@ -808,6 +808,10 @@ prediction, cause, comparison or judgement presented as fact.
 - not_a_claim: it asserts nothing checkable: a question to the viewer, a call to comment or follow, a \
 chapter label ("The catch", "Why it matters"), a pure transition.
 
+A video may be a quick-hits video that covers several separate short stories, one scene each. Each item must be \
+supported by the story it is about: a number or claim from one story attached to another story's subject is a \
+breach (beyond_source, or contradicted when it conflicts).
+
 Check every item against these rules; a breach is unsupported, contradicted, or partially_supported with \
 changes_meaning=true, with the matching error_type:
 1. beyond_source: no fact beyond the sources, however plausible or true it may be in the world. A line \
