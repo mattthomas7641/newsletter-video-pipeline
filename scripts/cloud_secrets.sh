@@ -10,8 +10,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 GCLOUD="${GCLOUD:-$HOME/google-cloud-sdk/bin/gcloud}"
-PROJECT="${PROJECT:-$("$GCLOUD" config get-value project 2>/dev/null)}"  # your GCP project: set PROJECT=... or `gcloud config set project ...`
-[ -n "$PROJECT" ] || { echo "No GCP project: run  gcloud config set project <id>  or  PROJECT=<id> $0"; exit 1; }
+PROJECT="${PROJECT:-project-4cfd0497-02c5-4d28-b9a}"
 JOB_SA="bytesize-daily-job@${PROJECT}.iam.gserviceaccount.com"
 
 # name in Secret Manager | where the value comes from
